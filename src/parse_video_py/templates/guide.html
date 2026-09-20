@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="sec cold article">
+  <div class="shape sky" style="width:420px;height:420px;left:-160px;top:-120px"></div>
+  <div class="wrap narrow">
+    <nav class="crumbs" aria-label="位置"><a href="/">拾帧</a><span>/</span><a href="/guides">教程</a></nav>
+    <h1>{{ guide.h1 }}</h1>
+    <p class="meta">更新于 {{ guide.updated }}</p>
+    <p class="intro">{{ guide.intro }}</p>
+
+    <h2>步骤</h2>
+    <ol class="howto">
+      {% for name, text in guide.steps %}
+      <li id="step-{{ loop.index }}"><h3>{{ name }}</h3><p>{{ text }}</p></li>
+      {% endfor %}
+    </ol>
+    <p class="cta"><a class="btn dark" href="{{ tool_path }}">{{ guide.tool_label }}</a></p>
+
+    {% for h, html in guide.sections %}
+    <h2>{{ h }}</h2>
+    <p>{{ html | safe }}</p>
+    {% endfor %}
+
+    <h2>常见问题</h2>
+    <div class="faq">
+      {% for q, a in guide.faq %}
+      <details{% if loop.first %} open{% endif %}><summary>{{ q }}</summary><p>{{ a }}</p></details>
+      {% endfor %}
+    </div>
+
+    {% if related %}
+    <h2>相关教程</h2>
+    <ul class="related">
+      {% for g in related %}<li><a href="{{ g.path }}">{{ g.title }}</a></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</article>
+<section class="sec warm">
+  <div class="wrap">
+    {% include '_footer.html' %}
+  </div>
+</section>
+{% endblock %}

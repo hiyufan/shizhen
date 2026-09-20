@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>{% block title %}{{ title }}{% endblock %}</title>
+<meta name="description" content="{{ description }}">
+{% if keywords %}<meta name="keywords" content="{{ keywords }}">{% endif %}
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="{{ canonical }}">
+<meta name="theme-color" content="#fafaf9">
+<meta name="applicable-device" content="pc,mobile">
+<meta http-equiv="Cache-Control" content="no-transform">
+<meta name="format-detection" content="telephone=no">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ site_name }}">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:image" content="{{ og_image }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ title }}">
+<meta name="twitter:description" content="{{ description }}">
+<meta name="twitter:image" content="{{ og_image }}">
+<script type="application/ld+json">{{ json_ld | safe }}</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%231a1815' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%236BAFDF'/%3E%3C/svg%3E">
+<link rel="preload" href="/static/noto-serif-sc-900.woff2?v={{ v }}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/inter.woff2?v={{ v }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/fonts.css?v={{ v }}">
+<link rel="stylesheet" href="/static/site.css?v={{ v }}">
+{% if site_verification %}{{ site_verification | safe }}{% endif %}
+{% block head %}{% endblock %}
+</head>
+<body{% block body_class %}{% endblock %}>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<nav class="nav">
+  <a class="brand" href="/" aria-label="拾帧 首页">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="16" cy="16" r="6" fill="#6BAFDF"/></svg>
+    拾帧
+  </a>
+  <div class="nav-links">
+    <a href="/#platforms">支持的平台</a>
+    <a href="/#outputs">GIF 与实况</a>
+    <a href="/#api">API</a>
+    <a href="/#faq">常见问题</a>
+    <a href="/guides"{% if guides_nav %} aria-current="page"{% endif %}>教程</a>
+  </div>
+  <div class="nav-cta">
+    <label class="btn sm" for="file-input">本地视频</label>
+    <input id="file-input" type="file" accept="video/*,.mov,.mp4,.webm,.mkv" hidden>
+  </div>
+</nav>
+
+{% block content %}{% endblock %}
+
+{% if analytics %}{{ analytics | safe }}{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>
