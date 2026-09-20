@@ -43,8 +43,13 @@ h1 em, h2 em { font-family: 'Playfair Display', var(--serif); font-style: italic
 .nav-links a { text-decoration: none; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
 .nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--ink); }
 .nav-cta { display: flex; gap: 12px; }
+.nav-cta .gh { gap: 7px; }
+.nav-cta .gh svg { width: 16px; height: 16px; fill: currentColor; }
 @media (max-width: 860px) {
   .nav { padding: 12px 16px 0; flex-wrap: wrap; row-gap: 10px; }
+  /* 窄屏只留图标，别和「本地视频」挤在一行 */
+  .nav-cta .gh span { display: none; }
+  .nav-cta .gh { padding: 8px 11px; }
   .nav-links { order: 3; width: calc(100% + 32px); margin: 0 -16px; padding: 0 16px 12px; gap: 18px; justify-content: safe center; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .nav-links::-webkit-scrollbar { display: none; }
   .nav-links a { flex: 0 0 auto; }
