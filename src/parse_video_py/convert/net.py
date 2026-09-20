@@ -68,8 +68,10 @@ _DNS_CHECK = os.environ.get("PARSE_VIDEO_SSRF_DNS", "1") == "1"
 def _ip_is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if ip in _FAKE_IP:
         return False
+    # is_site_local (fec0::/10) 只有 IPv6Address 有, IPv4 上取会抛 AttributeError
     return (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-            or ip.is_multicast or ip.is_unspecified or ip.is_site_local)
+            or ip.is_multicast or ip.is_unspecified
+            or (isinstance(ip, ipaddress.IPv6Address) and ip.is_site_local))
 
 
 def is_safe_url(url: str) -> bool:
