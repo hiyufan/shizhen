@@ -1,0 +1,55 @@
+# 一台机器上的完整部署：Caddy 自动申请 HTTPS 证书并反代到应用
+# 用法：把 DOMAIN 换成你的域名（DNS 先指到这台机器），然后 docker compose up -d
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      PARSE_VIDEO_TRUST_PROXY: "1"
+      # 代理链接签名密钥；不填会自动生成到 data/secret.key（多实例部署时必须填成同一个）
+      PARSE_VIDEO_SECRET: ${PARSE_VIDEO_SECRET:-}
+      # 并发 ffmpeg 数，建议 = CPU 核数 - 1
+      PARSE_VIDEO_MAX_JOBS: "3"
+      # data/ 目录配额（字节），默认 8GB
+      PARSE_VIDEO_DISK_QUOTA: "8589934592"
+      # 解析时走的代理（可选），用来分散平台风控
+      # PARSE_VIDEO_PROXY: "http://user:pass@host:port"
+      # YouTube 风控：PO Token 服务（下面的 bgutil 容器）+ 可选 cookies
+      PARSE_VIDEO_POT_URL: "http://bgutil:4416"
+      # PARSE_VIDEO_COOKIES_FILE: "/app/cookies.txt"
+      # 每 7 天自动升级 yt-dlp 并在空闲时重启（平台改版全靠它跟进）
+      PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS: "7"
+    volumes:
+      - ./data:/app/data
+      # - ./cookies.txt:/app/cookies.txt:ro
+    depends_on:
+      - bgutil
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # YouTube PO Token 生成器，给 yt-dlp 用；没有它服务器 IP 很快会被 YouTube 要求"登录确认不是机器人"
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
+    init: true
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,20 @@
+{$DOMAIN} {
+	encode zstd gzip
+	# 上传本地视频的上限，和 PARSE_VIDEO_MAX_UPLOAD 保持一致
+	request_body {
+		max_size 300MB
+	}
+	reverse_proxy app:8000 {
+		# 视频转发是长连接，别让反代先掐断
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+		flush_interval -1
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
