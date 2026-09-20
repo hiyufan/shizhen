@@ -1,0 +1,6 @@
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/static/inter.woff2) format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/static/jetbrains-mono.woff2) format('woff2'); }
+@font-face { font-family: 'Playfair Display'; font-style: italic; font-weight: 700 900; font-display: swap; src: url(/static/playfair-italic.woff2) format('woff2'); }
+/* Noto Serif SC 只子集化了站内用到的字，标题 / 问答用；动态文字走 Inter + 系统字体 */
+@font-face { font-family: 'Noto Serif SC'; font-style: normal; font-weight: 700; font-display: swap; src: url(/static/noto-serif-sc-700.woff2) format('woff2'); }
+@font-face { font-family: 'Noto Serif SC'; font-style: normal; font-weight: 900; font-display: swap; src: url(/static/noto-serif-sc-900.woff2) format('woff2'); }

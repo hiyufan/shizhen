@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="sec cold article">
+  <div class="wrap narrow">
+    <h1>这一页不存在</h1>
+    <p class="intro">链接可能打错了，或者页面已经移走。下面这些地方都能去。</p>
+    <ul class="related">
+      <li><a href="/">首页：粘贴链接提取视频和图片</a></li>
+      <li><a href="/guides">教程</a></li>
+      {% for p in pages if p.slug %}<li><a href="{{ p.path }}">{{ p.nav_label }}</a></li>{% endfor %}
+    </ul>
+  </div>
+</section>
+{% endblock %}

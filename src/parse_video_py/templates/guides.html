@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="sec cold article">
+  <div class="shape mint" style="width:420px;height:420px;right:-160px;top:-100px"></div>
+  <div class="wrap narrow">
+    <nav class="crumbs" aria-label="位置"><a href="/">拾帧</a><span>/</span><span>教程</span></nav>
+    <h1>教程</h1>
+    <p class="intro">每篇只讲一件事，照着做两分钟能完成。</p>
+    <ul class="guide-list">
+      {% for g in guides %}
+      <li><a href="{{ g.path }}"><h2>{{ g.title }}</h2><p>{{ g.description }}</p></a></li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+<section class="sec warm">
+  <div class="wrap">
+    {% include '_footer.html' %}
+  </div>
+</section>
+{% endblock %}
