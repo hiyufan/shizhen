@@ -105,14 +105,18 @@ async function probe(url) {
   } catch (e) { out.bilibili = { error: String(e) }; }
 
   if (xhs) {
+    // 边缘 / 机房 IP 常被小红书要求登录；带 ?cookie=<登录后的 Cookie 串（encodeURIComponent 过）> 再测一次
+    const cookie = url.searchParams.get("cookie") || "";
     try {
-      const r = await fetch(xhs, {
-        headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml", "Accept-Language": "zh-CN,zh;q=0.9" },
-        redirect: "follow",
-      });
+      const headers = { "User-Agent": UA, Accept: "text/html,application/xhtml+xml", "Accept-Language": "zh-CN,zh;q=0.9" };
+      if (cookie) headers["Cookie"] = cookie;
+      const r = await fetch(xhs, { headers, redirect: "follow" });
       const html = await r.text();
       const title = ((html.match(/<title>(.*?)<\/title>/s) || [])[1] || "").trim().slice(0, 60);
-      out.xhs = { status: r.status, finalUrl: r.url, title, hasNote: html.includes("noteDetailMap") && !r.url.includes("/404") };
+      const loginWall = r.url.includes("/login");
+      out.xhs = { status: r.status, finalUrl: r.url.slice(0, 120), title, withCookie: !!cookie, loginWall,
+                  hasNote: html.includes("noteDetailMap") && !r.url.includes("/404") && !loginWall };
+      if (loginWall && !cookie) out.xhs.hint = "小红书要求这个出口登录：拾帧配置 PARSE_VIDEO_XHS_COOKIE 后可用，或在这里加 ?cookie= 参数先验证";
     } catch (e) { out.xhs = { error: String(e) }; }
   } else {
     out.xhs = "加 ?xhs=<小红书分享链接> 一起测";
