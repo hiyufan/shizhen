@@ -85,6 +85,7 @@
 - 公网加固：限流、配额、签名、SSRF、CSP
 - Docker 非 root 运行
 - yt-dlp 自动升级跟进平台改版
+- 站长统计页 `/stats`：每小时 / 每天多少人在用、各平台成功率、失败原因
 
 </td></tr>
 </table>
@@ -306,6 +307,18 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 
 </details>
 
+<details>
+<summary><b>使用统计</b></summary>
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `PARSE_VIDEO_STATS_TOKEN` | – | 设了才开始记录；打开 `/stats?token=<它>` 看每小时 / 每天有多少人在用、各平台成功率、失败原因、任务耗时 |
+| `PARSE_VIDEO_STATS_DAYS` | `90` | 明细保留天数 |
+
+数据在 `data/stats.db`（SQLite）。只记事件不记内容：链接不存，IP 经密钥 HMAC 后只留 12 位，能数出人数还原不出是谁。`/api/stats?range=7d&token=…` 直接拿 JSON。
+
+</details>
+
 ## 🔌 API
 
 网页用的就是这几个接口，快捷指令、脚本、自己的 App 都能接。上游 parse-video-py 的 `/video/share/url/parse`、`/video/id/parse`、`/mcp` 原样保留。
@@ -378,8 +391,9 @@ src/parse_video_py/
   convert/updater.py             yt-dlp 自动升级
   diag.py                        站长诊断：python -m parse_video_py.diag <链接>
   web.py                         FastAPI 路由
+  stats.py                       使用统计：SQLite 事件表、按时间分桶汇总，/stats 页面
   seo.py · guides.py             落地页与教程内容、JSON-LD、sitemap
-  templates/                     base / index / guide / guides / 404
+  templates/                     base / index / guide / guides / stats / 404
   static/                        自托管字体（衬线按站内用字子集化）、样式、OG 图
 scripts/push_urls.py             百度主动推送 + sitemap ping
 scripts/esa-relay.js             阿里云 ESA 边缘函数：/probe 探测出口，/relay 给海外服务器当国内中继

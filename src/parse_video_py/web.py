@@ -3,6 +3,7 @@ import contextlib
 import mimetypes
 import dataclasses
 import os
+import re
 import secrets
 import uuid
 from pathlib import Path
@@ -20,6 +21,8 @@ from pydantic import BaseModel, Field
 import time
 
 from parse_video_py import VideoSource, parse_video_id, parse_video_share_url
+from parse_video_py import stats
+from parse_video_py.parser import detect_source
 from parse_video_py.convert import config as cconfig
 from parse_video_py.convert import ffmpeg, jobs, limits, store, tasks, updater
 from parse_video_py.parser.errors import ParseError, classify
@@ -45,6 +48,8 @@ def _cleanup() -> None:
     known = jobs.known_paths() | store.known_paths()
     store.sweep_orphans(known)
     store.enforce_quota(known)
+    if stats.enabled():
+        stats.prune()
 
 
 async def _sweeper() -> None:
@@ -61,6 +66,8 @@ async def _lifespan(_: FastAPI):
     with contextlib.suppress(Exception):
         _cleanup()
     tasks_ = [asyncio.create_task(_sweeper())]
+    if stats.enabled():
+        tasks_.append(asyncio.create_task(stats.flusher()))
     if cconfig.YTDLP_AUTOUPDATE_DAYS > 0:
         tasks_.append(asyncio.create_task(updater.loop(cconfig.YTDLP_AUTOUPDATE_DAYS)))
     yield
@@ -82,6 +89,10 @@ _CSP = (
 
 
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+stats_enabled = stats.enabled()
+
+
+_BOT_UA = re.compile(r"bot|spider|crawl|slurp|fetch|curl|wget|python|http", re.I)
 
 
 @app.middleware("http")
@@ -93,6 +104,9 @@ async def _security_headers(request: Request, call_next):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     elif request.method == "GET" and response.headers.get("content-type", "").startswith("text/html") and not path.startswith("/api"):
         response.headers.setdefault("Cache-Control", "public, max-age=600")
+        is_bot = _BOT_UA.search(request.headers.get("user-agent", ""))
+        if response.status_code == 200 and stats_enabled and path != "/stats" and not is_bot:
+            stats.record("view", limits.client_ip(request), source=path)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("X-Frame-Options", "DENY")
@@ -397,7 +411,7 @@ def _cache_put(key: str, value: dict) -> None:
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots(request: Request):
     return (
-        "User-agent: *\nDisallow: /api/\nDisallow: /video/\nDisallow: /mcp\nDisallow: /*?url=\n"
+        "User-agent: *\nDisallow: /api/\nDisallow: /video/\nDisallow: /mcp\nDisallow: /stats\nDisallow: /*?url=\n"
         f"Sitemap: {seo.absolute(_base_url(request), '/sitemap.xml')}\n"
     )
 
@@ -407,11 +421,17 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
     """解析分享文本 / 链接，返回可下载的视频、图片和清晰度选项。"""
     share_url = extract_url(url)
     if share_url is None:
+        stats.record("parse", _ip, ok=False, reason="unsupported")
         return {"code": 400, "msg": "没有找到链接，请粘贴完整的分享内容", "reason": "unsupported"}
+    platform = detect_source(share_url).value
     if cached := _cache_get(share_url):
+        stats.record("parse", _ip, source=(cached.get("data") or {}).get("source") or platform,
+                     ok=cached.get("code") == 200, reason="cache")
         return cached
     if not is_safe_url(share_url):
+        stats.record("parse", _ip, source=platform, ok=False, reason="unsupported")
         return {"code": 400, "msg": "不支持这个地址", "reason": "unsupported"}
+    t0 = time.monotonic()
     try:
         info = await asyncio.wait_for(parse_video_share_url(share_url), 90)
     except asyncio.TimeoutError:
@@ -429,6 +449,8 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
         urls |= {f.get("url") for f in data["formats"]}
         data["sig"] = {u: net.sign(u) for u in urls if u}
         result = {"code": 200, "msg": "解析成功", "data": data}
+    stats.record("parse", _ip, source=(result.get("data") or {}).get("source") or platform,
+                 ok=result["code"] == 200, reason=result.get("reason", ""), ms=(time.monotonic() - t0) * 1000)
     _cache_put(share_url, result)
     return result
 
@@ -481,6 +503,8 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
         from urllib.parse import quote
 
         passthrough["content-disposition"] = f"attachment; filename*=UTF-8''{quote(name)}"
+        host = (httpx.URL(url).host or "").rsplit(".", 2)
+        stats.record("download", ip, source=".".join(host[-2:]))
 
     async def body():
         try:
@@ -655,6 +679,44 @@ async def api_job_video(job_id: str):
     if not path or not Path(path).exists():
         raise HTTPException(404, "没有视频")
     return FileResponse(path, media_type="video/quicktime")
+
+
+# --------------------------------------------------------------------------- 使用统计（站长）
+
+
+_STATS_RANGES = {"24h": (86400, 3600), "7d": (7 * 86400, 86400), "30d": (30 * 86400, 86400), "90d": (90 * 86400, 86400)}
+
+
+def _stats_auth(request: Request, token: str = "") -> None:
+    auth = request.headers.get("authorization", "")
+    bearer = auth[7:] if auth.lower().startswith("bearer ") else ""
+    if not stats.check_token(token or bearer):
+        # 没配 token 时假装这个页面不存在
+        raise HTTPException(404, "Not Found")
+
+
+@app.get("/api/stats")
+async def api_stats(request: Request, range: str = "24h", token: str = "", tz: int = 0):
+    """按时间分桶的使用量：浏览 / 解析 / 任务 / 下载 / 人数，以及各平台成功率。"""
+    _stats_auth(request, token)
+    span, step = _STATS_RANGES.get(range, _STATS_RANGES["24h"])
+    tz_offset = max(-14 * 3600, min(14 * 3600, -tz * 60))   # JS 的 getTimezoneOffset 是"UTC 减本地"的分钟数
+    now = time.time()
+    since = now - span
+    since -= (since + tz_offset) % step   # 对齐到桶的起点，最左一格才是完整的
+    await asyncio.to_thread(stats.flush)
+    data = await asyncio.to_thread(stats.summary, since, now, step, tz_offset)
+    data["range"] = range
+    return data
+
+
+@app.get("/stats", response_class=HTMLResponse)
+async def stats_page(request: Request, token: str = ""):
+    _stats_auth(request, token)
+    ctx = _common_context(request, title="使用统计 - 拾帧", description="", path="/stats")
+    ctx.update({"page": seo.PAGE_BY_SLUG[""], "ranges": list(_STATS_RANGES), "token": token})
+    return templates.TemplateResponse(request=request, name="stats.html", context=ctx,
+                                      headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
 # 放在最后：/{slug} 是兜底路由，不能抢在 /robots.txt /sitemap.xml 前面
