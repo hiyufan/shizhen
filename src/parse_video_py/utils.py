@@ -57,10 +57,15 @@ def create_async_client(**kwargs) -> httpx.AsyncClient:
     从环境变量 PARSE_VIDEO_PROXY 读取代理地址（如 http://user:pass@host:port），
     未设置则不使用代理。其余参数透传给 httpx.AsyncClient。
     """
-    proxy = proxy_for()
-    if proxy and "proxy" not in kwargs:
-        kwargs["proxy"] = proxy
     # 解析器会跟着用户给的短链跳转, 每一跳都做 SSRF 检查
+    from .convert import relay
     from .convert.net import safe_client
 
+    if current_source.get() in CN_SOURCES and relay.enabled() and "transport" not in kwargs:
+        # 海外服务器 + 边缘函数中继：国内平台的请求由中继代发
+        kwargs["transport"] = relay.RelayTransport()
+    else:
+        proxy = proxy_for()
+        if proxy and "proxy" not in kwargs:
+            kwargs["proxy"] = proxy
     return safe_client(**kwargs)
