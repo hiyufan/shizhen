@@ -435,7 +435,7 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
         upstream_headers["Range"] = rng
 
     limits.proxy_streams.acquire(ip)
-    client = net.safe_client(follow_redirects=True, timeout=httpx.Timeout(30, read=120))
+    client = net.safe_client(for_url=url, follow_redirects=True, timeout=httpx.Timeout(30, read=120))
     req = client.build_request("GET", url, headers=upstream_headers)
     try:
         resp = await client.send(req, stream=True)
