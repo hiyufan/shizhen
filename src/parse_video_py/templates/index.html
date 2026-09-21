@@ -10,6 +10,10 @@
     <p class="sub" data-reveal style="--i:2">{{ page.lead }}</p>
     <form class="paste" id="paste-form" data-reveal="card" style="--i:3">
       <textarea id="url" placeholder="{{ page.placeholder }}" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="分享链接"></textarea>
+      <div class="paste-tools">
+        <button class="tool" id="paste-btn" type="button" title="从剪贴板粘贴">粘贴</button>
+        <button class="tool clear" id="clear-btn" type="button" title="清空" aria-label="清空" hidden>×</button>
+      </div>
       <button class="btn dark" id="parse-btn" type="submit">解析</button>
     </form>
     <p class="supports" data-reveal style="--i:4"><b>支持</b> 抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。</p>
@@ -267,6 +271,26 @@ $('#paste-form').addEventListener('submit', async (e) => {
     btn.disabled = false; btn.textContent = '解析';
   }
 });
+
+// 粘贴 / 清空按钮：有内容时显示 ×，为空时显示"粘贴"
+const urlBox = $('#url'), pasteBtn = $('#paste-btn'), clearBtn = $('#clear-btn');
+const syncTools = () => { const has = urlBox.value.trim().length > 0; clearBtn.hidden = !has; pasteBtn.hidden = has; };
+urlBox.addEventListener('input', syncTools);
+clearBtn.addEventListener('click', () => { urlBox.value = ''; syncTools(); notice(''); $('#result').hidden = true; $('#converter').hidden = true; urlBox.focus(); });
+pasteBtn.addEventListener('click', async () => {
+  try {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (!text) { notice('剪贴板是空的。先去 App 里复制分享链接。', 'info'); return; }
+    urlBox.value = text; syncTools();
+    if (/https?:\/\//.test(text)) $('#paste-form').requestSubmit(); else urlBox.focus();
+  } catch (_) {
+    // 浏览器不给读剪贴板（非 HTTPS、或用户拒绝）：退回手动粘贴
+    urlBox.focus();
+    notice('浏览器没有允许读取剪贴板，请在输入框里长按或 Ctrl+V 粘贴。', 'info');
+  }
+});
+if (!navigator.clipboard || !navigator.clipboard.readText) pasteBtn.hidden = true;
+syncTools();
 
 $('#url').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#paste-form').requestSubmit(); }
@@ -652,7 +676,7 @@ function showResult(box, job, format) {
 
 // 从 URL 带入链接（?url=）
 const initial = new URLSearchParams(location.search).get('url');
-if (initial) { $('#url').value = initial; $('#paste-form').requestSubmit(); }
+if (initial) { $('#url').value = initial; syncTools(); $('#paste-form').requestSubmit(); }
 })();
 
 // ---------- 页面动效：进度条 / 光晕视差 / 入场 / 数字滚动（尊重 reduce-motion）
