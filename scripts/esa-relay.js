@@ -116,12 +116,23 @@ async function probe(url) {
       const loginWall = r.url.includes("/login");
       out.xhs = { status: r.status, finalUrl: r.url.slice(0, 120), title, withCookie: !!cookie, loginWall,
                   hasNote: html.includes("noteDetailMap") && !r.url.includes("/404") && !loginWall };
-      if (loginWall && !cookie) out.xhs.hint = "小红书要求这个出口登录：拾帧配置 PARSE_VIDEO_XHS_COOKIE 后可用，或在这里加 ?cookie= 参数先验证";
+      if (loginWall && !cookie) out.xhs.hint = "桌面页要求登录；拾帧实际用的是下面的手机分享页，看 xhsMobile";
     } catch (e) { out.xhs = { error: String(e) }; }
+    // 拾帧在机房 / 边缘出口上走的是手机分享页（不要求登录），这个才是关键
+    try {
+      const headers = { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+                        Accept: "text/html,application/xhtml+xml", "Accept-Language": "zh-CN,zh;q=0.9" };
+      if (cookie) headers["Cookie"] = cookie;
+      const r = await fetch(xhs, { headers, redirect: "follow" });
+      const html = await r.text();
+      const title = ((html.match(/<title>(.*?)<\/title>/s) || [])[1] || "").trim().slice(0, 60);
+      out.xhsMobile = { status: r.status, finalUrl: r.url.slice(0, 120), title, loginWall: r.url.includes("/login"),
+                        hasNote: html.includes('"noteData"') && html.includes("imageList") && !r.url.includes("/404") && !r.url.includes("/login") };
+    } catch (e) { out.xhsMobile = { error: String(e) }; }
   } else {
     out.xhs = "加 ?xhs=<小红书分享链接> 一起测";
   }
   out.verdict = out.bilibili?.ok ? "B站可用" : "B站不可用";
-  if (typeof out.xhs === "object" && !out.xhs.error) out.verdict += out.xhs.hasNote ? "，小红书可用" : "，小红书不可用";
+  if (typeof out.xhsMobile === "object" && !out.xhsMobile.error) out.verdict += out.xhsMobile.hasNote ? "，小红书可用（手机分享页）" : (out.xhs?.hasNote ? "，小红书可用（桌面页）" : "，小红书不可用");
   return new Response(JSON.stringify(out, null, 2), { headers: { "content-type": "application/json; charset=utf-8" } });
 }
