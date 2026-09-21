@@ -175,6 +175,12 @@ _ENRICH_WITH_YTDLP = {VideoSource.BiliBili}
 
 
 async def _ytdlp_extra(share_url: str):
+    # 走边缘中继又没有真代理时, yt-dlp 只能从服务器自己的出口访问, 海外机房必 412, 别白等几秒
+    from ..convert import relay
+    from ..utils import proxy_for
+
+    if relay.enabled() and not proxy_for():
+        return None
     try:
         return await asyncio.wait_for(YtDlp().parse_share_url(share_url), 25)
     except Exception:
