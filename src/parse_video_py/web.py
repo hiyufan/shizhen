@@ -470,7 +470,17 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
     if rng := request.headers.get("range"):
         upstream_headers["Range"] = rng
 
-    limits.proxy_streams.acquire(ip)
+    # 并发额度是留给视频流的(长连接、一直占带宽), 图片不进这个池子
+    held = not limits.looks_like_image(url)
+    if held:
+        limits.proxy_streams.acquire(ip)
+
+    def release() -> None:
+        nonlocal held
+        if held:
+            held = False
+            limits.proxy_streams.release(ip)
+
     # 池化的客户端, 连接归池子管, 这里只负责关掉响应。播放器拖进度条会打一连串
     # Range 请求, 每个都重新握手的话实测要 1457ms/次, 复用后省掉握手和 TCP 慢启动
     client = net.safe_client(for_url=url, follow_redirects=True, timeout=httpx.Timeout(30, read=120))
@@ -478,15 +488,19 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
     try:
         resp = await client.send(req, stream=True)
     except net.UnsafeURL:
-        limits.proxy_streams.release(ip)
+        release()
         raise HTTPException(400, "源站跳转到了不允许的地址")
     except httpx.HTTPError as err:
-        limits.proxy_streams.release(ip)
+        release()
         raise HTTPException(502, f"拉取失败: {err.__class__.__name__}")
     if resp.status_code >= 400:
         await resp.aclose()
-        limits.proxy_streams.release(ip)
+        release()
         raise HTTPException(resp.status_code, "源站拒绝了请求")
+
+    # URL 没认出来但响应头说是图片, 那也早点把槽还回去
+    if resp.headers.get("content-type", "").startswith("image/"):
+        release()
 
     passthrough = {}
     for key in ("content-type", "content-length", "content-range", "accept-ranges", "last-modified", "etag"):
@@ -512,7 +526,7 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
                 yield chunk
         finally:
             await resp.aclose()
-            limits.proxy_streams.release(ip)
+            release()
 
     return StreamingResponse(body(), status_code=resp.status_code, headers=passthrough)
 
