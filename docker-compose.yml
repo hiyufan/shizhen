@@ -14,6 +14,9 @@ services:
       PARSE_VIDEO_DISK_QUOTA: "8589934592"
       # 海外服务器必看：小红书 / B站 对海外 IP 不友好，给国内平台单独配一个国内出口
       # PARSE_VIDEO_PROXY_CN: "http://user:pass@host:port"
+      # 没有国内机器时，用阿里云 ESA 边缘函数中继（见 scripts/esa-relay.js）
+      # PARSE_VIDEO_RELAY_CN: "https://<函数域名>/relay"
+      # PARSE_VIDEO_RELAY_TOKEN: "<和 esa-relay.js 里 TOKEN 一致>"
       # 或者贴登录后的 Cookie
       # PARSE_VIDEO_XHS_COOKIE: "a1=...; web_session=...; ..."
       # PARSE_VIDEO_BILI_COOKIE: "SESSDATA=...; buvid3=...; ..."

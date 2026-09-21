@@ -41,6 +41,8 @@ def classify(exc: BaseException) -> ParseError:
     text = f"{name}: {exc}"
     if name in ("TimeoutError", "ReadTimeout", "ConnectTimeout", "PoolTimeout"):
         return ParseError("timeout")
+    if "中继" in text:
+        return ParseError("network", str(exc)[:80])
     if name in ("ConnectError", "RemoteProtocolError", "ProxyError", "NetworkError"):
         return ParseError("network")
     for reason, pattern in _RULES:
