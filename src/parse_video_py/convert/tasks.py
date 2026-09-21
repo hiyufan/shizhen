@@ -12,6 +12,7 @@ import httpx
 from . import config, ffmpeg, livephoto, store
 from .jobs import Job
 from .net import headers_for, safe_client, safe_filename
+from ..utils import CN_SOURCES, proxy_for
 
 _MERGE_FORMAT = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
 
@@ -58,6 +59,10 @@ def _run_ytdlp_download(job: Job, page_url: str, format_spec: str, out_dir: Path
         "progress_hooks": [hook],
         "postprocessor_hooks": [pp_hook],
     }
+    host = (page_url.split("//", 1)[-1].split("/", 1)[0]).lower()
+    cn = any(k in host for k in ("bilibili", "b23.tv", "douyin", "xiaohongshu", "kuaishou", "weibo", "ixigua", "acfun"))
+    if proxy := proxy_for("bilibili" if cn else "ytdlp"):
+        opts["proxy"] = proxy
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(page_url, download=True)
     path = result["path"] or (info.get("requested_downloads") or [{}])[0].get("filepath")
@@ -70,7 +75,7 @@ def _run_ytdlp_download(job: Job, page_url: str, format_spec: str, out_dir: Path
 
 
 async def _download_direct(job: Job, url: str, headers: dict[str, str], dest: Path) -> None:
-    async with safe_client(follow_redirects=True, timeout=httpx.Timeout(30, read=120)) as client:
+    async with safe_client(for_url=url, follow_redirects=True, timeout=httpx.Timeout(30, read=120)) as client:
         async with client.stream("GET", url, headers=headers_for(url, headers)) as resp:
             resp.raise_for_status()
             total = int(resp.headers.get("content-length") or 0)
@@ -216,7 +221,7 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
 
 
 async def _fetch_bytes(url: str, dest: Path, headers: dict[str, str] | None = None, limit: int = 100 << 20) -> None:
-    async with safe_client(follow_redirects=True, timeout=httpx.Timeout(30, read=120)) as client:
+    async with safe_client(for_url=url, follow_redirects=True, timeout=httpx.Timeout(30, read=120)) as client:
         async with client.stream("GET", url, headers=headers_for(url, headers)) as resp:
             resp.raise_for_status()
             done = 0

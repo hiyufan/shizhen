@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from ..convert import config as convert_config
 from ..convert.ffmpeg import ffmpeg_dir
+from ..utils import proxy_for
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 
 _HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
@@ -38,6 +39,8 @@ class YtDlp(BaseParser):
             "ffmpeg_location": ffmpeg_dir(),
             **convert_config.ytdlp_cookie_opts(),
         }
+        if proxy := proxy_for():
+            opts["proxy"] = proxy
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         # 播放列表 / 多图帖只取第一条

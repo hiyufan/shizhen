@@ -26,7 +26,7 @@ class ParseError(Exception):
 _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("deleted", re.compile(r"status_deleted|作品不见了|已被删除|不存在|undefined|private|removed|unavailable|has been deleted|404|没有作品|tombstone|parse video ID|video ID from", re.I)),
     ("login", re.compile(r"sign in|log ?in|login|cookies|authentication|登录|账号|需要.*登录", re.I)),
-    ("blocked", re.compile(r"429|too many|rate ?limit|forbidden|403|风控|验证|captcha|bot|blocked|access denied|encrypt_data_miss", re.I)),
+    ("blocked", re.compile(r"429|too many|rate ?limit|forbidden|403|412|风控|验证|captcha|bot|blocked|access denied|encrypt_data_miss|限流|拒绝了服务器", re.I)),
     ("timeout", re.compile(r"timed? ?out|timeout", re.I)),
     ("network", re.compile(r"connect|connection|network|dns|ssl|reset by peer|remote ?protocol", re.I)),
     ("unsupported", re.compile(r"unsupported|not support|does not have source|无法从 URL|not implemented|暂不支持", re.I)),

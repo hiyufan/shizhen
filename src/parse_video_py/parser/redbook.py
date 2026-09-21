@@ -1,4 +1,5 @@
 import json
+import os
 import re
 
 import fake_useragent
@@ -17,25 +18,37 @@ class RedBook(BaseParser):
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         headers = {
-            "User-Agent": fake_useragent.UserAgent(os=["windows"]).random,
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
         }
+        # 海外 / 机房 IP 经常拿到验证页, 带上登录后的 cookie 就正常了
+        if cookie := os.getenv("PARSE_VIDEO_XHS_COOKIE"):
+            headers["Cookie"] = cookie
         async with create_async_client(follow_redirects=True) as client:
             response = await client.get(share_url, headers=headers)
             response.raise_for_status()
 
+        final_url = str(response.url)
+        html = response.text
         pattern = re.compile(
             pattern=r"window\.__INITIAL_STATE__\s*=\s*(.*?)</script>",
             flags=re.DOTALL,
         )
-        find_res = pattern.search(response.text)
+        find_res = pattern.search(html)
 
         if not find_res or not find_res.group(1):
-            raise ValueError("parse video json info from html fail")
+            raise ValueError(self._describe_block(final_url, html))
 
         # 页面里的 JSON 混着 JS 的 undefined, 换成 null 再用 json 解析 (比 yaml 快一个量级)
         json_data = json.loads(re.sub(r"\bundefined\b", "null", find_res.group(1).strip()))
 
-        note_id = json_data["note"]["currentNoteId"]
+        if "note" not in json_data:
+            raise ValueError(self._describe_block(final_url, html))
+        note_id = json_data["note"].get("currentNoteId")
         # 验证返回：小红书的分享链接有有效期，过期后会返回 undefined
         if not note_id or note_id == "undefined":
             raise Exception("parse fail: note id in response is undefined")
@@ -105,6 +118,19 @@ class RedBook(BaseParser):
             ),
         )
         return video_info
+
+    @staticmethod
+    def _describe_block(final_url: str, html: str) -> str:
+        """页面不是笔记时, 说清楚小红书到底返回了什么, 站长才知道该配 cookie 还是代理。"""
+        title = re.search(r"<title>(.*?)</title>", html, re.S)
+        title_text = (title.group(1).strip() if title else "")[:40]
+        if "/404" in final_url or "sec_" in final_url:
+            return "链接过期或笔记不存在 (小红书跳到了 404)"
+        markers = ("验证", "captcha", "verify", "安全", "登录", "login", "网络连接异常", "海外")
+        if any(m in html[:20000] or m in title_text for m in markers):
+            return ("小红书对服务器所在网络返回了验证/登录页 (被限流)，海外服务器请配置 "
+                    "PARSE_VIDEO_PROXY_CN 或 PARSE_VIDEO_XHS_COOKIE")
+        return f"小红书返回了意外页面 (标题: {title_text or '无'}，地址: {final_url[:80]})"
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         raise NotImplementedError("小红书暂不支持直接解析视频ID")
