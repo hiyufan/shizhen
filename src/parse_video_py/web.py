@@ -38,18 +38,28 @@ def _get_templates_dir() -> str:
     raise FileNotFoundError("templates 目录未找到")
 
 
+def _cleanup() -> None:
+    """过期任务 / 原视频、没登记在册的孤儿文件、磁盘配额，每 5 分钟一轮。"""
+    jobs.sweep()
+    store.sweep()
+    known = jobs.known_paths() | store.known_paths()
+    store.sweep_orphans(known)
+    store.enforce_quota(known)
+
+
 async def _sweeper() -> None:
     while True:
         await asyncio.sleep(300)
         with contextlib.suppress(Exception):
-            jobs.sweep()
-            store.sweep()
-            store.enforce_quota()
+            _cleanup()
 
 
 @contextlib.asynccontextmanager
 async def _lifespan(_: FastAPI):
     cconfig.ensure_dirs()
+    # 任务和原视频的登记在内存里，上次进程留下的文件启动时先清一遍
+    with contextlib.suppress(Exception):
+        _cleanup()
     tasks_ = [asyncio.create_task(_sweeper())]
     if cconfig.YTDLP_AUTOUPDATE_DAYS > 0:
         tasks_.append(asyncio.create_task(updater.loop(cconfig.YTDLP_AUTOUPDATE_DAYS)))
@@ -500,6 +510,9 @@ async def api_prepare(req: PrepareRequest, ip: str = Depends(limits.job_limit)):
 
     if src := store.get(sid):
         return {"ready": True, "source": src.view()}
+    # 同一个来源已经有人在准备了（爆款链接常见），跟着等那个任务就行，别再下一份
+    if pending := jobs.find_pending("prepare", sid):
+        return {"ready": False, "job": pending.view(), "source_id": sid}
 
     async def fn(job: jobs.Job) -> None:
         await tasks.fetch_source(job, source_id=sid, url=req.url, headers=req.headers,

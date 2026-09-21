@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from . import config
 
@@ -51,6 +52,32 @@ def put(src: Source) -> Source:
     return src
 
 
+def known_paths() -> set[Path]:
+    """登记在册的原视频和缩略图条；清孤儿时要绕开。"""
+    known: set[Path] = set()
+    for s in _sources.values():
+        known.add(Path(s.path).resolve())
+        if s.strip_path:
+            known.add(Path(s.strip_path).resolve())
+    return known
+
+
+def _size(p: Path) -> int:
+    try:
+        if p.is_dir():
+            return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+        return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def _remove(p: Path) -> None:
+    if p.is_dir():
+        shutil.rmtree(p, ignore_errors=True)
+    else:
+        p.unlink(missing_ok=True)
+
+
 def _drop(sid: str) -> None:
     src = _sources.pop(sid, None)
     if src:
@@ -66,36 +93,70 @@ def sweep() -> None:
             _drop(sid)
 
 
+_DATA_DIRS = (config.SOURCES_DIR, config.OUTPUTS_DIR, config.UPLOADS_DIR)
+
+
 def disk_usage() -> int:
-    total = 0
-    for d in (config.SOURCES_DIR, config.OUTPUTS_DIR, config.UPLOADS_DIR):
-        if d.exists():
-            total += sum(f.stat().st_size for f in d.iterdir() if f.is_file())
-    return total
+    return sum(_size(f) for d in _DATA_DIRS if d.exists() for f in d.iterdir())
 
 
-def enforce_quota() -> int:
-    """data/ 超过配额时按最久未用的原视频先删；返回删掉的个数。"""
+def _orphans(known: Iterable[Path]) -> list[tuple[Path, float]]:
+    """三个目录里没登记在册的文件 / 目录（进程重启后内存里的登记就没了，任务失败也会留下半成品）。"""
+    known = set(known)
+    found = []
+    for d in _DATA_DIRS:
+        if not d.exists():
+            continue
+        for f in d.iterdir():
+            if f.resolve() in known:
+                continue
+            try:
+                found.append((f, f.stat().st_mtime))
+            except OSError:
+                continue
+    return found
+
+
+def sweep_orphans(known: Iterable[Path]) -> int:
+    """删掉超过 TTL 的孤儿；正在写的文件 mtime 一直在更新，不会被误删。返回删掉的个数。"""
+    now = time.time()
+    # 任务最长跑 JOB_TIMEOUT 秒；TTL 被调得比它还短时也别碰还在跑的任务
+    floor = config.JOB_TIMEOUT_SECONDS * 2
+    max_age = {
+        config.OUTPUTS_DIR: max(config.JOB_TTL_SECONDS, floor),
+        config.SOURCES_DIR: max(config.SOURCE_TTL_SECONDS, floor),
+        config.UPLOADS_DIR: max(config.SOURCE_TTL_SECONDS, floor),
+    }
+    removed = 0
+    for f, mtime in _orphans(known):
+        if now - mtime > max_age.get(f.parent, floor):
+            _remove(f)
+            removed += 1
+    return removed
+
+
+def enforce_quota(known: Iterable[Path] = ()) -> int:
+    """data/ 超过配额时先按最久未用删原视频，还不够就删最旧的孤儿；返回删掉的个数。"""
     used = disk_usage()
     removed = 0
+    target = config.DISK_QUOTA_BYTES * 0.8
     if used <= config.DISK_QUOTA_BYTES:
         return 0
     for sid, src in sorted(_sources.items(), key=lambda kv: kv[1].created_at):
-        size = Path(src.path).stat().st_size if Path(src.path).exists() else 0
+        size = _size(Path(src.path))
         _drop(sid)
         removed += 1
         used -= size
-        if used <= config.DISK_QUOTA_BYTES * 0.8:
+        if used <= target:
+            return removed
+    # 太新的孤儿多半是正在写的半成品（结果文件要到任务结束才登记），放过
+    fresh = time.time() - config.JOB_TIMEOUT_SECONDS
+    for f, mtime in sorted(_orphans(known), key=lambda x: x[1]):
+        if mtime > fresh:
             break
-    # 没登记在册的孤儿文件（异常退出留下的）也一起清
-    if used > config.DISK_QUOTA_BYTES:
-        known = {Path(s.path) for s in _sources.values()} | {Path(s.strip_path) for s in _sources.values() if s.strip_path}
-        orphans = sorted((f for f in config.SOURCES_DIR.iterdir() if f.is_file() and f not in known),
-                         key=lambda f: f.stat().st_mtime)
-        for f in orphans:
-            used -= f.stat().st_size
-            f.unlink(missing_ok=True)
-            removed += 1
-            if used <= config.DISK_QUOTA_BYTES * 0.8:
-                break
+        used -= _size(f)
+        _remove(f)
+        removed += 1
+        if used <= target:
+            break
     return removed

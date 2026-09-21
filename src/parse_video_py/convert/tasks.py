@@ -33,12 +33,18 @@ def _ytdlp_base_opts() -> dict:
 
 
 def _run_ytdlp_download(job: Job, page_url: str, format_spec: str, out_dir: Path, stem: str) -> Path:
-    """阻塞式 yt-dlp 下载，放到线程里跑。返回最终文件路径。"""
+    """阻塞式 yt-dlp 下载，放到线程里跑。返回最终文件路径。
+
+    任务超时 / 被取消时 asyncio 只是不再等这个线程，yt-dlp 本身还会继续下；
+    所以在进度回调里看 job.abort，置位了就抛 DownloadCancelled 让它停下来。
+    """
     import yt_dlp
 
     result: dict[str, Optional[str]] = {"path": None}
 
     def hook(d: dict) -> None:
+        if job.abort:
+            raise yt_dlp.utils.DownloadCancelled("任务已取消")
         if d.get("status") == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             done = d.get("downloaded_bytes") or 0
@@ -63,8 +69,14 @@ def _run_ytdlp_download(job: Job, page_url: str, format_spec: str, out_dir: Path
     cn = any(k in host for k in ("bilibili", "b23.tv", "douyin", "xiaohongshu", "kuaishou", "weibo", "ixigua", "acfun"))
     if proxy := proxy_for("bilibili" if cn else "ytdlp"):
         opts["proxy"] = proxy
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(page_url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(page_url, download=True)
+    except Exception:
+        # 半截的 .part / .ytdl 别留着占磁盘
+        for leftover in out_dir.glob(f"{stem}.*"):
+            leftover.unlink(missing_ok=True)
+        raise
     path = result["path"] or (info.get("requested_downloads") or [{}])[0].get("filepath")
     if not path or not Path(path).exists():
         candidates = sorted(out_dir.glob(f"{stem}.*"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -82,14 +94,19 @@ async def _download_direct(job: Job, url: str, headers: dict[str, str], dest: Pa
             if total > config.MAX_SOURCE_BYTES:
                 raise RuntimeError(f"原视频超过 {config.MAX_SOURCE_BYTES >> 20} MB，不支持转换")
             done = 0
-            with open(dest, "wb") as f:
-                async for chunk in resp.aiter_bytes(1 << 16):
-                    f.write(chunk)
-                    done += len(chunk)
-                    if done > config.MAX_SOURCE_BYTES:
-                        raise RuntimeError(f"原视频超过 {config.MAX_SOURCE_BYTES >> 20} MB，不支持转换")
-                    if total:
-                        job.set(progress=min(0.95, done / total) * 0.9, message="正在下载原视频")
+            try:
+                with open(dest, "wb") as f:
+                    async for chunk in resp.aiter_bytes(1 << 16):
+                        f.write(chunk)
+                        done += len(chunk)
+                        if done > config.MAX_SOURCE_BYTES:
+                            raise RuntimeError(f"原视频超过 {config.MAX_SOURCE_BYTES >> 20} MB，不支持转换")
+                        if total:
+                            job.set(progress=min(0.95, done / total) * 0.9, message="正在下载原视频")
+            except BaseException:
+                # 超时 / 取消 / 超限：半截文件别留着占磁盘
+                dest.unlink(missing_ok=True)
+                raise
 
 
 async def fetch_source(job: Job, *, source_id: str, url: str = "", headers: dict[str, str] | None = None,
