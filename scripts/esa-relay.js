@@ -6,7 +6,7 @@
  *   /relay?url=<目标地址>          中继：拾帧把国内平台的解析请求发到这里，由边缘节点代为访问
  *
  * 部署（边缘函数）：ESA 控制台 → 边缘函数 → 新建 → 把本文件贴进去 → 改 TOKEN → 发布，绑定一个域名或用默认地址。
- * 部署（边缘 Pages）：把本文件放到项目的 functions/[[path]].js，并在文件末尾加上
+ * 部署（边缘 Pages）：把本文件放到项目的 functions/[[path]].js，把末尾的 export default 换成
  *     export function onRequest({ request }) { return handle(request); }
  *
  * 拾帧侧配置（服务器环境变量）：
@@ -14,7 +14,7 @@
  *     PARSE_VIDEO_RELAY_TOKEN=和下面 TOKEN 一样的字符串
  *
  * 中继只用于解析请求（网页 / API，几十 KB），视频本体仍由服务器直连 CDN。
- * Cloudflare Workers 也能跑这份代码，但它的出口在海外，B站 会 412，别用。
+ * Cloudflare Workers 也能原样跑这份代码（同样是 export default { fetch }），但它的出口在海外，B站 会 412，别用。
  */
 
 const TOKEN = "change-me-to-a-long-random-string";
@@ -23,7 +23,12 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const DROP_RESP = new Set(["content-encoding", "content-length", "transfer-encoding", "connection", "set-cookie"]);
 const DROP_REQ = new Set(["host", "content-length", "connection", "accept-encoding", "x-relay-token", "x-relay-method", "x-relay-headers"]);
 
-addEventListener("fetch", (event) => event.respondWith(handle(event.request)));
+// ESA 要求 ES module：默认导出一个带 fetch 的对象
+export default {
+  async fetch(request, env, ctx) {
+    return handle(request);
+  },
+};
 
 async function handle(request) {
   const url = new URL(request.url);
