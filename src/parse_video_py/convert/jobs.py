@@ -11,6 +11,7 @@ from typing import Awaitable, Callable, Optional
 
 from . import config
 from .net import scrub
+from .. import stats
 
 
 JobFn = Callable[["Job"], Awaitable[None]]
@@ -139,6 +140,8 @@ def start(job_type: str, fn: JobFn, source_id: str | None = None, *,
                     job.error = scrub(str(e)) or e.__class__.__name__
         finally:
             job.finished_at = time.time()
+            stats.record("job", job.owner or "", source=job.type, ok=job.status == "done",
+                         reason=(job.error or "")[:32], ms=(job.finished_at - job.created_at) * 1000)
             if on_release:
                 on_release()
 

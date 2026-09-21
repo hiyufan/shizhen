@@ -27,6 +27,8 @@ services:
       # PARSE_VIDEO_COOKIES_FILE: "/app/cookies.txt"
       # 每 7 天自动升级 yt-dlp 并在空闲时重启（平台改版全靠它跟进）
       PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS: "7"
+      # 站长统计页：设了就记录，打开 https://域名/stats?token=<它> 看每小时 / 每天多少人在用
+      # PARSE_VIDEO_STATS_TOKEN: "换成一串随机字符"
     volumes:
       - ./data:/app/data
       # - ./cookies.txt:/app/cookies.txt:ro
