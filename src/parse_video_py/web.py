@@ -182,7 +182,7 @@ def _render_page(request: Request, page: seo.Page):
                           keywords=page.keywords, json_ld=seo.json_ld(page, base))
     ctx.update({
         "page": page,
-        "faq": page.faq + seo.COMMON_FAQ,
+        "faq": page.all_faq,
         "related_guides": [guides_mod.GUIDE_BY_SLUG[g] for g in page.guides if g in guides_mod.GUIDE_BY_SLUG],
     })
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)

@@ -41,6 +41,9 @@
 <section class="sec full warm" id="platforms">
   <div class="shape orange" style="width:460px;height:460px;right:-140px;top:-120px" data-parallax="0.1"></div>
   <div class="wrap">
+    {# 这一整块约 1100 字, 每页都出的话 8 个落地页正文相似度会到 0.93, 被搜索引擎当门页。
+       首页保留完整卡片, 落地页只留一行互链 —— 内链权重不丢, 重复正文去掉。 #}
+    {% if not page.slug %}
     <div class="sec-head">
       <span class="eyebrow" data-reveal>支持的平台</span>
       <h2 data-reveal style="--i:1">常用的都在，<br>其它交给 <em>yt-dlp</em>。</h2>
@@ -54,6 +57,18 @@
       <a class="card" href="/x" data-reveal="card" style="--i:4"><h3>X（Twitter）</h3><p>推文里的视频取最高码率，图片是原图，敏感内容也能拿到。</p><span class="spec">视频 · 图片 · GIF</span></a>
       <a class="card" href="/bilibili" data-reveal="card" style="--i:5"><h3>B站</h3><p>1080p / 720p 高清与仅音频，b23.tv 短链也认。</p><span class="spec">1080p · 720p · 音频</span></a>
     </div>
+    {% else %}
+    <div class="sec-head">
+      <span class="eyebrow" data-reveal>换个平台</span>
+      <p class="sub" data-reveal style="--i:1">
+        也能解析
+        {% for p in pages if p.slug and p.slug != page.slug and p.nav_label %}
+        <a href="{{ p.path }}">{{ p.nav_label }}</a>{% if not loop.last %} · {% endif %}
+        {% endfor %}
+        ，其它 30 多个站点交给 <em>yt-dlp</em> 兜底。
+      </p>
+    </div>
+    {% endif %}
   </div>
 </section>
 

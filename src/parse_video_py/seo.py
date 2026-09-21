@@ -35,21 +35,31 @@ class Page:
     faq: list[tuple[str, str]] = field(default_factory=list)   # 这一页专属的问答，排在通用问答前面
     body: list[tuple[str, str]] = field(default_factory=list)  # 这一页独有的正文 (h2, html)，放在工具下方
     guides: list[str] = field(default_factory=list)            # 相关教程 slug
+    # 这一页要带上的通用问答（COMMON_FAQ 的键）。整套 7 条只在首页出；落地页各挑最相关的 3 条，
+    # 否则 600 多字的通用问答在 9 个页面上一字不差地重复，把各页独有内容稀释成一成左右。
+    common: list[str] = field(default_factory=lambda: list(DEFAULT_COMMON))
 
     @property
     def path(self) -> str:
         return "/" + self.slug if self.slug else "/"
 
+    @property
+    def all_faq(self) -> list[tuple[str, str]]:
+        return self.faq + [COMMON_FAQ[k] for k in self.common if k in COMMON_FAQ]
 
-COMMON_FAQ: list[tuple[str, str]] = [
-    ("支持哪些链接？", "抖音、小红书、快手、微博、B站、西瓜、皮皮虾、AcFun 等国内平台，以及 YouTube、X（Twitter）、TikTok、Instagram 等国外平台。直接粘贴 App 里\"复制链接\"得到的整段文字即可，不用手动摘出网址。"),
-    ("视频有水印吗？图片是原图吗？", "视频取的是平台无水印的播放地址；小红书图片会换成原图分辨率，抖音图集取的是不带水印的 JPEG 原始尺寸。个别平台只提供 720p 的无水印版本。"),
-    ("实况照片怎么导入 iPhone？", "下载得到的 zip 里是一对 JPG + MOV，两者写入了相同的 Apple 内容标识。把它们传到手机后，用任意支持\"图片 + 视频合成实况\"的 App 或快捷指令导入相册即可。网页本身无法直接写入 iOS 相册。"),
-    ("安卓动态照片怎么用？", "下载的 MVIMG_xxx.jpg 直接保存到手机相册，Google 相册、三星、小米、OPPO、vivo 等相册会识别为动态照片，长按即可播放。"),
-    ("GIF 太大怎么办？", "GIF 的体积主要由宽度 × 帧率 × 时长决定。480 像素宽、12 帧、10 秒大约 10 MB；改成 360 像素宽、10 帧、5 秒就只有 2–3 MB。"),
-    ("提示\"请求太频繁\"？", "为了让服务对所有人可用，每个 IP 每分钟的解析次数和同时进行的转换任务数有限制。等一会儿再试就好。"),
-    ("需要注册或付费吗？", "不需要。所有功能免费，不用登录，也不会保存你粘贴的链接和下载的文件（临时文件一小时内自动清理）。"),
-]
+
+COMMON_FAQ: dict[str, tuple[str, str]] = {
+    "links": ("支持哪些链接？", "抖音、小红书、快手、微博、B站、西瓜、皮皮虾、AcFun 等国内平台，以及 YouTube、X（Twitter）、TikTok、Instagram 等国外平台。直接粘贴 App 里\"复制链接\"得到的整段文字即可，不用手动摘出网址。"),
+    "watermark": ("视频有水印吗？图片是原图吗？", "视频取的是平台无水印的播放地址；小红书图片会换成原图分辨率，抖音图集取的是不带水印的 JPEG 原始尺寸。个别平台只提供 720p 的无水印版本。"),
+    "iphone": ("实况照片怎么导入 iPhone？", "下载得到的 zip 里是一对 JPG + MOV，两者写入了相同的 Apple 内容标识。把它们传到手机后，用任意支持\"图片 + 视频合成实况\"的 App 或快捷指令导入相册即可。网页本身无法直接写入 iOS 相册。"),
+    "android": ("安卓动态照片怎么用？", "下载的 MVIMG_xxx.jpg 直接保存到手机相册，Google 相册、三星、小米、OPPO、vivo 等相册会识别为动态照片，长按即可播放。"),
+    "gifsize": ("GIF 太大怎么办？", "GIF 的体积主要由宽度 × 帧率 × 时长决定。480 像素宽、12 帧、10 秒大约 10 MB；改成 360 像素宽、10 帧、5 秒就只有 2–3 MB。"),
+    "ratelimit": ("提示\"请求太频繁\"？", "为了让服务对所有人可用，每个 IP 每分钟的解析次数和同时进行的转换任务数有限制。等一会儿再试就好。"),
+    "free": ("需要注册或付费吗？", "不需要。所有功能免费，不用登录，也不会保存你粘贴的链接和下载的文件（临时文件一小时内自动清理）。"),
+}
+
+DEFAULT_COMMON = ["watermark", "ratelimit", "free"]
+ALL_COMMON = list(COMMON_FAQ)
 
 PAGES: list[Page] = [
     Page(
@@ -60,6 +70,7 @@ PAGES: list[Page] = [
         lead="抖音、小红书、快手、YouTube、X 里复制的整段分享文字直接贴进来就行。视频没有水印，图片是原图。",
         keywords="视频提取,图片提取,去水印,视频转GIF,视频转实况照片,抖音,小红书,快手,YouTube,推特",
         nav_label="首页",
+        common=ALL_COMMON,   # 首页承载完整问答，落地页各挑最相关的 3 条
         guides=["xiaohongshu-live-photo-iphone", "video-to-gif", "video-to-live-photo"],
     ),
     Page(
@@ -80,6 +91,7 @@ PAGES: list[Page] = [
             ("三步操作", "在抖音 App 里点分享 → 复制链接；把整段文字贴进上面的输入框（网址会自动识别）；点解析，选择要保存的内容。整个过程不需要登录抖音，也不需要安装任何软件。"),
             ("哪些链接不行", "直播间、私密作品、仅好友可见的作品，平台不会返回数据，会提示\"已删除或设为私密\"。个人主页链接不支持，只解析单个作品。"),
         ],
+        common=["watermark", "iphone", "free"],
         guides=["douyin-no-watermark", "douyin-image-post-original", "video-to-gif"],
     ),
     Page(
@@ -100,6 +112,7 @@ PAGES: list[Page] = [
             ("链接必须是新鲜的", "小红书的分享链接带一个几小时内有效的 xsec_token，过期就打不开。请在 App 里现复制现贴，不要用几天前保存的链接。xhslink.com 短链和网页版分享出来的长链接都可以。"),
             ("和 App 内保存的区别", "App 内长按保存的是压缩后的 1080 宽图片，实况图只剩静态一帧。通过链接解析拿到的是平台存储的原始尺寸，实况图连视频一起。"),
         ],
+        common=["watermark", "iphone", "links"],
         guides=["xiaohongshu-live-photo-iphone", "xiaohongshu-link-expired", "video-to-live-photo"],
     ),
     Page(
@@ -111,10 +124,16 @@ PAGES: list[Page] = [
         keywords="快手去水印,快手视频下载,快手图集下载,快手无水印解析",
         placeholder="粘贴快手分享链接，如 https://v.kuaishou.com/xxxx",
         nav_label="快手去水印",
-        body=[
-            ("快手链接能拿到什么", "视频作品给无水印 MP4；图集作品列出每张原图。解析后可以直接截一段做 GIF 或实况照片。"),
-            ("操作方式", "在快手 App 里点分享 → 复制链接，得到 v.kuaishou.com 开头的短链，整段贴进输入框即可。不需要登录快手。"),
+        faq=[
+            ("快手长视频能解析吗？", "能。快手的短视频、长视频和图集用的是同一套分享链接，贴进来都能认，不用区分类型。"),
+            ("为什么有的快手作品打不开？", "私密作品、已删除的作品和直播回放拿不到数据。另外快手的分享链接有时效，隔太久再用可能已经失效，回 App 重新复制一次就好。"),
         ],
+        body=[
+            ("快手链接能拿到什么", "视频作品：无水印 MP4，不带右下角的用户号水印。图集作品：每张图按原始尺寸列出来，可以逐张保存。解析完还能直接截一段做 GIF 或实况照片。"),
+            ("怎么复制链接", "在快手 App 里点右侧的分享按钮 → 复制链接，会得到 v.kuaishou.com 开头的短链，整段文字贴进输入框即可，不用手动摘出网址。网页版 kuaishou.com 的长链接同样支持。"),
+            ("和 App 内保存的区别", "快手 App 里保存的视频右下角带用户号水印，图集只能一张张长按。通过链接解析拿到的是无水印的原始文件，图集一次列全，逐张保存。"),
+        ],
+        common=["watermark", "links", "free"],
         guides=["video-to-gif", "video-to-live-photo"],
     ),
     Page(
@@ -133,6 +152,7 @@ PAGES: list[Page] = [
             ("YouTube 链接能拿到什么", "360p 的合一版本可以直接播放和保存；720p、1080p、1440p、4K 由服务器下载并合并音视频后提供完整 MP4；「仅音频」给原始 m4a 音轨。清晰度菜单里会显示每档的预估大小。"),
             ("等待时间", "高清档位需要服务器先下载再合并，10 分钟的 1080p 视频通常在一分钟内完成，4K 长视频可能要几分钟。页面上有进度条，完成后点保存即可。"),
         ],
+        common=["free", "ratelimit", "gifsize"],
         guides=["youtube-1080p-download", "video-to-gif"],
     ),
     Page(
@@ -144,10 +164,16 @@ PAGES: list[Page] = [
         keywords="推特视频下载,Twitter视频下载,X视频下载,推特图片原图,twitter gif 下载",
         placeholder="粘贴推文链接，如 https://x.com/user/status/xxxx",
         nav_label="X 视频下载",
-        body=[
-            ("推文能拿到什么", "视频取最高码率的 MP4；多张图片全部列出，按原图保存；推文里的 GIF 会以 MP4 形式给出，可以再转成真正的 GIF 文件。"),
-            ("敏感内容和登录墙", "标记为敏感、需要登录才能看的推文也能解析，不需要你登录 X。被删除或设为仅关注者可见的推文拿不到。"),
+        faq=[
+            ("推文里的 GIF 下载下来为什么是 MP4？", "X 在上传时就把 GIF 转成了循环播放的 MP4，平台本身不再保存 GIF 原文件，所以这里拿到的也是 MP4。确实需要 GIF 的话，解析后点\"转 GIF\"再转一次即可。"),
+            ("需要登录才能看的推文能解析吗？", "能，而且不需要你登录 X。标记为敏感内容、或者提示\"登录后查看\"的推文会自动换一条通道取数据。已删除、账号已注销、设为仅关注者可见的推文拿不到。"),
         ],
+        body=[
+            ("推文能拿到什么", "视频：从所有码率版本里挑最高的那个 MP4。图片：多图推文把每张都列出来，按原图尺寸保存，不是时间线上压缩过的缩略图。GIF：以 MP4 形式给出，可以再转成真正的 GIF 文件。"),
+            ("x.com 和 twitter.com 都认", "改名前后的两种域名都支持，App 分享出来的带一串参数的链接也能直接贴。复制地址栏里的推文链接，或者点推文下方的分享 → 复制链接，整段贴进来即可。"),
+            ("常见用法", "把推文里的短视频做成表情包：解析后点\"转 GIF\"，拖出想要的几秒。保存多图推文的全部原图：解析后逐张保存。把一段视频做成 iPhone 实况照片：点\"做成实况照片\"，自己选段和封面帧。"),
+        ],
+        common=["watermark", "links", "free"],
         guides=["video-to-gif"],
     ),
     Page(
@@ -159,10 +185,16 @@ PAGES: list[Page] = [
         keywords="B站视频下载,bilibili下载,哔哩哔哩视频保存,B站1080p下载,B站音频提取",
         placeholder="粘贴 B站 链接，如 https://b23.tv/xxxx",
         nav_label="B站下载",
-        body=[
-            ("B站链接能拿到什么", "默认给一个可直接播放的 480p 版本；1080p、720p 和仅音频由服务器合并后提供。BV 号链接、b23.tv 短链、手机端分享链接都可以。"),
-            ("多 P 视频", "只解析链接指向的那一 P。需要其它分 P 时，把带 p= 参数的链接分别贴进来。"),
+        faq=[
+            ("为什么默认只给 480p？", "网页端接口直接返回的播放地址就是 480p 的合一版本，点开立刻能播能存。720p 和 1080p 在 B站 是画面与声音分开存的，要服务器分别下载再合并，所以单列在\"其他清晰度\"里，点了需要等一会儿。"),
+            ("多 P 视频会解析哪一集？", "固定解析第一 P。链接里的 p= 参数目前不生效，所以合集、课程这类多 P 投稿只能拿到第 1 集。"),
         ],
+        body=[
+            ("B站链接能拿到什么", "默认给一个可直接播放的 480p MP4；720p、1080p 和仅音频由服务器下载合并后提供完整文件。BV 号完整链接、b23.tv 短链、手机 App 分享出来的链接都能直接贴。"),
+            ("支持哪些链接", "只支持普通投稿视频，也就是网址里带 /video/BV… 的那种。番剧、影视、课堂和直播回放（/bangumi/、/cheese/ 等路径）不在支持范围内。多 P 投稿固定取第一 P。"),
+            ("清晰度说明", "不登录的情况下最高到 1080p。4K、HDR、杜比这些档位属于大会员专属，网页端不登录拿不到，这里也就不提供。仅音频档给的是从视频里分离出来的原始音轨，适合存 BGM 或者课程录音。"),
+        ],
+        common=["free", "ratelimit", "links"],
         guides=["video-to-gif", "video-to-live-photo"],
     ),
     Page(
@@ -181,6 +213,7 @@ PAGES: list[Page] = [
             ("怎么用", "贴链接解析后点「转 GIF」，或者点右上角「本地视频」上传手机里的视频。在缩略图条上拖两个把手选段，右侧调帧率、宽度、速度，点生成，几秒后直接预览并保存。"),
             ("推荐参数", "微信表情包：240–320 px、8–10 fps、2–3 秒，体积 1 MB 以内。群聊里看字幕：360–480 px、12 fps。想保留细节：640 px 以上，但体积会很大。"),
         ],
+        common=["gifsize", "ratelimit", "free"],
         guides=["video-to-gif", "douyin-no-watermark"],
     ),
     Page(
@@ -199,6 +232,7 @@ PAGES: list[Page] = [
             ("两种输出", "iPhone 实况照片：一对 JPG + MOV，写入相同的 Apple 内容标识，打包成 zip；导入相册后长按会动，可设为锁屏动态壁纸。安卓动态照片：一张内嵌 MP4 的 JPG（MVIMG_ 开头），存到相册即可，Google 相册、三星、小米、OPPO、vivo 都识别。"),
             ("从哪里来的视频都行", "抖音、小红书、YouTube 等链接解析后点「做成实况照片」；本地视频点右上角上传。小红书和抖音图集里自带的实况图不用裁剪，解析后直接「实况原样打包」。"),
         ],
+        common=["iphone", "android", "free"],
         guides=["video-to-live-photo", "xiaohongshu-live-photo-iphone", "douyin-image-post-original"],
     ),
 ]
@@ -252,7 +286,7 @@ def json_ld(page: Page, base: str) -> str:
             "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CNY"},
             "featureList": ["无水印视频提取", "原图提取", "视频转 GIF", "视频转实况照片", "动态照片"],
         },
-        _faq_ld(page.faq + COMMON_FAQ),
+        _faq_ld(page.all_faq),
     ]
     if not page.slug:
         data.append({"@context": "https://schema.org", "@type": "WebSite", "name": SITE_NAME,
