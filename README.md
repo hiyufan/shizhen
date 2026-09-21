@@ -172,9 +172,15 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
    - **家里的电脑 / NAS / 树莓派 + Tailscale**：住宅 IP 对平台最友好，免费。两台机器都装 Tailscale，家里那台跑 `gost -L "http://user:pass@:8888"`，服务器上 `PARSE_VIDEO_PROXY_CN=http://user:pass@<家里的 Tailscale IP>:8888`。
    - **国内轻量 VPS**（阿里云 / 腾讯云，每月几十元）跑同样的 gost，安全组只放行你服务器的 IP。
    - 住宅代理服务商（按流量计费）。
-   - Cloudflare Worker / Pages **不行**：它们的出口是 Cloudflare 自己的海外机房 IP，平台照样当机器人拦。
-2. `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` — 把浏览器里登录后的 Cookie 字符串贴进来（F12 → Network → 请求头里的 Cookie）。B站 不登录也会自动领一份 buvid 设备指纹，多数情况已够。
-3. 把服务部署在国内，再用 `PARSE_VIDEO_PROXY` 给 YouTube 配海外出口。
+   - Cloudflare Worker / Pages **不行**：它们的出口是 Cloudflare 自己的海外机房 IP，B站 直接 412。
+2. **边缘函数中继**（没有国内机器时的替代方案）：把 `scripts/esa-relay.js` 部署到阿里云 ESA 边缘函数 / 边缘 Pages（出口在国内边缘节点），改一下里面的 `TOKEN`，然后
+   ```
+   PARSE_VIDEO_RELAY_CN=https://<函数域名>/relay
+   PARSE_VIDEO_RELAY_TOKEN=<同一个 TOKEN>
+   ```
+   国内平台的解析请求会由边缘节点代发（跳转仍由本地逐跳做 SSRF 检查）。先开 `https://<函数域名>/probe?xhs=<小红书链接>` 看边缘出口能不能过 B站 / 小红书。局限：中继只是 HTTP 转发，不是真正的代理，yt-dlp 走不了它，所以 B站 只有上游解析器的 480p 直链，1080p 合并下载仍取决于服务器自身出口。
+3. `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` — 把浏览器里登录后的 Cookie 字符串贴进来（F12 → Network → 请求头里的 Cookie）。B站 不登录也会自动领一份 buvid 设备指纹，多数情况已够。
+4. 把服务部署在国内，再用 `PARSE_VIDEO_PROXY` 给 YouTube 配海外出口。
 
 排查时在服务器上跑 `docker compose exec app python -m parse_video_py.diag "<分享链接>"`，会打印出口 IP、解析结果和平台返回的原始页面状态。
 
@@ -204,6 +210,7 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 | `PARSE_VIDEO_PROXY` | – | 解析时使用的 HTTP 代理（所有平台） |
 | `PARSE_VIDEO_PROXY_CN` | – | 只给国内平台（抖音 / 小红书 / 快手 / B站 / 微博…）的解析用的代理，海外服务器必备 |
 | `PARSE_VIDEO_PROXY_CN_MEDIA` | `0` | 设 `1` 时视频 / 图片本体的转发也走 `PROXY_CN`（CDN 被 403 时才需要，会吃代理带宽） |
+| `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | 边缘函数中继地址与口令（`scripts/esa-relay.js`），国内平台的解析请求由它代发 |
 | `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` | – | 小红书 / B站 的登录 Cookie 字符串，海外服务器被拦时用 |
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | yt-dlp 用的 Netscape 格式 cookies |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | 直接从浏览器读 cookies：`firefox` / `edge` / `chrome` |
@@ -315,6 +322,8 @@ src/parse_video_py/
   templates/                     base / index / guide / guides / 404
   static/                        自托管字体（衬线按站内用字子集化）、样式、OG 图
 scripts/push_urls.py             百度主动推送 + sitemap ping
+scripts/esa-relay.js             阿里云 ESA 边缘函数：/probe 探测出口，/relay 给海外服务器当国内中继
+scripts/cf-worker-probe.js       Cloudflare Worker 探测（结论：出口在海外，B站 412）
 scripts/subset_fonts.py          改文案后重建衬线字体子集
 docker-compose.yml · Caddyfile   一台机器的 HTTPS 部署
 ```

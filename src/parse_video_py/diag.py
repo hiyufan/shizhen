@@ -26,10 +26,13 @@ async def egress() -> None:
     for name, source in (("默认出口", ""), ("国内平台出口", "bilibili")):
         token = current_source.set(source)
         try:
-            async with create_async_client(timeout=15) as c:
-                r = await c.get("http://ip-api.com/json/?fields=query,country,regionName,isp,hosting&lang=zh-CN")
-                d = r.json()
-                print(f"[{name}] {d.get('query')}  {d.get('country')} {d.get('regionName')}  {d.get('isp')}  机房={d.get('hosting')}")
+            async with create_async_client(timeout=20) as c:
+                try:
+                    d = (await c.get("https://myip.ipip.net/json")).json().get("data", {})
+                    print(f"[{name}] {d.get('ip')}  {' '.join(d.get('location') or [])}")
+                except Exception:
+                    d = (await c.get("http://ip-api.com/json/?fields=query,country,regionName,isp,hosting&lang=zh-CN")).json()
+                    print(f"[{name}] {d.get('query')}  {d.get('country')} {d.get('regionName')}  {d.get('isp')}  机房={d.get('hosting')}")
         except Exception as e:  # noqa: BLE001
             print(f"[{name}] 探测失败: {e}")
         finally:
@@ -59,6 +62,10 @@ async def main() -> None:
         return
     url = extract_url(" ".join(sys.argv[1:])) or sys.argv[1]
     print(f"链接: {url}\n")
+    from .convert import relay
+    from .utils import proxy_for
+    route = "中继 " + relay.RELAY_URL if relay.enabled() else ("代理 " + proxy_for("bilibili") if proxy_for("bilibili") else "服务器直连")
+    print(f"国内平台走: {route}")
     await egress()
     print()
     try:
