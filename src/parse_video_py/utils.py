@@ -62,8 +62,9 @@ def create_async_client(**kwargs) -> httpx.AsyncClient:
     from .convert.net import safe_client
 
     if current_source.get() in CN_SOURCES and relay.enabled() and "transport" not in kwargs:
-        # 海外服务器 + 边缘函数中继：国内平台的请求由中继代发
-        kwargs["transport"] = relay.RelayTransport()
+        # 海外服务器 + 边缘函数中继：国内平台的请求由中继代发。
+        # 用单例, 每次新建会连带新建一个到中继的连接池, 白白多握手一次
+        kwargs["transport"] = relay.shared_transport()
     else:
         proxy = proxy_for()
         if proxy and "proxy" not in kwargs:

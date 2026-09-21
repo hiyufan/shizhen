@@ -23,7 +23,7 @@ from parse_video_py import VideoSource, parse_video_id, parse_video_share_url
 from parse_video_py.convert import config as cconfig
 from parse_video_py.convert import ffmpeg, jobs, limits, store, tasks, updater
 from parse_video_py.parser.errors import ParseError, classify
-from parse_video_py.convert import net
+from parse_video_py.convert import net, relay
 from parse_video_py.convert.net import headers_for, is_safe_url, safe_filename
 from parse_video_py.utils import extract_url
 from parse_video_py import guides as guides_mod
@@ -56,6 +56,10 @@ async def _lifespan(_: FastAPI):
     yield
     for t in tasks_:
         t.cancel()
+    # 池化的客户端 aclose() 是空操作, 退出时在这里真关
+    with contextlib.suppress(Exception):
+        await net.aclose_pool()
+        await relay.aclose_shared()
 
 
 app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -435,21 +439,20 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
         upstream_headers["Range"] = rng
 
     limits.proxy_streams.acquire(ip)
+    # 池化的客户端, 连接归池子管, 这里只负责关掉响应。播放器拖进度条会打一连串
+    # Range 请求, 每个都重新握手的话实测要 1457ms/次, 复用后省掉握手和 TCP 慢启动
     client = net.safe_client(for_url=url, follow_redirects=True, timeout=httpx.Timeout(30, read=120))
     req = client.build_request("GET", url, headers=upstream_headers)
     try:
         resp = await client.send(req, stream=True)
     except net.UnsafeURL:
-        await client.aclose()
         limits.proxy_streams.release(ip)
         raise HTTPException(400, "源站跳转到了不允许的地址")
     except httpx.HTTPError as err:
-        await client.aclose()
         limits.proxy_streams.release(ip)
         raise HTTPException(502, f"拉取失败: {err.__class__.__name__}")
     if resp.status_code >= 400:
         await resp.aclose()
-        await client.aclose()
         limits.proxy_streams.release(ip)
         raise HTTPException(resp.status_code, "源站拒绝了请求")
 
@@ -475,7 +478,6 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
                 yield chunk
         finally:
             await resp.aclose()
-            await client.aclose()
             limits.proxy_streams.release(ip)
 
     return StreamingResponse(body(), status_code=resp.status_code, headers=passthrough)
