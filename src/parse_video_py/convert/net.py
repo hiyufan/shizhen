@@ -116,10 +116,14 @@ _CN_REFERERS = ("bilibili", "xiaohongshu", "douyin", "kuaishou", "weibo", "pipix
 
 
 def proxy_for_url(url: str) -> str | None:
-    """拉 CDN 直链时也按平台选代理：国内平台的 CDN 对海外 IP 常常 403。"""
+    """拉 CDN 直链（视频 / 图片本体）时选代理。
+
+    默认不走 PARSE_VIDEO_PROXY_CN：国内平台的 CDN 对海外 IP 一般放行，而视频流量大，
+    别把家里宽带 / 小 VPS 的国内出口占满。确实被 CDN 403 时设 PARSE_VIDEO_PROXY_CN_MEDIA=1。
+    """
     ref = referer_for(url) or ""
     cn = any(k in ref for k in _CN_REFERERS)
-    if cn and os.environ.get("PARSE_VIDEO_PROXY_CN"):
+    if cn and os.environ.get("PARSE_VIDEO_PROXY_CN") and os.environ.get("PARSE_VIDEO_PROXY_CN_MEDIA", "0") == "1":
         return os.environ["PARSE_VIDEO_PROXY_CN"]
     return os.environ.get("PARSE_VIDEO_PROXY") or None
 

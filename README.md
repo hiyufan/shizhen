@@ -168,7 +168,11 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 **风控**：`PARSE_VIDEO_PROXY` 可让解析走代理；YouTube 提示"确认不是机器人"时接 PO Token 服务（compose 已配好）或放一份 `cookies.txt`。
 
 **海外服务器**：小红书和 B站 对海外 / 机房 IP 不友好（B站 API 返回 412，小红书返回验证页）。三种办法，任选其一：
-1. `PARSE_VIDEO_PROXY_CN=http://user:pass@host:port` — 给国内平台单独配一个国内出口（国内 VPS 上的 HTTP 代理、住宅代理服务都行），YouTube 等仍然直连。解析、yt-dlp 下载和 CDN 直链转发都会自动走它。
+1. `PARSE_VIDEO_PROXY_CN=http://user:pass@host:port` — 给国内平台单独配一个国内出口，YouTube 等仍然直连。只有解析请求（网页 / API，流量很小）走它；视频本体默认仍由服务器直连 CDN，需要时 `PARSE_VIDEO_PROXY_CN_MEDIA=1`。出口可以是：
+   - **家里的电脑 / NAS / 树莓派 + Tailscale**：住宅 IP 对平台最友好，免费。两台机器都装 Tailscale，家里那台跑 `gost -L "http://user:pass@:8888"`，服务器上 `PARSE_VIDEO_PROXY_CN=http://user:pass@<家里的 Tailscale IP>:8888`。
+   - **国内轻量 VPS**（阿里云 / 腾讯云，每月几十元）跑同样的 gost，安全组只放行你服务器的 IP。
+   - 住宅代理服务商（按流量计费）。
+   - Cloudflare Worker / Pages **不行**：它们的出口是 Cloudflare 自己的海外机房 IP，平台照样当机器人拦。
 2. `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` — 把浏览器里登录后的 Cookie 字符串贴进来（F12 → Network → 请求头里的 Cookie）。B站 不登录也会自动领一份 buvid 设备指纹，多数情况已够。
 3. 把服务部署在国内，再用 `PARSE_VIDEO_PROXY` 给 YouTube 配海外出口。
 
@@ -198,7 +202,8 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PARSE_VIDEO_PROXY` | – | 解析时使用的 HTTP 代理（所有平台） |
-| `PARSE_VIDEO_PROXY_CN` | – | 只给国内平台（抖音 / 小红书 / 快手 / B站 / 微博…）用的代理，海外服务器必备 |
+| `PARSE_VIDEO_PROXY_CN` | – | 只给国内平台（抖音 / 小红书 / 快手 / B站 / 微博…）的解析用的代理，海外服务器必备 |
+| `PARSE_VIDEO_PROXY_CN_MEDIA` | `0` | 设 `1` 时视频 / 图片本体的转发也走 `PROXY_CN`（CDN 被 403 时才需要，会吃代理带宽） |
 | `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` | – | 小红书 / B站 的登录 Cookie 字符串，海外服务器被拦时用 |
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | yt-dlp 用的 Netscape 格式 cookies |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | 直接从浏览器读 cookies：`firefox` / `edge` / `chrome` |
