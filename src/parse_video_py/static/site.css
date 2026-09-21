@@ -110,13 +110,19 @@ a.card { display: block; text-decoration: none; }
 .paste textarea:focus { outline: none; }
 .paste textarea::placeholder { color: var(--ink-3); }
 .paste .btn { padding: 12px 30px; }
+.paste-tools { display: flex; align-items: center; gap: 4px; align-self: center; }
+.paste .tool { border: 0; background: transparent; color: var(--ink-2); border-radius: 999px; min-width: 36px; height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600; line-height: 36px; }
+.paste .tool:hover { background: var(--card); color: var(--ink); }
+.paste .tool.clear { font-size: 22px; padding: 0; width: 36px; }
 @media (max-width: 600px) {
   .hero { padding: 40px 0 56px; }
   .hero h1 { font-size: clamp(2.2rem, 10.5vw, 3.5rem); line-height: 1.02; }
   .hero .sub { font-size: 15.5px; margin-top: 20px; }
-  .paste { border-radius: 24px; flex-direction: column; padding: 8px; margin-top: 28px; }
-  .paste textarea { padding: 8px 12px; }
+  .paste { border-radius: 24px; flex-direction: column; padding: 8px; margin-top: 28px; position: relative; }
+  .paste textarea { padding: 8px 56px 8px 12px; }
   .paste .btn { width: 100%; }
+  .paste-tools { position: absolute; right: 12px; top: 12px; }
+  .paste .tool { background: var(--warm); color: var(--ink); }
   .sec h2 { font-size: clamp(2rem, 9vw, 2.5rem); }
 }
 .supports { margin: 18px auto 0; font-size: 13px; color: var(--ink-3); max-width: 46em; line-height: 1.7; }
