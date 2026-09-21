@@ -201,25 +201,22 @@ def _merge_ytdlp(video_info: VideoInfo, extra, share_url: str) -> None:
     video_info.page_url = extra.page_url or share_url
 
 
+def detect_source(share_url: str) -> VideoSource:
+    """链接属于哪个平台；没有专用解析器的站点统统交给 yt-dlp 兜底。"""
+    for item_source, item_source_info in video_source_info_mapping.items():
+        for item_url_domain in item_source_info["domain_list"]:
+            if item_url_domain in share_url:
+                return item_source
+    return VideoSource.YtDlp
+
+
 async def parse_video_share_url(share_url: str) -> VideoInfo:
     """
     解析分享链接, 获取视频信息; 失败时抛 ParseError (带 reason)
     :param share_url: 视频分享链接
     :return:
     """
-    source = ""
-    for item_source, item_source_info in video_source_info_mapping.items():
-        for item_url_domain in item_source_info["domain_list"]:
-            if item_url_domain in share_url:
-                source = item_source
-                break
-        if source:
-            break
-
-    if not source:
-        # 没有专用解析器的站点统统交给 yt-dlp 兜底
-        source = VideoSource.YtDlp
-
+    source = detect_source(share_url)
     url_parser = video_source_info_mapping[source]["parser"]
     if not url_parser:
         raise ValueError(f"source {source} has no video parser")
