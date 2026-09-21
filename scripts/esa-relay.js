@@ -33,8 +33,8 @@ export default {
 async function handle(request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith("/relay")) return relay(request, url);
-  if (url.pathname.endsWith("/probe")) return probe(url);
-  return new Response("shizhen relay: use /probe or /relay", { status: 404 });
+  // 其它路径（含根路径）都当探测用，直接打开函数地址就能看结果
+  return probe(url);
 }
 
 // UTF-8 安全的 base64
