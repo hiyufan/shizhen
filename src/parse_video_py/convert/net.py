@@ -112,13 +112,28 @@ async def _ssrf_request_hook(request: httpx.Request) -> None:
         raise UnsafeURL(f"blocked: {request.url.host}", request=request)
 
 
-def safe_client(**kwargs) -> httpx.AsyncClient:
-    """带 SSRF 检查的 httpx 客户端, 所有拉取用户提供的地址的地方都用它。"""
+_CN_REFERERS = ("bilibili", "xiaohongshu", "douyin", "kuaishou", "weibo", "pipix", "ixigua", "acfun")
+
+
+def proxy_for_url(url: str) -> str | None:
+    """拉 CDN 直链时也按平台选代理：国内平台的 CDN 对海外 IP 常常 403。"""
+    ref = referer_for(url) or ""
+    cn = any(k in ref for k in _CN_REFERERS)
+    if cn and os.environ.get("PARSE_VIDEO_PROXY_CN"):
+        return os.environ["PARSE_VIDEO_PROXY_CN"]
+    return os.environ.get("PARSE_VIDEO_PROXY") or None
+
+
+def safe_client(for_url: str = "", **kwargs) -> httpx.AsyncClient:
+    """带 SSRF 检查的 httpx 客户端, 所有拉取用户提供的地址的地方都用它。
+
+    for_url 给出目标地址时按平台自动选代理；不给则由调用方自己传 proxy。
+    """
     hooks = kwargs.pop("event_hooks", {}) or {}
     hooks.setdefault("request", []).append(_ssrf_request_hook)
-    proxy = os.environ.get("PARSE_VIDEO_PROXY")
-    if proxy and "proxy" not in kwargs:
-        kwargs["proxy"] = proxy
+    if for_url and "proxy" not in kwargs:
+        if proxy := proxy_for_url(for_url):
+            kwargs["proxy"] = proxy
     return httpx.AsyncClient(event_hooks=hooks, **kwargs)
 
 

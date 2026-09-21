@@ -12,7 +12,12 @@ services:
       PARSE_VIDEO_MAX_JOBS: "3"
       # data/ 目录配额（字节），默认 8GB
       PARSE_VIDEO_DISK_QUOTA: "8589934592"
-      # 解析时走的代理（可选），用来分散平台风控
+      # 海外服务器必看：小红书 / B站 对海外 IP 不友好，给国内平台单独配一个国内出口
+      # PARSE_VIDEO_PROXY_CN: "http://user:pass@host:port"
+      # 或者贴登录后的 Cookie
+      # PARSE_VIDEO_XHS_COOKIE: "a1=...; web_session=...; ..."
+      # PARSE_VIDEO_BILI_COOKIE: "SESSDATA=...; buvid3=...; ..."
+      # 所有平台都走的代理（可选）
       # PARSE_VIDEO_PROXY: "http://user:pass@host:port"
       # YouTube 风控：PO Token 服务（下面的 bgutil 容器）+ 可选 cookies
       PARSE_VIDEO_POT_URL: "http://bgutil:4416"

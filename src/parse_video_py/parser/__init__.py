@@ -1,6 +1,7 @@
 from .acfun import AcFun
 import asyncio
 
+from ..utils import current_source
 from .base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo, VideoSource
 from .errors import ParseError, classify
 from .bilibili import BiliBili
@@ -218,20 +219,28 @@ async def parse_video_share_url(share_url: str) -> VideoInfo:
         raise ValueError(f"source {source} has no video parser")
 
     _obj = url_parser()
+    token = current_source.set(source.value)
     try:
         if source in _ENRICH_WITH_YTDLP:
             # 两边同时跑, 总耗时取最慢的那个
             extra_task = asyncio.create_task(_ytdlp_extra(share_url))
             try:
                 video_info = await _obj.parse_share_url(share_url)
-            except Exception:
-                extra_task.cancel()
-                raise
-            _merge_ytdlp(video_info, await extra_task, share_url)
+            except Exception as exc:  # noqa: BLE001
+                # 上游解析器被风控（海外 IP 常见 412）时, yt-dlp 的结果照样能用
+                extra = await extra_task
+                if extra is None or not (extra.formats or extra.video_url):
+                    raise
+                video_info = extra
+                video_info.source = source.value
+            else:
+                _merge_ytdlp(video_info, await extra_task, share_url)
         else:
             video_info = await _obj.parse_share_url(share_url)
     except Exception as exc:  # noqa: BLE001 - 统一归类
         raise classify(exc) from exc
+    finally:
+        current_source.reset(token)
     if not video_info.source:
         video_info.source = source.value
     if not video_info.page_url:

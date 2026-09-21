@@ -167,6 +167,13 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 
 **风控**：`PARSE_VIDEO_PROXY` 可让解析走代理；YouTube 提示"确认不是机器人"时接 PO Token 服务（compose 已配好）或放一份 `cookies.txt`。
 
+**海外服务器**：小红书和 B站 对海外 / 机房 IP 不友好（B站 API 返回 412，小红书返回验证页）。三种办法，任选其一：
+1. `PARSE_VIDEO_PROXY_CN=http://user:pass@host:port` — 给国内平台单独配一个国内出口（国内 VPS 上的 HTTP 代理、住宅代理服务都行），YouTube 等仍然直连。解析、yt-dlp 下载和 CDN 直链转发都会自动走它。
+2. `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` — 把浏览器里登录后的 Cookie 字符串贴进来（F12 → Network → 请求头里的 Cookie）。B站 不登录也会自动领一份 buvid 设备指纹，多数情况已够。
+3. 把服务部署在国内，再用 `PARSE_VIDEO_PROXY` 给 YouTube 配海外出口。
+
+排查时在服务器上跑 `docker compose exec app python -m parse_video_py.diag "<分享链接>"`，会打印出口 IP、解析结果和平台返回的原始页面状态。
+
 ## ⚙️ 配置
 
 全部通过环境变量，都可不填。
@@ -190,7 +197,9 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `PARSE_VIDEO_PROXY` | – | 解析时使用的 HTTP 代理 |
+| `PARSE_VIDEO_PROXY` | – | 解析时使用的 HTTP 代理（所有平台） |
+| `PARSE_VIDEO_PROXY_CN` | – | 只给国内平台（抖音 / 小红书 / 快手 / B站 / 微博…）用的代理，海外服务器必备 |
+| `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` | – | 小红书 / B站 的登录 Cookie 字符串，海外服务器被拦时用 |
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | yt-dlp 用的 Netscape 格式 cookies |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | 直接从浏览器读 cookies：`firefox` / `edge` / `chrome` |
 | `PARSE_VIDEO_POT_URL` | – | YouTube PO Token 服务地址，如 `http://bgutil:4416` |
@@ -295,6 +304,7 @@ src/parse_video_py/
   convert/jobs.py · store.py     任务队列、原视频缓存、磁盘配额
   convert/limits.py · net.py     限流、SSRF 防护、链接签名
   convert/updater.py             yt-dlp 自动升级
+  diag.py                        站长诊断：python -m parse_video_py.diag <链接>
   web.py                         FastAPI 路由
   seo.py · guides.py             落地页与教程内容、JSON-LD、sitemap
   templates/                     base / index / guide / guides / 404

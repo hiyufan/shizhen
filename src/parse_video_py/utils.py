@@ -1,8 +1,25 @@
+import contextvars
 import os
 import re
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+
+# 当前正在解析的平台（parser/__init__.py 里设置），用来决定走哪个代理
+current_source: contextvars.ContextVar[str] = contextvars.ContextVar("current_source", default="")
+
+# 这些平台对海外 / 机房 IP 不友好；海外部署时给它们单独配 PARSE_VIDEO_PROXY_CN
+CN_SOURCES = {"douyin", "redbook", "kuaishou", "bilibili", "weibo", "xigua", "pipixia", "acfun", "weishi",
+              "lvzhou", "zuiyou", "quanmin", "lishipin", "pipigaoxiao", "huya", "doupai", "meipai",
+              "quanminkge", "sixroom", "xinpianchang", "haokan", "qqvideo", "sohu", "cctv"}
+
+
+def proxy_for(source: str | None = None) -> str | None:
+    """PARSE_VIDEO_PROXY_CN 只给国内平台用，PARSE_VIDEO_PROXY 给所有平台兜底。"""
+    source = source if source is not None else current_source.get()
+    if source in CN_SOURCES and os.getenv("PARSE_VIDEO_PROXY_CN"):
+        return os.getenv("PARSE_VIDEO_PROXY_CN")
+    return os.getenv("PARSE_VIDEO_PROXY") or None
 
 URL_REG = re.compile(r"http[s]?:\/\/[\w.-]+[\w\/-]*[\w.-]*\??[\w=&:\-\+\%.]*[/]*")
 
@@ -40,8 +57,8 @@ def create_async_client(**kwargs) -> httpx.AsyncClient:
     从环境变量 PARSE_VIDEO_PROXY 读取代理地址（如 http://user:pass@host:port），
     未设置则不使用代理。其余参数透传给 httpx.AsyncClient。
     """
-    proxy = os.getenv("PARSE_VIDEO_PROXY")
-    if proxy:
+    proxy = proxy_for()
+    if proxy and "proxy" not in kwargs:
         kwargs["proxy"] = proxy
     # 解析器会跟着用户给的短链跳转, 每一跳都做 SSRF 检查
     from .convert.net import safe_client
