@@ -84,6 +84,21 @@ class Concurrency:
             self._active.pop(ip, None)
 
 
+_IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp", ".avif")
+# 各家图片 CDN 的处理参数, 带上就肯定是图片而不是视频
+_IMAGE_HINT = ("imageview2", "image_process", "x-oss-process", "format/jpg", "format/webp", "/format/png")
+
+
+def looks_like_image(url: str) -> bool:
+    """图文笔记一次十几张图, 让它们跟视频抢同一个并发池的话用户自己就把自己限流了。
+
+    这里只按 URL 猜, 猜错的代价很小: 当成图片就少一层并发保护(令牌桶还在),
+    当成视频最多是并发额度紧一点。
+    """
+    path, _, query = url.lower().partition("?")
+    return path.endswith(_IMAGE_EXT) or any(h in query for h in _IMAGE_HINT)
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, default))
@@ -95,6 +110,6 @@ def _env_int(name: str, default: int) -> int:
 parse_limit = RateLimit("parse", _env_int("PARSE_VIDEO_RL_PARSE", 30), 60)         # 每分钟 30 次解析
 job_limit = RateLimit("job", _env_int("PARSE_VIDEO_RL_JOB", 20), 600)             # 每 10 分钟 20 个任务
 upload_limit = RateLimit("upload", _env_int("PARSE_VIDEO_RL_UPLOAD", 10), 3600)    # 每小时 10 次上传
-proxy_limit = RateLimit("proxy", _env_int("PARSE_VIDEO_RL_PROXY", 120), 60)        # 每分钟 120 次代理请求（含 Range 分段）
+proxy_limit = RateLimit("proxy", _env_int("PARSE_VIDEO_RL_PROXY", 240), 60)        # 每分钟 240 次代理请求（含 Range 分段、图文笔记的十几张图）
 proxy_streams = Concurrency("下载", _env_int("PARSE_VIDEO_MAX_STREAMS_PER_IP", 4))
 jobs_per_ip = Concurrency("任务", _env_int("PARSE_VIDEO_MAX_JOBS_PER_IP", 2))
