@@ -1,6 +1,7 @@
 """代理 / 下载时的请求头、SSRF 防护和链接签名。"""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import ipaddress
@@ -8,6 +9,7 @@ import os
 import re
 import secrets
 import socket
+import time
 from urllib.parse import urlparse
 
 import httpx
@@ -95,11 +97,30 @@ def is_safe_url(url: str) -> bool:
         pass  # 普通域名
     if not _DNS_CHECK:
         return True
+    return _host_resolves_public(host)
+
+
+# 解析结果缓存: getaddrinfo 是同步的, 直接跑在事件循环上, 实测 13-200ms 一次。
+# 同一个平台域名一次解析里要查好几遍, 缓存一下省掉重复开销。
+# 注意这里必须查 AF_UNSPEC: 只查 A 记录会漏掉 AAAA 指向内网的情况, 那是 SSRF 的口子。
+_DNS_TTL = float(os.environ.get("PARSE_VIDEO_DNS_TTL", 300))
+_dns_cache: dict[str, tuple[float, bool]] = {}
+
+
+def _host_resolves_public(host: str) -> bool:
+    now = time.time()
+    hit = _dns_cache.get(host)
+    if hit and now - hit[0] < _DNS_TTL:
+        return hit[1]
     try:
         infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+        ok = bool(infos) and not any(_ip_is_internal(ipaddress.ip_address(i[4][0])) for i in infos)
     except socket.gaierror:
-        return False
-    return bool(infos) and not any(_ip_is_internal(ipaddress.ip_address(i[4][0])) for i in infos)
+        ok = False
+    if len(_dns_cache) > 2048:
+        _dns_cache.clear()
+    _dns_cache[host] = (now, ok)
+    return ok
 
 
 class UnsafeURL(httpx.RequestError):
@@ -128,17 +149,99 @@ def proxy_for_url(url: str) -> str | None:
     return os.environ.get("PARSE_VIDEO_PROXY") or None
 
 
+class _NoCookies(httpx.Cookies):
+    """池化的客户端是跨请求共用的, 不能让 Set-Cookie 攒在一个 jar 里串味。
+
+    原来每次请求都新建客户端, jar 天然是空的; 池化后要显式保持这个行为,
+    否则 A 用户解析时平台种下的会话 cookie 会带到 B 用户的请求上。
+    """
+
+    def extract_cookies(self, response: httpx.Response) -> None:
+        return None
+
+    def set_cookie_header(self, request: httpx.Request) -> None:
+        return None
+
+
+class _PooledClient(httpx.AsyncClient):
+    """`async with` 退出时不关闭, 把连接留给下次用。
+
+    调用方一律写成 `async with create_async_client() as c:`, 但每次新建客户端
+    就得重做 DNS+TCP+TLS —— 实测对中继要 642ms, 对 B站 CDN 要 435ms。
+    真正的关闭由 aclose_pool() 在应用退出时统一做。
+    """
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        # httpx 的 __init__ 会把传进来的 cookies 重新包成普通 Cookies, 子类会被丢掉,
+        # 只能构造完再换回来, 否则 Set-Cookie 会在池化客户端上跨请求累积
+        self._cookies = _NoCookies()
+
+    async def __aenter__(self) -> "_PooledClient":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def aclose(self) -> None:
+        return None
+
+    async def _aclose_for_real(self) -> None:
+        await httpx.AsyncClient.aclose(self)
+
+
+_pool: dict[tuple, _PooledClient] = {}
+
+# 池化只认这几个参数, 出现别的参数就老实新建一个, 免得不同配置的调用互相串
+_POOLABLE = {"proxy", "transport", "follow_redirects", "timeout", "http2", "verify"}
+
+
 def safe_client(for_url: str = "", **kwargs) -> httpx.AsyncClient:
     """带 SSRF 检查的 httpx 客户端, 所有拉取用户提供的地址的地方都用它。
 
     for_url 给出目标地址时按平台自动选代理；不给则由调用方自己传 proxy。
+    同样配置的客户端会复用同一个连接池, 省掉重复握手。
     """
     hooks = kwargs.pop("event_hooks", {}) or {}
     hooks.setdefault("request", []).append(_ssrf_request_hook)
     if for_url and "proxy" not in kwargs:
         if proxy := proxy_for_url(for_url):
             kwargs["proxy"] = proxy
-    return httpx.AsyncClient(event_hooks=hooks, **kwargs)
+
+    # 带了池化管不了的参数(比如自定义 event_hooks), 就退回一次性客户端
+    if hooks.get("request", []) != [_ssrf_request_hook] or set(kwargs) - _POOLABLE:
+        return httpx.AsyncClient(event_hooks=hooks, **kwargs)
+
+    key = tuple(sorted((k, _key_part(v)) for k, v in kwargs.items()))
+    client = _pool.get(key)
+    if client is None or client.is_closed:
+        client = _PooledClient(
+            event_hooks=hooks,
+            limits=httpx.Limits(max_keepalive_connections=40, keepalive_expiry=300.0),
+            **kwargs,
+        )
+        _pool[key] = client
+    return client
+
+
+def _key_part(value: object) -> object:
+    """transport / timeout 这类对象不能直接当字典 key。
+
+    Timeout 必须按值取键: 调用方每次都 new 一个 httpx.Timeout(30, read=120),
+    按身份取键的话池子只增不命中。transport 那边是单例, 按身份正好。
+    """
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    if isinstance(value, httpx.Timeout):
+        return ("timeout", value.connect, value.read, value.write, value.pool)
+    return id(value)
+
+
+async def aclose_pool() -> None:
+    for client in list(_pool.values()):
+        with contextlib.suppress(Exception):
+            await client._aclose_for_real()
+    _pool.clear()
 
 
 # ------------------------------------------------------------------ 链接签名: 代理只转发我们自己解析出来的地址

@@ -29,7 +29,12 @@ class RelayTransport(httpx.AsyncBaseTransport):
     def __init__(self, relay_url: str = RELAY_URL, token: str = RELAY_TOKEN, timeout: float = 40.0):
         self.relay_url = relay_url
         self.token = token
-        self._client = httpx.AsyncClient(timeout=timeout, follow_redirects=False)
+        # 中继地址是固定的一个域名, 连接留着重复用。httpx 默认 keepalive 只保 5 秒,
+        # 解析请求零零散散地来, 5 秒一过连接就没了, 每次都要重做 DNS+TCP+TLS(实测 642ms)
+        self._client = httpx.AsyncClient(
+            timeout=timeout, follow_redirects=False,
+            limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=300.0),
+        )
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         body = await request.aread()
@@ -55,3 +60,26 @@ class RelayTransport(httpx.AsyncBaseTransport):
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+_shared: RelayTransport | None = None
+
+
+def shared_transport() -> RelayTransport:
+    """全局共用一个中继 transport。
+
+    以前每次 create_async_client() 都 new 一个 RelayTransport, 每个都自带一个
+    AsyncClient, 于是每次解析调用都要重新对中继握手。单例之后一次 B站 解析
+    实测从 1098ms/次降到 268ms/次。
+    """
+    global _shared
+    if _shared is None:
+        _shared = RelayTransport()
+    return _shared
+
+
+async def aclose_shared() -> None:
+    global _shared
+    if _shared is not None:
+        await _shared.aclose()
+        _shared = None
