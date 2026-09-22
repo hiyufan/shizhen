@@ -259,11 +259,12 @@ class DouYin(BaseParser):
         if not location:
             return ""
 
-        # 检查是否是西瓜视频链接
+        # 抖音的分享链接有时会跳到西瓜视频。这里拿不到 aweme_id，交给上层报错，
+        # 但要自己说清楚原因：以前返回空字符串，上层统一抛 "Failed to parse
+        # video ID"，被 classify 的 deleted 规则收走，对用户谎称"内容已被删除"。
+        # 站点本身是支持西瓜视频的，引导用户直接贴西瓜链接即可。
         if "ixigua.com" in location:
-            # 如果是西瓜视频，这里应该返回特殊处理，暂时返回空
-            # 在实际应用中可能需要调用西瓜视频解析器
-            return ""
+            raise ParseError("unsupported", "这条分享链接跳转到了西瓜视频，直接粘贴西瓜视频的链接就能解析")
 
         return self._parse_video_id_from_path(location)
 
@@ -283,12 +284,15 @@ class DouYin(BaseParser):
 
             # 判断其他页面的视频
             # https://www.iesdouyin.com/share/video/7424432820954598707/?region=CN&mid=7424432976273869622&u_code=0
-            # https://www.douyin.com/video/xxxxxx
+            # https://www.douyin.com/video/xxxxxx  /  https://www.douyin.com/note/xxxxxx
+            # aweme_id 是一串纯数字。以前无脑取路径最后一段，短链跳到个人主页、
+            # 活动页这类不带作品 ID 的地址时，会把 "user" 之类当 ID 拿去查接口，
+            # 最后报出来的原因驴唇不对马嘴。
             path = parsed_url.path.strip("/")
             if path:
-                path_parts = path.split("/")
-                if len(path_parts) > 0:
-                    return path_parts[-1]
+                for part in reversed(path.split("/")):
+                    if part.isdigit():
+                        return part
         except Exception:
             pass
 

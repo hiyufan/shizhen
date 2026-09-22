@@ -143,11 +143,16 @@ class VideoInfo:
 
 
 class BaseParser(ABC):
-    @staticmethod
-    def get_default_headers() -> Dict[str, str]:
-        return {
-            "User-Agent": fake_useragent.UserAgent(os="iOS").random,
-        }
+    _ua: str = ""
+
+    def get_default_headers(self) -> Dict[str, str]:
+        # 一次解析要发好几个请求（短链跳转、接口、页面），每个都换 UA 的话，
+        # 在平台看来就是同一个 IP 上一串对不上号的客户端——本来就是风控信号，
+        # 也让 cookie 握手那类要求会话一致的流程不可能成立。
+        # 解析器每次解析都是新实例，所以这里按实例缓存 = 每次解析换一个 UA。
+        if not self._ua:
+            self._ua = fake_useragent.UserAgent(os="iOS").random
+        return {"User-Agent": self._ua}
 
     @abstractmethod
     async def parse_share_url(self, share_url: str) -> VideoInfo:
