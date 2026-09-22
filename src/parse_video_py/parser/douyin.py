@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
+from .errors import ParseError
 
 
 class DouYin(BaseParser):
@@ -38,8 +39,10 @@ class DouYin(BaseParser):
         json_data = await self._get_slides_info(video_id)
 
         if not json_data:
-            # 专用接口失败时，回退到旧的 HTML SSR 解析方式。
-            # 第一次响应只发 ttwid cookie 不带数据，带着 cookie 再请求一次才有 videoInfoRes
+            # 回退到旧的 HTML SSR 解析。2026-09 实测：抖音已经不在 SSR 里渲染
+            # videoInfoRes 了，_ROUTER_DATA 只剩页面骨架（ua / query 这些），
+            # 能正常解析的作品走这条路一样拿不到。留着只当 slidesinfo 临时抽风时的
+            # 安全网，别指望它——真要修抖音解析，从 slidesinfo 那条路查起。
             pattern = re.compile(
                 pattern=r"window\._ROUTER_DATA\s*=\s*(.*?)</script>",
                 flags=re.DOTALL,
@@ -52,9 +55,19 @@ class DouYin(BaseParser):
                     find_res = pattern.search(response.text)
                     if find_res and "videoInfoRes" in find_res.group(1):
                         break
+                    # 原本靠"第一次拿 ttwid、带着再请求一次"来换数据。实测 cookie
+                    # 根本没存下来（走中继时 ESA 不透传 Set-Cookie），没拿到新
+                    # cookie 就重试纯属白跑一趟。
+                    if not client.cookies:
+                        break
 
             if not find_res or not find_res.group(1):
                 raise ValueError("parse video json info from html fail")
+
+            if "videoInfoRes" not in find_res.group(1):
+                # 两条路都没拿到数据。注意别归成 restricted：SSR 这条路对所有作品
+                # 都失效，拿它当"平台限制"的证据会把网络抖动也误报进去。
+                raise ParseError("parse", "slidesinfo 无数据，SSR 也没渲染 videoInfoRes")
 
             json_data = json.loads(find_res.group(1).strip())
 
@@ -337,6 +350,11 @@ class DouYin(BaseParser):
             ),
         ]
 
+        # 抖音对某些作品会返回 status_code=0 + aweme_details=null + filter_list，
+        # 表示"接口正常，但这条不对外给数据"（作者限制分享 / 要登录 / 被限流）。
+        # 只有两个入口都没拿到数据才算数：正常视频带 request_source=200 也会被 filter。
+        filtered = None
+
         async with create_async_client() as client:
             for api_url in api_urls:
                 try:
@@ -349,6 +367,13 @@ class DouYin(BaseParser):
                     continue
                 if data and data.get("aweme_details"):
                     return data
+                if data and data.get("filter_list"):
+                    filtered = data["filter_list"][0]
+
+        if filtered:
+            # filter_list 一般只给个 reason 码，没有 detail_msg；有就带上
+            detail = filtered.get("detail_msg") or filtered.get("notice") or ""
+            raise ParseError("restricted", detail or f"抖音 filter reason={filtered.get('reason')}")
 
         return None
 

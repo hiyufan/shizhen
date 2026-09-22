@@ -1,5 +1,6 @@
 from .acfun import AcFun
 import asyncio
+import logging
 
 from ..utils import current_source
 from .base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo, VideoSource
@@ -29,6 +30,8 @@ from .xigua import XiGua
 from .xinpianchang import XinPianChang
 from .ytdlp import YtDlp
 from .zuiyou import ZuiYou
+
+logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
@@ -241,7 +244,12 @@ async def parse_video_share_url(share_url: str) -> VideoInfo:
         else:
             video_info = await _obj.parse_share_url(share_url)
     except Exception as exc:  # noqa: BLE001 - 统一归类
-        raise classify(exc) from exc
+        err = classify(exc)
+        if err.reason == "parse" and not isinstance(exc, ParseError):
+            # 归不了类才说"页面结构变了"。这是唯一需要站长看一眼的分支，
+            # 不留现场的话事后只能靠复现去猜（而链接可能已经失效）。
+            logger.warning("解析失败无法归类 source=%s url=%s", source.value, share_url, exc_info=exc)
+        raise err from exc
     finally:
         current_source.reset(token)
     if not video_info.source:

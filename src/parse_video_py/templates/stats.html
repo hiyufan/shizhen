@@ -83,7 +83,7 @@ const svgEl = (tag, attrs = {}) => {
 const fmt = (n) => (n || 0).toLocaleString('zh-CN');
 const pct = (ok, n) => n ? Math.round(ok / n * 100) + '%' : '–';
 const ms = (v) => !v ? '–' : v < 1000 ? v + ' ms' : (v / 1000).toFixed(1) + ' s';
-const REASONS = { deleted: '内容已删除 / 链接过期', login: '平台要求登录', blocked: '被平台风控', unsupported: '不支持的链接', network: '网络错误', timeout: '超时', empty: '没有媒体', parse: '页面结构变了', cache: '缓存', '': '未知' };
+const REASONS = { deleted: '内容已删除 / 链接过期', login: '平台要求登录', blocked: '被平台风控', unsupported: '不支持的链接', network: '网络错误', timeout: '超时', empty: '没有媒体', restricted: '平台不给这条的数据', parse: '页面结构变了', cache: '缓存', '': '未知' };
 const JOBS = { prepare: '准备原视频', gif: 'GIF', livephoto: '实况照片', motionphoto: '动态照片', download: '高清下载', live: '实况打包' };
 const PLATFORMS = { douyin: '抖音', redbook: '小红书', kuaishou: '快手', youtube: 'YouTube', twitter: 'X', bilibili: 'B站', weibo: '微博', tiktok: 'TikTok', instagram: 'Instagram', xigua: '西瓜视频', pipixia: '皮皮虾', acfun: 'AcFun', ytdlp: '其它（yt-dlp）', '': '未识别' };
 
