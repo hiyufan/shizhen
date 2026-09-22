@@ -102,9 +102,12 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
     step = max(60, int(step))
     bucket = f"(CAST((ts + {tz_offset}) / {step} AS INTEGER) * {step} - {tz_offset})"
     with _connect() as conn:
+        # 解析结果缓存命中不是一次新的解析：一个人连点几下会把同一个结果重放好几遍，
+        # 计进去会虚增次数、压低成功率。口径跟下面的 by_source 保持一致。
         rows = conn.execute(
             f"SELECT {bucket} AS b, kind, COUNT(*), SUM(ok) FROM events "
-            "WHERE ts >= ? AND ts < ? GROUP BY b, kind", (since, until),
+            "WHERE ts >= ? AND ts < ? AND NOT (kind = 'parse' AND reason = 'cache') "
+            "GROUP BY b, kind", (since, until),
         ).fetchall()
         users = dict(conn.execute(
             f"SELECT {bucket} AS b, COUNT(DISTINCT ip) FROM events "
@@ -121,7 +124,7 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
         ).fetchall()
         reasons = conn.execute(
             "SELECT reason, COUNT(*) FROM events WHERE ts >= ? AND ts < ? AND kind = 'parse' AND ok = 0 "
-            "GROUP BY reason ORDER BY 2 DESC LIMIT 8", (since, until),
+            "AND reason != 'cache' GROUP BY reason ORDER BY 2 DESC LIMIT 8", (since, until),
         ).fetchall()
         jobs = conn.execute(
             "SELECT source, COUNT(*), SUM(ok), CAST(AVG(ms) AS INTEGER) FROM events "
