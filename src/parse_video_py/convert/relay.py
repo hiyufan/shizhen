@@ -9,7 +9,9 @@
 """
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
 import json
 import os
 
@@ -58,6 +60,17 @@ class RelayTransport(httpx.AsyncBaseTransport):
             pairs = []
         return httpx.Response(status, headers=[(k, v) for k, v in pairs], content=resp.content, request=request)
 
+    async def ping(self) -> None:
+        """戳一下中继本身，不产生任何出站请求。
+
+        带 token 但不带 url 的请求会被中继直接 400 回来（见 esa-relay.js 的
+        relay()），只走一个到边缘节点的往返，是最省的保活方式。
+        """
+        await self._client.post(
+            self.relay_url, params={"url": ""},
+            headers={"x-relay-token": self.token, "x-relay-method": "GET"}, content=b"",
+        )
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
@@ -76,6 +89,24 @@ def shared_transport() -> RelayTransport:
     if _shared is None:
         _shared = RelayTransport()
     return _shared
+
+
+async def keepalive(interval: float = 60.0) -> None:
+    """定期戳中继，把那条跨洋连接焐着。
+
+    实测（美国机房 -> 阿里云 ESA）：冷连接 1305ms，热连接 184ms，差的是一次
+    跨太平洋的 TCP+TLS 握手。空闲 70 秒连接还在，130 秒就凉了，中继那端的
+    idle timeout 在两者之间。
+
+    解析请求零零散散地来，不保活的话大部分用户都正好撞在冷连接上，平白多等
+    1.3 秒——站点流量越小，撞中的比例越高。每分钟一个 400 空响应换掉这 1.3 秒，
+    很划算。
+    """
+    tr = shared_transport()
+    while True:
+        with contextlib.suppress(Exception):   # 保活失败就等下一轮, 别影响主服务
+            await tr.ping()
+        await asyncio.sleep(interval)
 
 
 async def aclose_shared() -> None:

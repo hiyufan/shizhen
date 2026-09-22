@@ -32,8 +32,21 @@ class RedBook(BaseParser):
 
     _prefer_mobile = False   # 桌面页撞过一次登录墙后就先走手机页
 
+    @staticmethod
+    def _mobile_first() -> bool:
+        """走中继又没配 cookie 时，桌面页必然是登录墙，别拿一次跨洋往返去撞。
+
+        中继的出口是边缘节点，也就是机房 IP，小红书对这类出口一律要求登录。
+        _prefer_mobile 只是进程内的记忆，重启就忘，等于每次重启后的第一个用户
+        都要替后面的人垫一次白跑的请求。配了 PARSE_VIDEO_XHS_COOKIE 就仍然先走
+        桌面页——那条路的视频档位更全。
+        """
+        from ..convert import relay
+        return relay.enabled() and not os.getenv("PARSE_VIDEO_XHS_COOKIE")
+
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        order = ("mobile", "desktop") if RedBook._prefer_mobile else ("desktop", "mobile")
+        mobile_first = RedBook._prefer_mobile or self._mobile_first()
+        order = ("mobile", "desktop") if mobile_first else ("desktop", "mobile")
         last_error: Exception | None = None
         for mode in order:
             try:

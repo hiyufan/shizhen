@@ -142,6 +142,18 @@ class VideoInfo:
     video_headers: Dict[str, str] = dataclasses.field(default_factory=dict)
 
 
+_ua_pool: fake_useragent.UserAgent | None = None
+
+
+def _random_ua() -> str:
+    # UserAgent() 每构造一次要 40ms（读数据集），.random 取值只要 3ms。
+    # 池子本身是只读的，进程内留一个就够。
+    global _ua_pool
+    if _ua_pool is None:
+        _ua_pool = fake_useragent.UserAgent(os="iOS")
+    return _ua_pool.random
+
+
 class BaseParser(ABC):
     _ua: str = ""
 
@@ -151,7 +163,7 @@ class BaseParser(ABC):
         # 也让 cookie 握手那类要求会话一致的流程不可能成立。
         # 解析器每次解析都是新实例，所以这里按实例缓存 = 每次解析换一个 UA。
         if not self._ua:
-            self._ua = fake_useragent.UserAgent(os="iOS").random
+            self._ua = _random_ua()
         return {"User-Agent": self._ua}
 
     @abstractmethod
