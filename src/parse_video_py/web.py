@@ -66,6 +66,10 @@ async def _lifespan(_: FastAPI):
     with contextlib.suppress(Exception):
         _cleanup()
     tasks_ = [asyncio.create_task(_sweeper())]
+    # 中继连接空闲两分钟就凉，重连要 1.3 秒。保活任务进去先戳一下，
+    # 顺带把进程启动后的第一条连接也预热了，第一个用户不用替后面的人垫这 1.3 秒
+    if relay.enabled():
+        tasks_.append(asyncio.create_task(relay.keepalive()))
     if stats.enabled():
         tasks_.append(asyncio.create_task(stats.flusher()))
     if cconfig.YTDLP_AUTOUPDATE_DAYS > 0:
