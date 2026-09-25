@@ -68,7 +68,11 @@ pub struct ParsedDto {
 
 impl VideoDto {
     pub fn from_info(info: &VideoInfo, share_url: &str, signer: &Signer) -> Self {
-        let headers: Vec<(String, String)> = info.video_headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let headers: Vec<(String, String)> = info
+            .video_headers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         Self {
             video_url: info.video_url.clone(),
             cover_url: info.cover_url.clone(),
@@ -77,26 +81,46 @@ impl VideoDto {
             images: info
                 .images
                 .iter()
-                .map(|i| ImageDto { url: i.url.clone(), live_photo_url: i.live_photo_url.clone() })
+                .map(|i| ImageDto {
+                    url: i.url.clone(),
+                    live_photo_url: i.live_photo_url.clone(),
+                })
                 .collect(),
             author: AuthorDto {
                 uid: info.author.uid.clone(),
                 name: info.author.name.clone(),
                 avatar: info.author.avatar.clone(),
             },
-            source: info.source.map(|s| s.as_str().to_owned()).unwrap_or_default(),
-            page_url: if info.page_url.is_empty() { share_url.to_owned() } else { info.page_url.clone() },
+            source: info
+                .source
+                .map(|s| s.as_str().to_owned())
+                .unwrap_or_default(),
+            page_url: if info.page_url.is_empty() {
+                share_url.to_owned()
+            } else {
+                info.page_url.clone()
+            },
             duration: info.duration,
             width: info.width,
             height: info.height,
             formats: menu(info, &headers, signer),
-            video_headers: info.video_headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            video_headers: info
+                .video_headers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         }
     }
 
     /// 所有要签名的地址。令牌自带签名，不在这里。
     fn urls<'a>(&'a self, share_url: &'a str) -> Vec<&'a str> {
-        let mut urls = vec![self.video_url.as_str(), &self.cover_url, &self.music_url, &self.page_url, share_url];
+        let mut urls = vec![
+            self.video_url.as_str(),
+            &self.cover_url,
+            &self.music_url,
+            &self.page_url,
+            share_url,
+        ];
         for i in &self.images {
             urls.push(&i.url);
             urls.push(&i.live_photo_url);
@@ -109,15 +133,32 @@ impl VideoDto {
 
 impl ParsedDto {
     /// `edge_expires_at` 是边缘取图地址的过期时刻（Unix 秒），要比结果缓存活得久。
-    pub fn new(video: VideoDto, share_url: &str, signer: &Signer, edge: Option<(&EdgeImages, u64)>) -> Self {
-        let sig = video.urls(share_url).into_iter().map(|u| (u.to_owned(), signer.sign(u))).collect();
+    pub fn new(
+        video: VideoDto,
+        share_url: &str,
+        signer: &Signer,
+        edge: Option<(&EdgeImages, u64)>,
+    ) -> Self {
+        let sig = video
+            .urls(share_url)
+            .into_iter()
+            .map(|u| (u.to_owned(), signer.sign(u)))
+            .collect();
         let edge = edge
             .map(|(e, exp)| {
-                let images = std::iter::once(&video.cover_url).chain(video.images.iter().map(|i| &i.url));
-                images.filter_map(|u| Some((u.clone(), e.url_for(u, exp)?))).collect()
+                let images =
+                    std::iter::once(&video.cover_url).chain(video.images.iter().map(|i| &i.url));
+                images
+                    .filter_map(|u| Some((u.clone(), e.url_for(u, exp)?)))
+                    .collect()
             })
             .unwrap_or_default();
-        Self { video, share_url: share_url.to_owned(), sig, edge }
+        Self {
+            video,
+            share_url: share_url.to_owned(),
+            sig,
+            edge,
+        }
     }
 }
 
@@ -137,16 +178,31 @@ pub fn menu(info: &VideoInfo, headers: &[(String, String)], signer: &Signer) -> 
         .collect();
 
     let mut merged: BTreeMap<u32, &Format> = BTreeMap::new();
-    for f in info.formats.iter().filter(|f| f.needs_merge() && f.height > base) {
-        let better = merged.get(&f.height).is_none_or(|cur| codec_rank(&f.codec) < codec_rank(&cur.codec));
+    for f in info
+        .formats
+        .iter()
+        .filter(|f| f.needs_merge() && f.height > base)
+    {
+        let better = merged
+            .get(&f.height)
+            .is_none_or(|cur| codec_rank(&f.codec) < codec_rank(&cur.codec));
         if better {
             merged.insert(f.height, f);
         }
     }
     out.extend(merged.values().rev().map(|f| merge(f, headers, signer)));
 
-    if let Some(audio) = info.formats.iter().find(|f| !f.audio_url.is_empty()).map(|f| &f.audio_url) {
-        let token = MediaToken { video: String::new(), audio: audio.clone(), headers: headers.to_vec() };
+    if let Some(audio) = info
+        .formats
+        .iter()
+        .find(|f| !f.audio_url.is_empty())
+        .map(|f| &f.audio_url)
+    {
+        let token = MediaToken {
+            video: String::new(),
+            audio: audio.clone(),
+            headers: headers.to_vec(),
+        };
         out.push(FormatDto {
             label: "仅音频".into(),
             format_spec: token.encode(signer),
@@ -181,7 +237,11 @@ fn direct(f: &Format) -> FormatDto {
 }
 
 fn merge(f: &Format, headers: &[(String, String)], signer: &Signer) -> FormatDto {
-    let token = MediaToken { video: f.video_url.clone(), audio: f.audio_url.clone(), headers: headers.to_vec() };
+    let token = MediaToken {
+        video: f.video_url.clone(),
+        audio: f.audio_url.clone(),
+        headers: headers.to_vec(),
+    };
     FormatDto {
         label: f.label.clone(),
         format_spec: token.encode(signer),
@@ -205,7 +265,11 @@ mod tests {
             height: h,
             codec: codec.into(),
             video_url: video.into(),
-            audio_url: if video.is_empty() { String::new() } else { "https://a/audio.m4s".into() },
+            audio_url: if video.is_empty() {
+                String::new()
+            } else {
+                "https://a/audio.m4s".into()
+            },
             ..Default::default()
         }
     }
@@ -240,13 +304,27 @@ mod tests {
         let info = VideoInfo {
             video_url: "https://v/a.mp4".into(),
             cover_url: "https://c/a.jpg".into(),
-            images: vec![alcedo::Image { url: "https://i/1.jpg".into(), live_photo_url: "https://i/1.mp4".into() }],
+            images: vec![alcedo::Image {
+                url: "https://i/1.jpg".into(),
+                live_photo_url: "https://i/1.mp4".into(),
+            }],
             ..Default::default()
         };
         let s = Signer::new(b"k".to_vec());
-        let dto = ParsedDto::new(VideoDto::from_info(&info, "https://share/x", &s), "https://share/x", &s, None);
+        let dto = ParsedDto::new(
+            VideoDto::from_info(&info, "https://share/x", &s),
+            "https://share/x",
+            &s,
+            None,
+        );
         assert_eq!(dto.video.page_url, "https://share/x");
-        for u in ["https://v/a.mp4", "https://c/a.jpg", "https://i/1.jpg", "https://i/1.mp4", "https://share/x"] {
+        for u in [
+            "https://v/a.mp4",
+            "https://c/a.jpg",
+            "https://i/1.jpg",
+            "https://i/1.mp4",
+            "https://share/x",
+        ] {
             assert!(s.verify(u, &dto.sig[u]), "{u}");
         }
         let json = serde_json::to_value(&dto).unwrap();

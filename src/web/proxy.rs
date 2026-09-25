@@ -52,7 +52,11 @@ pub async fn api_proxy(
     }
 
     // 并发名额留给视频流（长连接、一直占带宽），图片不占
-    let mut slot = if looks_like_image(&q.url) { None } else { Some(state.limits.streams.acquire(&ip)?) };
+    let mut slot = if looks_like_image(&q.url) {
+        None
+    } else {
+        Some(state.limits.streams.acquire(&ip)?)
+    };
 
     let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     let upstream = state
@@ -64,23 +68,40 @@ pub async fn api_proxy(
     if upstream.status().as_u16() >= 400 {
         return Err(ApiError::new(upstream.status(), "源站拒绝了请求"));
     }
-    let content_type = upstream.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+    let content_type = upstream
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_owned();
     if content_type.starts_with("image/") {
         slot = None; // 地址没认出来但其实是图片，早点把名额还回去
     }
 
     let mut resp = Response::builder().status(upstream.status());
-    let out = resp.headers_mut().ok_or_else(|| ApiError::internal("响应构造失败"))?;
+    let out = resp
+        .headers_mut()
+        .ok_or_else(|| ApiError::internal("响应构造失败"))?;
     for name in PASSTHROUGH {
         if let Some(v) = upstream.headers().get(name) {
             out.insert(name, v.clone());
         }
     }
-    out.entry(header::ACCEPT_RANGES).or_insert(HeaderValue::from_static("bytes"));
-    out.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));
+    out.entry(header::ACCEPT_RANGES)
+        .or_insert(HeaderValue::from_static("bytes"));
+    out.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=3600"),
+    );
     if q.download == 1 {
-        out.insert(header::CONTENT_DISPOSITION, attachment(&q.filename, &content_type));
-        state.stats.record(Event::Download { ip: &ip, source: &registrable_host(&q.url) });
+        out.insert(
+            header::CONTENT_DISPOSITION,
+            attachment(&q.filename, &content_type),
+        );
+        state.stats.record(Event::Download {
+            ip: &ip,
+            source: &registrable_host(&q.url),
+        });
     }
 
     // 名额跟着响应体走：传完、出错或者浏览器断开，流被 drop 时归还
@@ -88,7 +109,8 @@ pub async fn api_proxy(
         let _held = &slot;
         chunk
     });
-    resp.body(Body::from_stream(body)).map_err(|_| ApiError::internal("响应构造失败"))
+    resp.body(Body::from_stream(body))
+        .map_err(|_| ApiError::internal("响应构造失败"))
 }
 
 /// `attachment; filename*=UTF-8''...`，没给文件名按类型补一个扩展名。
@@ -104,12 +126,18 @@ fn attachment(filename: &str, content_type: &str) -> HeaderValue {
     } else {
         ""
     };
-    let mut name = if filename.is_empty() { safe_filename("media", ext, "media") } else { filename.to_owned() };
+    let mut name = if filename.is_empty() {
+        safe_filename("media", ext, "media")
+    } else {
+        filename.to_owned()
+    };
     let tail: String = name.chars().rev().take(5).collect();
-    if !ext.is_empty() && !name.to_lowercase().ends_with(&format!(".{ext}")) && !tail.contains('.') {
+    if !ext.is_empty() && !name.to_lowercase().ends_with(&format!(".{ext}")) && !tail.contains('.')
+    {
         name = format!("{name}.{ext}");
     }
-    HeaderValue::from_str(&attachment_header(&name)).unwrap_or_else(|_| HeaderValue::from_static("attachment"))
+    HeaderValue::from_str(&attachment_header(&name))
+        .unwrap_or_else(|_| HeaderValue::from_static("attachment"))
 }
 
 #[cfg(test)]
@@ -119,8 +147,17 @@ mod tests {
     #[test]
     fn attachment_names() {
         let v = attachment("标题_720p.mp4", "video/mp4");
-        assert!(v.to_str().unwrap().starts_with("attachment; filename*=UTF-8''%E6%A0%87"));
-        assert!(attachment("", "image/jpeg").to_str().unwrap().ends_with("media.jpg"));
-        assert!(attachment("cover", "image/png").to_str().unwrap().ends_with("cover.png"));
+        assert!(v
+            .to_str()
+            .unwrap()
+            .starts_with("attachment; filename*=UTF-8''%E6%A0%87"));
+        assert!(attachment("", "image/jpeg")
+            .to_str()
+            .unwrap()
+            .ends_with("media.jpg"));
+        assert!(attachment("cover", "image/png")
+            .to_str()
+            .unwrap()
+            .ends_with("cover.png"));
     }
 }

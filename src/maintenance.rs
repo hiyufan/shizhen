@@ -24,7 +24,12 @@ impl Cleanup<'_> {
     pub fn run(&self) {
         self.jobs.sweep(self.cfg.job_ttl);
         self.store.sweep(self.cfg.source_ttl);
-        let known: HashSet<PathBuf> = self.jobs.known_paths().into_iter().chain(self.store.known_paths()).collect();
+        let known: HashSet<PathBuf> = self
+            .jobs
+            .known_paths()
+            .into_iter()
+            .chain(self.store.known_paths())
+            .collect();
         let removed = self.sweep_orphans(&known);
         let evicted = self.enforce_quota(&known);
         if removed + evicted > 0 {
@@ -41,7 +46,11 @@ impl Cleanup<'_> {
         let floor = self.cfg.job_timeout * 2;
         let outputs = self.cfg.outputs_dir();
         let max_age = |dir: &PathBuf| {
-            let ttl = if *dir == outputs { self.cfg.job_ttl } else { self.cfg.source_ttl };
+            let ttl = if *dir == outputs {
+                self.cfg.job_ttl
+            } else {
+                self.cfg.source_ttl
+            };
             ttl.max(floor)
         };
         let mut removed = 0;
@@ -68,7 +77,10 @@ impl Cleanup<'_> {
             return 1;
         }
         // 太新的孤儿多半是正在写的半成品（结果文件要到任务结束才登记），放过
-        let mut stale: Vec<_> = orphans(&dirs, known).into_iter().filter(|o| o.age > self.cfg.job_timeout).collect();
+        let mut stale: Vec<_> = orphans(&dirs, known)
+            .into_iter()
+            .filter(|o| o.age > self.cfg.job_timeout)
+            .collect();
         stale.sort_by_key(|o| std::cmp::Reverse(o.age));
         let mut removed = 0;
         for o in stale {

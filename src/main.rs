@@ -4,6 +4,7 @@
 //! shizhen                  启动网站（默认）
 //! shizhen diag <链接>      站长诊断：出口 IP、解析结果
 //! shizhen paths            站内所有页面路径（给主动推送脚本用）
+//! shizhen health           探一下本机服务活着没有（容器健康检查用）
 //! ```
 //!
 //! 模块分层：`web`（HTTP）→ `parse` / `jobs` / `site`（业务）→ `net` / `media` / `store`（能力）。
@@ -32,7 +33,10 @@ fn main() -> ExitCode {
     // reqwest 用的是 rustls 的"不带加密后端"版本，必须自己装一个，否则第一次握手就 panic
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("启动运行时失败: {e}");
@@ -65,16 +69,40 @@ async fn run(args: Vec<String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("health") => health(&cfg).await,
         Some("-h" | "--help") => {
-            println!("用法: shizhen [serve | diag <链接> | paths]\n配置见 README 的「配置」一节（环境变量 PARSE_VIDEO_*）");
+            println!("用法: shizhen [serve | diag <链接> | paths | health]\n配置见 README 的「配置」一节（环境变量 PARSE_VIDEO_*）");
             Ok(())
         }
         Some(other) => Err(format!("不认识的命令: {other}（shizhen --help 看用法）")),
     }
 }
 
+/// 请求本机的 /api/health。镜像里不装 curl，健康检查就用它自己。
+async fn health(cfg: &config::Config) -> Result<(), String> {
+    let url = format!("http://127.0.0.1:{}/api/health", cfg.listen.port());
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("连不上 {url}: {e}"))?;
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("{url} 返回 {}", resp.status()))
+    }
+}
+
 fn init_logging() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,alcedo=warn"));
-    tracing_subscriber::fmt().with_env_filter(filter).with_target(false).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .init();
 }

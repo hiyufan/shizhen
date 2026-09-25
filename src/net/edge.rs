@@ -10,7 +10,14 @@ use sha2::Sha256;
 use crate::config::Relay;
 
 /// 和 esa-relay.js 的 IMG_REFERERS 保持一致。
-const HOSTS: &[&str] = &["xhscdn.com", "xiaohongshu.com", "douyinpic.com", "yximgs.com", "hdslb.com", "sinaimg.cn"];
+const HOSTS: &[&str] = &[
+    "xhscdn.com",
+    "xiaohongshu.com",
+    "douyinpic.com",
+    "yximgs.com",
+    "hdslb.com",
+    "sinaimg.cn",
+];
 
 #[derive(Debug, Clone)]
 pub struct EdgeImages {
@@ -39,8 +46,14 @@ impl EdgeImages {
 
     /// 白名单里的图片 CDN 才给边缘地址。`expires_at` 是 Unix 秒。
     pub fn url_for(&self, image: &str, expires_at: u64) -> Option<String> {
-        let host = url::Url::parse(image).ok()?.host_str()?.to_ascii_lowercase();
-        if !HOSTS.iter().any(|s| host == *s || host.ends_with(&format!(".{s}"))) {
+        let host = url::Url::parse(image)
+            .ok()?
+            .host_str()?
+            .to_ascii_lowercase();
+        if !HOSTS
+            .iter()
+            .any(|s| host == *s || host.ends_with(&format!(".{s}")))
+        {
             return None;
         }
         let mut mac = Hmac::<Sha256>::new_from_slice(self.token.as_bytes()).ok()?;
@@ -72,7 +85,9 @@ mod tests {
 
     #[test]
     fn only_whitelisted_hosts_get_edge_urls() {
-        assert!(edge().url_for("https://sns-img.xhscdn.com/a.jpg", 100).is_some());
+        assert!(edge()
+            .url_for("https://sns-img.xhscdn.com/a.jpg", 100)
+            .is_some());
         assert!(edge().url_for("https://example.com/a.jpg", 100).is_none());
         assert_eq!(edge().origin(), "https://relay.example.cn");
     }
@@ -80,7 +95,9 @@ mod tests {
     #[test]
     fn signature_matches_python() {
         // Python: hmac(token, f"img\n{exp}\n{url}", sha256).hexdigest()[:32]
-        let u = edge().url_for("https://a.xhscdn.com/x.jpg", 1_700_000_000).unwrap();
+        let u = edge()
+            .url_for("https://a.xhscdn.com/x.jpg", 1_700_000_000)
+            .unwrap();
         assert!(u.contains("s=49dec95604c180913a0cda01e51517e5"), "{u}");
     }
 

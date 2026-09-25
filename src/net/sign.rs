@@ -97,7 +97,10 @@ mod tests {
         // Python 版: hmac.new(key, url, sha256).hexdigest()[:32]。线上缓存 / 前端
         // 手里的签名在切换前后都要认，所以算法必须逐字节一致。
         let s = Signer::new(b"secret".to_vec());
-        assert_eq!(s.sign("https://example.com/"), "c771eb2410419239cd74ef3f47676e2e");
+        assert_eq!(
+            s.sign("https://example.com/"),
+            "c771eb2410419239cd74ef3f47676e2e"
+        );
     }
 
     #[test]

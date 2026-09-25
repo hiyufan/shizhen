@@ -36,9 +36,15 @@ pub struct Toolkit {
 #[derive(Debug, Clone)]
 pub enum MediaSource {
     /// 单个文件的直链
-    Direct { url: String, headers: Vec<(String, String)> },
+    Direct {
+        url: String,
+        headers: Vec<(String, String)>,
+    },
     /// HLS 播放列表，交给 ffmpeg 读
-    Hls { url: String, headers: Vec<(String, String)> },
+    Hls {
+        url: String,
+        headers: Vec<(String, String)>,
+    },
     /// 分离的音视频轨（高清档），下载后合并
     Tracks(MediaToken),
 }
@@ -61,38 +67,87 @@ impl MediaSource {
 }
 
 /// 把一个媒体落成 `dir/stem.mp4`（仅音频时是 `.m4a`），返回最终路径。
-pub async fn materialize(kit: &Toolkit, media: &MediaSource, dir: &Path, stem: &str, span: &Span) -> TaskResult<PathBuf> {
+pub async fn materialize(
+    kit: &Toolkit,
+    media: &MediaSource,
+    dir: &Path,
+    stem: &str,
+    span: &Span,
+) -> TaskResult<PathBuf> {
     let ext = if media.audio_only() { "m4a" } else { "mp4" };
     let dest = PartialFile::new(dir.join(format!("{stem}.{ext}")));
     match media {
-        MediaSource::Direct { url, headers } => fetch(kit, url, headers, dest.path(), Some(span)).await?,
-        MediaSource::Hls { url, headers } => kit.ffmpeg.fetch_hls(url, headers, dest.path()).await?,
+        MediaSource::Direct { url, headers } => {
+            fetch(kit, url, headers, dest.path(), Some(span)).await?
+        }
+        MediaSource::Hls { url, headers } => {
+            kit.ffmpeg.fetch_hls(url, headers, dest.path()).await?
+        }
         MediaSource::Tracks(t) => tracks(kit, t, dir, stem, dest.path(), span).await?,
     }
     Ok(dest.keep())
 }
 
 /// 分轨：视频、音频各下载一份，再无损合并。只有一条轨的就只下那一条。
-async fn tracks(kit: &Toolkit, t: &MediaToken, dir: &Path, stem: &str, dest: &Path, span: &Span) -> TaskResult<()> {
+async fn tracks(
+    kit: &Toolkit,
+    t: &MediaToken,
+    dir: &Path,
+    stem: &str,
+    dest: &Path,
+    span: &Span,
+) -> TaskResult<()> {
     let video = PartialFile::new(dir.join(format!("{stem}.video")));
     let audio = PartialFile::new(dir.join(format!("{stem}.audio")));
     match (t.video.is_empty(), t.audio.is_empty()) {
         (false, false) => {
-            fetch(kit, &t.video, &t.headers, video.path(), Some(&span.sub(0.0, 0.8))).await?;
-            fetch(kit, &t.audio, &t.headers, audio.path(), Some(&span.sub(0.8, 0.95))).await?;
+            fetch(
+                kit,
+                &t.video,
+                &t.headers,
+                video.path(),
+                Some(&span.sub(0.0, 0.8)),
+            )
+            .await?;
+            fetch(
+                kit,
+                &t.audio,
+                &t.headers,
+                audio.path(),
+                Some(&span.sub(0.8, 0.95)),
+            )
+            .await?;
             kit.ffmpeg.merge(video.path(), audio.path(), dest).await
         }
         (false, true) => fetch(kit, &t.video, &t.headers, dest, Some(span)).await,
         (true, false) => {
-            fetch(kit, &t.audio, &t.headers, audio.path(), Some(&span.sub(0.0, 0.95))).await?;
+            fetch(
+                kit,
+                &t.audio,
+                &t.headers,
+                audio.path(),
+                Some(&span.sub(0.0, 0.95)),
+            )
+            .await?;
             kit.ffmpeg.extract_audio(audio.path(), dest).await
         }
         (true, true) => Err(TaskError::new("缺少视频地址")),
     }
 }
 
-async fn fetch(kit: &Toolkit, url: &str, headers: &[(String, String)], dest: &Path, span: Option<&Span>) -> TaskResult<()> {
-    let d = Download { url, headers, dest, max_bytes: kit.max_source_bytes };
+async fn fetch(
+    kit: &Toolkit,
+    url: &str,
+    headers: &[(String, String)],
+    dest: &Path,
+    span: Option<&Span>,
+) -> TaskResult<()> {
+    let d = Download {
+        url,
+        headers,
+        dest,
+        max_bytes: kit.max_source_bytes,
+    };
     kit.media.download(d, span).await
 }
 
@@ -100,7 +155,10 @@ async fn fetch(kit: &Toolkit, url: &str, headers: &[(String, String)], dest: &Pa
 fn timestamps() -> (String, String) {
     let now = chrono::Local::now();
     let local = now.format("%Y:%m:%d %H:%M:%S").to_string();
-    let utc = now.with_timezone(&chrono::Utc).format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let utc = now
+        .with_timezone(&chrono::Utc)
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
     (local, utc)
 }
 
@@ -115,7 +173,13 @@ mod tests {
 
     #[test]
     fn hls_is_detected_by_path_not_query() {
-        assert!(matches!(MediaSource::from_url("https://a/x.m3u8?t=1".into(), vec![]), MediaSource::Hls { .. }));
-        assert!(matches!(MediaSource::from_url("https://a/x.mp4?f=.m3u8".into(), vec![]), MediaSource::Direct { .. }));
+        assert!(matches!(
+            MediaSource::from_url("https://a/x.m3u8?t=1".into(), vec![]),
+            MediaSource::Hls { .. }
+        ));
+        assert!(matches!(
+            MediaSource::from_url("https://a/x.mp4?f=.m3u8".into(), vec![]),
+            MediaSource::Direct { .. }
+        ));
     }
 }

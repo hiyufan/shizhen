@@ -85,7 +85,13 @@ impl Store {
 
     pub fn put(&self, source: Source) {
         let id = source.id.clone();
-        self.lock().insert(id, Entry { source, last_used: Instant::now() });
+        self.lock().insert(
+            id,
+            Entry {
+                source,
+                last_used: Instant::now(),
+            },
+        );
     }
 
     pub fn set_strip(&self, id: &str, strip: PathBuf) {
@@ -113,7 +119,10 @@ impl Store {
                 .filter(|(_, e)| e.last_used.elapsed() > ttl)
                 .map(|(k, _)| k.clone())
                 .collect();
-            old.iter().filter_map(|k| map.remove(k)).map(|e| e.source).collect()
+            old.iter()
+                .filter_map(|k| map.remove(k))
+                .map(|e| e.source)
+                .collect()
         };
         expired.iter().for_each(remove_source_files);
     }
@@ -123,7 +132,10 @@ impl Store {
         while over_by > 0 {
             let oldest = {
                 let mut map = self.lock();
-                let key = map.iter().min_by_key(|(_, e)| e.last_used).map(|(k, _)| k.clone());
+                let key = map
+                    .iter()
+                    .min_by_key(|(_, e)| e.last_used)
+                    .map(|(k, _)| k.clone());
                 key.and_then(|k| map.remove(&k)).map(|e| e.source)
             };
             let Some(src) = oldest else { break };

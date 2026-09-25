@@ -27,7 +27,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 url = "2"
 
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order：JSON-LD 和接口输出按书写顺序（"@context" 在前），和 Python 版一致，便于人读
+serde_json = { version = "1", features = ["preserve_order"] }
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
 minijinja = { version = "2", default-features = false, features = ["builtins", "serde", "json", "multi_template", "adjacent_loop_items", "speedups"] }
 

@@ -8,16 +8,34 @@ use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection};
 use crate::net::Signer;
+use rusqlite::{params, Connection};
 
 /// 一次要记下的事。
 #[derive(Debug)]
 pub enum Event<'a> {
-    View { ip: &'a str, path: &'a str },
-    Parse { ip: &'a str, source: &'a str, ok: bool, reason: &'a str, elapsed: Duration },
-    Job { ip: &'a str, kind: &'a str, ok: bool, reason: &'a str, elapsed: Duration },
-    Download { ip: &'a str, source: &'a str },
+    View {
+        ip: &'a str,
+        path: &'a str,
+    },
+    Parse {
+        ip: &'a str,
+        source: &'a str,
+        ok: bool,
+        reason: &'a str,
+        elapsed: Duration,
+    },
+    Job {
+        ip: &'a str,
+        kind: &'a str,
+        ok: bool,
+        reason: &'a str,
+        elapsed: Duration,
+    },
+    Download {
+        ip: &'a str,
+        source: &'a str,
+    },
 }
 
 struct Row {
@@ -74,13 +92,20 @@ impl Stats {
         let Some(s) = &self.0 else { return false };
         !given.is_empty()
             && given.len() == s.token.len()
-            && given.bytes().zip(s.token.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+            && given
+                .bytes()
+                .zip(s.token.bytes())
+                .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                == 0
     }
 
     pub fn record(&self, event: Event<'_>) {
         let Some(s) = &self.0 else { return };
         let row = s.row(event);
-        s.buffer.lock().unwrap_or_else(PoisonError::into_inner).push(row);
+        s.buffer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(row);
     }
 
     /// 把攒着的写进数据库。阻塞，放在 `spawn_blocking` 里调。
@@ -93,9 +118,18 @@ impl Stats {
         s.with_conn(|conn| {
             let tx = conn.transaction()?;
             {
-                let mut stmt = tx.prepare_cached("INSERT INTO events VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
+                let mut stmt =
+                    tx.prepare_cached("INSERT INTO events VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
                 for r in &rows {
-                    stmt.execute(params![r.ts, r.kind, r.ip, r.source, i64::from(r.ok), r.reason, r.ms])?;
+                    stmt.execute(params![
+                        r.ts,
+                        r.kind,
+                        r.ip,
+                        r.source,
+                        i64::from(r.ok),
+                        r.reason,
+                        r.ms
+                    ])?;
                 }
             }
             tx.commit()?;
@@ -112,7 +146,9 @@ impl Stats {
 
     /// `[since, until)` 内按 `step` 秒分桶。`tz_offset` 让"按天"的桶从当地零点开始。
     pub fn summary(&self, q: &SummaryQuery) -> rusqlite::Result<Summary> {
-        let Some(s) = &self.0 else { return Ok(Summary::default()) };
+        let Some(s) = &self.0 else {
+            return Ok(Summary::default());
+        };
         s.with_conn(|conn| summary::query(conn, q))
     }
 }
@@ -121,8 +157,20 @@ impl Enabled {
     fn row(&self, event: Event<'_>) -> Row {
         let (kind, ip, source, ok, reason, elapsed) = match event {
             Event::View { ip, path } => ("view", ip, path, true, "", Duration::ZERO),
-            Event::Parse { ip, source, ok, reason, elapsed } => ("parse", ip, source, ok, reason, elapsed),
-            Event::Job { ip, kind, ok, reason, elapsed } => ("job", ip, kind, ok, reason, elapsed),
+            Event::Parse {
+                ip,
+                source,
+                ok,
+                reason,
+                elapsed,
+            } => ("parse", ip, source, ok, reason, elapsed),
+            Event::Job {
+                ip,
+                kind,
+                ok,
+                reason,
+                elapsed,
+            } => ("job", ip, kind, ok, reason, elapsed),
             Event::Download { ip, source } => ("download", ip, source, true, "", Duration::ZERO),
         };
         let mut hashed = hex::encode(self.signer.mac(ip.as_bytes()));
@@ -138,7 +186,10 @@ impl Enabled {
         }
     }
 
-    fn with_conn<T>(&self, f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+    fn with_conn<T>(
+        &self,
+        f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
         let mut guard = self.conn.lock().unwrap_or_else(PoisonError::into_inner);
         if guard.is_none() {
             *guard = Some(open(&self.db)?);
@@ -165,7 +216,10 @@ fn open(db: &std::path::Path) -> rusqlite::Result<Connection> {
 }
 
 fn now() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }
 
 pub use summary::{Summary, SummaryQuery};
@@ -248,7 +302,10 @@ mod summary {
 
     pub fn query(conn: &Connection, q: &SummaryQuery) -> rusqlite::Result<Summary> {
         let step = q.step.max(60);
-        let bucket = format!("(CAST((ts + {tz}) / {step} AS INTEGER) * {step} - {tz})", tz = q.tz_offset);
+        let bucket = format!(
+            "(CAST((ts + {tz}) / {step} AS INTEGER) * {step} - {tz})",
+            tz = q.tz_offset
+        );
         let range = params![q.since, q.until];
 
         let mut series = empty_buckets(q, step);
@@ -256,10 +313,22 @@ mod summary {
             "SELECT {bucket} AS b, kind, COUNT(*), SUM(ok) FROM events
              WHERE ts >= ?1 AND ts < ?2 AND NOT (kind = 'parse' AND reason = 'cache') GROUP BY b, kind"
         ))?;
-        let rows = stmt.query_map(range, |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, Option<i64>>(3)?)))?;
+        let rows = stmt.query_map(range, |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+            ))
+        })?;
         for row in rows {
             let (b, kind, n, ok) = row?;
-            fill(series.entry(b).or_insert_with(|| bucket_at(b)), &kind, n, ok.unwrap_or(0));
+            fill(
+                series.entry(b).or_insert_with(|| bucket_at(b)),
+                &kind,
+                n,
+                ok.unwrap_or(0),
+            );
         }
 
         let mut stmt = conn.prepare(&format!(
@@ -325,7 +394,12 @@ mod summary {
             "SELECT reason, COUNT(*) FROM events WHERE ts >= ?1 AND ts < ?2 AND kind = 'parse' AND ok = 0
              AND reason != 'cache' GROUP BY reason ORDER BY 2 DESC LIMIT 8",
         )?;
-        let rows = stmt.query_map(params![q.since, q.until], |r| Ok(ReasonRow { reason: r.get(0)?, n: r.get(1)? }))?;
+        let rows = stmt.query_map(params![q.since, q.until], |r| {
+            Ok(ReasonRow {
+                reason: r.get(0)?,
+                n: r.get(1)?,
+            })
+        })?;
         rows.collect()
     }
 
@@ -361,7 +435,10 @@ mod summary {
 
     #[allow(clippy::cast_precision_loss)]
     fn bucket_at(t: i64) -> Bucket {
-        Bucket { t: t as f64, ..Bucket::default() }
+        Bucket {
+            t: t as f64,
+            ..Bucket::default()
+        }
     }
 
     fn fill(cell: &mut Bucket, kind: &str, n: i64, ok: i64) {
@@ -396,7 +473,15 @@ mod tests {
 
     fn stats() -> (Stats, PathBuf) {
         let db = std::env::temp_dir().join(format!("shizhen-stats-{}.db", rand::random::<u32>()));
-        (Stats::new(Some("tok".into()), db.clone(), 90, Signer::new(b"k".to_vec())), db)
+        (
+            Stats::new(
+                Some("tok".into()),
+                db.clone(),
+                90,
+                Signer::new(b"k".to_vec()),
+            ),
+            db,
+        )
     }
 
     #[test]
@@ -412,14 +497,42 @@ mod tests {
         let (s, db) = stats();
         assert!(s.check_token("tok"));
         assert!(!s.check_token("tok2"));
-        s.record(Event::View { ip: "1.1.1.1", path: "/" });
-        s.record(Event::Parse { ip: "1.1.1.1", source: "douyin", ok: true, reason: "", elapsed: Duration::from_millis(200) });
-        s.record(Event::Parse { ip: "2.2.2.2", source: "douyin", ok: false, reason: "deleted", elapsed: Duration::ZERO });
-        s.record(Event::Parse { ip: "2.2.2.2", source: "douyin", ok: true, reason: "cache", elapsed: Duration::ZERO });
+        s.record(Event::View {
+            ip: "1.1.1.1",
+            path: "/",
+        });
+        s.record(Event::Parse {
+            ip: "1.1.1.1",
+            source: "douyin",
+            ok: true,
+            reason: "",
+            elapsed: Duration::from_millis(200),
+        });
+        s.record(Event::Parse {
+            ip: "2.2.2.2",
+            source: "douyin",
+            ok: false,
+            reason: "deleted",
+            elapsed: Duration::ZERO,
+        });
+        s.record(Event::Parse {
+            ip: "2.2.2.2",
+            source: "douyin",
+            ok: true,
+            reason: "cache",
+            elapsed: Duration::ZERO,
+        });
         assert_eq!(s.flush().unwrap(), 4);
 
         let t = now();
-        let sum = s.summary(&SummaryQuery { since: t - 3600.0, until: t + 60.0, step: 3600, tz_offset: 0 }).unwrap();
+        let sum = s
+            .summary(&SummaryQuery {
+                since: t - 3600.0,
+                until: t + 60.0,
+                step: 3600,
+                tz_offset: 0,
+            })
+            .unwrap();
         assert_eq!(sum.totals.view, 1);
         assert_eq!(sum.totals.parse, 2, "缓存命中不算");
         assert_eq!(sum.totals.parse_ok, 1);

@@ -43,7 +43,10 @@ impl RateLimit {
         *updated = now;
         if *tokens < 1.0 {
             let wait = Duration::from_secs_f64((1.0 - *tokens) / refill).as_secs() + 1;
-            return Err(ApiError::too_many(format!("请求太频繁了，{wait} 秒后再试"), Duration::from_secs(wait)));
+            return Err(ApiError::too_many(
+                format!("请求太频繁了，{wait} 秒后再试"),
+                Duration::from_secs(wait),
+            ));
         }
         *tokens -= 1.0;
         Ok(())
@@ -51,11 +54,14 @@ impl RateLimit {
 
     /// 每 5 分钟清一次早就补满了的桶，免得 IP 越攒越多。
     fn sweep(&self, b: &mut Buckets, now: Instant) {
-        if b.last_sweep.is_some_and(|t| now.duration_since(t) < Duration::from_secs(300)) {
+        if b.last_sweep
+            .is_some_and(|t| now.duration_since(t) < Duration::from_secs(300))
+        {
             return;
         }
         b.last_sweep = Some(now);
-        b.by_ip.retain(|_, (_, updated)| now.duration_since(*updated) < self.per * 2);
+        b.by_ip
+            .retain(|_, (_, updated)| now.duration_since(*updated) < self.per * 2);
     }
 }
 
@@ -76,7 +82,11 @@ pub struct Slot {
 
 impl Concurrency {
     pub fn new(what: &'static str, limit: usize) -> Self {
-        Self { what, limit: limit.max(1), active: Arc::default() }
+        Self {
+            what,
+            limit: limit.max(1),
+            active: Arc::default(),
+        }
     }
 
     pub fn acquire(&self, ip: &str) -> ApiResult<Slot> {
@@ -87,7 +97,10 @@ impl Concurrency {
             return Err(ApiError::too_many(msg, Duration::from_secs(10)));
         }
         *n += 1;
-        Ok(Slot { ip: ip.to_owned(), active: Arc::clone(&self.active) })
+        Ok(Slot {
+            ip: ip.to_owned(),
+            active: Arc::clone(&self.active),
+        })
     }
 }
 
@@ -126,9 +139,18 @@ impl Limits {
     }
 }
 
-const IMAGE_EXT: &[&str] = &[".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp", ".avif"];
+const IMAGE_EXT: &[&str] = &[
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp", ".avif",
+];
 /// 各家图片 CDN 的处理参数，带上就肯定是图片而不是视频
-const IMAGE_HINT: &[&str] = &["imageview2", "image_process", "x-oss-process", "format/jpg", "format/webp", "/format/png"];
+const IMAGE_HINT: &[&str] = &[
+    "imageview2",
+    "image_process",
+    "x-oss-process",
+    "format/jpg",
+    "format/webp",
+    "/format/png",
+];
 
 /// 按地址猜是不是图片。
 ///
@@ -168,7 +190,9 @@ mod tests {
     #[test]
     fn image_guess() {
         assert!(looks_like_image("https://x/a.JPG?x=1"));
-        assert!(looks_like_image("https://ci.xiaohongshu.com/k?imageView2/2/w/0/format/jpg"));
+        assert!(looks_like_image(
+            "https://ci.xiaohongshu.com/k?imageView2/2/w/0/format/jpg"
+        ));
         assert!(!looks_like_image("https://x/a.mp4?name=b.jpg"));
     }
 }

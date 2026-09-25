@@ -60,7 +60,9 @@ impl Preview {
 
 impl JobOutput {
     fn files(&self) -> impl Iterator<Item = &PathBuf> {
-        [&self.result, &self.cover, &self.motion].into_iter().flatten()
+        [&self.result, &self.cover, &self.motion]
+            .into_iter()
+            .flatten()
     }
 }
 
@@ -123,7 +125,12 @@ impl Job {
             message,
             error: s.error.clone(),
             filename: s.output.filename.clone(),
-            filesize: s.output.result.as_ref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len()),
+            filesize: s
+                .output
+                .result
+                .as_ref()
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len()),
             source_id: self.source_id.clone(),
             preview: s.output.preview.map(|p| p.url(&self.id)),
             extra: s.output.extra.clone(),
@@ -137,7 +144,11 @@ impl Job {
     /// 结果文件（任务完成且文件还在时）。
     pub fn result(&self) -> Option<(PathBuf, Option<String>)> {
         let s = self.lock();
-        let path = s.output.result.clone().filter(|p| p.exists() && s.status == Status::Done)?;
+        let path = s
+            .output
+            .result
+            .clone()
+            .filter(|p| p.exists() && s.status == Status::Done)?;
         Some((path, s.output.filename.clone()))
     }
 
@@ -209,7 +220,13 @@ pub struct Jobs {
 }
 
 impl Jobs {
-    pub fn new(max_concurrent: usize, max_queued: usize, timeout: Duration, stats: Arc<Stats>, outputs_dir: PathBuf) -> Self {
+    pub fn new(
+        max_concurrent: usize,
+        max_queued: usize,
+        timeout: Duration,
+        stats: Arc<Stats>,
+        outputs_dir: PathBuf,
+    ) -> Self {
         Self {
             jobs: Mutex::default(),
             slots: Arc::new(Semaphore::new(max_concurrent)),
@@ -250,7 +267,11 @@ impl Jobs {
 
         let runner = Runner {
             job: Arc::clone(&job),
-            data_dir: self.outputs_dir.parent().map(PathBuf::from).unwrap_or_default(),
+            data_dir: self
+                .outputs_dir
+                .parent()
+                .map(PathBuf::from)
+                .unwrap_or_default(),
             slots: Arc::clone(&self.slots),
             timeout: self.timeout,
             stats: Arc::clone(&self.stats),
@@ -281,7 +302,12 @@ impl Jobs {
             return false;
         };
         job.finish(Err("已取消".into()));
-        if let Some(h) = job.abort.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        if let Some(h) = job
+            .abort
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
             h.abort();
         }
         record(&self.stats, &job);
@@ -296,7 +322,10 @@ impl Jobs {
         let jobs = self.lock();
         QueueStats {
             pending: jobs.values().filter(|j| j.is_pending()).count(),
-            running: jobs.values().filter(|j| j.status() == Status::Running).count(),
+            running: jobs
+                .values()
+                .filter(|j| j.status() == Status::Running)
+                .count(),
             max_concurrent: self.max_concurrent,
             max_queue: self.max_queued,
         }
@@ -305,9 +334,16 @@ impl Jobs {
     /// 任务的结果文件和工作目录；清孤儿时要绕开。
     pub fn known_paths(&self) -> HashSet<PathBuf> {
         let jobs = self.lock();
-        let files = jobs.values().flat_map(|j| j.lock().output.files().cloned().collect::<Vec<_>>());
-        let work = jobs.keys().map(|id| self.outputs_dir.join(format!("{id}_work")));
-        files.chain(work).map(|p| std::fs::canonicalize(&p).unwrap_or(p)).collect()
+        let files = jobs
+            .values()
+            .flat_map(|j| j.lock().output.files().cloned().collect::<Vec<_>>());
+        let work = jobs
+            .keys()
+            .map(|id| self.outputs_dir.join(format!("{id}_work")));
+        files
+            .chain(work)
+            .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
+            .collect()
     }
 
     /// 删掉结束超过 TTL 的任务和它们的文件。
@@ -322,7 +358,10 @@ impl Jobs {
             old.iter().filter_map(|k| jobs.remove(k)).collect()
         };
         for job in expired {
-            job.lock().output.files().for_each(|p| crate::fsutil::remove(p));
+            job.lock()
+                .output
+                .files()
+                .for_each(|p| crate::fsutil::remove(p));
         }
     }
 
@@ -348,14 +387,17 @@ impl Runner {
         Fut: Future<Output = TaskResult<JobOutput>>,
     {
         // 信号量只在进程退出时关闭，那时候任务也不需要跑了
-        let Ok(_slot) = self.slots.acquire().await else { return };
+        let Ok(_slot) = self.slots.acquire().await else {
+            return;
+        };
         self.job.lock().status = Status::Running;
 
-        let outcome = match tokio::time::timeout(self.timeout, task(self.job.progress.clone())).await {
-            Ok(Ok(output)) => Ok(output),
-            Ok(Err(e)) => Err(crate::net::scrub_paths(&e.0, &self.data_dir)),
-            Err(_) => Err(timeout_message(self.timeout)),
-        };
+        let outcome =
+            match tokio::time::timeout(self.timeout, task(self.job.progress.clone())).await {
+                Ok(Ok(output)) => Ok(output),
+                Ok(Err(e)) => Err(crate::net::scrub_paths(&e.0, &self.data_dir)),
+                Err(_) => Err(timeout_message(self.timeout)),
+            };
         if let Err(e) = &outcome {
             tracing::warn!(job = %self.job.id, kind = %self.job.kind, error = %e, "任务失败");
         }
@@ -397,7 +439,13 @@ mod tests {
     use crate::error::TaskError;
 
     fn jobs(max_queued: usize, timeout: Duration) -> Jobs {
-        Jobs::new(1, max_queued, timeout, Arc::new(Stats::disabled()), std::env::temp_dir())
+        Jobs::new(
+            1,
+            max_queued,
+            timeout,
+            Arc::new(Stats::disabled()),
+            std::env::temp_dir(),
+        )
     }
 
     fn spec() -> JobSpec {
@@ -421,15 +469,24 @@ mod tests {
     #[tokio::test]
     async fn success_error_and_timeout() {
         let q = jobs(10, Duration::from_millis(50));
-        let ok = q.start(spec(), (), |p| async move {
-            p.step(0.5, "干活");
-            Ok(JobOutput { filename: Some("a.gif".into()), ..Default::default() })
-        }).unwrap();
-        let bad = q.start(spec(), (), |_| async { Err(TaskError::new("坏了")) }).unwrap();
-        let slow = q.start(spec(), (), |_| async {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            Ok(JobOutput::default())
-        }).unwrap();
+        let ok = q
+            .start(spec(), (), |p| async move {
+                p.step(0.5, "干活");
+                Ok(JobOutput {
+                    filename: Some("a.gif".into()),
+                    ..Default::default()
+                })
+            })
+            .unwrap();
+        let bad = q
+            .start(spec(), (), |_| async { Err(TaskError::new("坏了")) })
+            .unwrap();
+        let slow = q
+            .start(spec(), (), |_| async {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                Ok(JobOutput::default())
+            })
+            .unwrap();
         for j in [&ok, &bad, &slow] {
             wait_done(j).await;
         }
@@ -449,14 +506,19 @@ mod tests {
                 self.0.store(true, std::sync::atomic::Ordering::SeqCst);
             }
         }
-        let job = q.start(spec(), Guard(Arc::clone(&released)), |_| async {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            Ok(JobOutput::default())
-        }).unwrap();
+        let job = q
+            .start(spec(), Guard(Arc::clone(&released)), |_| async {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                Ok(JobOutput::default())
+            })
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert!(q.cancel(&job.id));
         tokio::time::sleep(Duration::from_millis(10)).await;
-        assert!(released.load(std::sync::atomic::Ordering::SeqCst), "取消后名额必须归还");
+        assert!(
+            released.load(std::sync::atomic::Ordering::SeqCst),
+            "取消后名额必须归还"
+        );
         assert_eq!(job.view().error.as_deref(), Some("已取消"));
         assert!(!q.cancel(&job.id), "结束了的任务不能再取消");
     }
@@ -464,10 +526,14 @@ mod tests {
     #[tokio::test]
     async fn queue_limit() {
         let q = jobs(1, Duration::from_secs(10));
-        let _a = q.start(spec(), (), |_| async {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            Ok(JobOutput::default())
-        }).unwrap();
-        assert!(q.start(spec(), (), |_| async { Ok(JobOutput::default()) }).is_err());
+        let _a = q
+            .start(spec(), (), |_| async {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                Ok(JobOutput::default())
+            })
+            .unwrap();
+        assert!(q
+            .start(spec(), (), |_| async { Ok(JobOutput::default()) })
+            .is_err());
     }
 }

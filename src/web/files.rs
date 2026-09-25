@@ -10,7 +10,12 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
 /// `download_name` 给了就加 `Content-Disposition: attachment`。
-pub async fn send(path: &Path, content_type: &str, download_name: Option<&str>, req: Request) -> Response {
+pub async fn send(
+    path: &Path,
+    content_type: &str,
+    download_name: Option<&str>,
+    req: Request,
+) -> Response {
     let (parts, _) = req.into_parts();
     let req = Request::from_parts(parts, Body::empty());
     let mut resp = match ServeFile::new(path).oneshot(req).await {
@@ -33,7 +38,10 @@ pub async fn send(path: &Path, content_type: &str, download_name: Option<&str>, 
 
 /// 按扩展名给结果文件的 Content-Type。
 pub fn content_type_for(path: &Path) -> &'static str {
-    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
     match ext.as_deref() {
         Some("gif") => "image/gif",
         Some("jpg" | "jpeg") => "image/jpeg",

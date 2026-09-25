@@ -8,7 +8,9 @@ use super::{request_base, Shared};
 use crate::site::{self, seo, Rendered};
 
 fn base(state: &Shared, headers: &HeaderMap) -> String {
-    state.site.base_url(&request_base(headers, state.cfg.trust_proxy))
+    state
+        .site
+        .base_url(&request_base(headers, state.cfg.trust_proxy))
 }
 
 /// 渲染结果 -> 响应。模板出错是我们自己的 bug，记日志、给 500。
@@ -31,7 +33,11 @@ pub async fn home(State(state): State<Shared>, headers: HeaderMap) -> Response {
 }
 
 /// SEO 落地页：/douyin /xiaohongshu /gif ... 同一个工具，不同的标题和文案。
-pub async fn landing(State(state): State<Shared>, headers: HeaderMap, Path(slug): Path<String>) -> Response {
+pub async fn landing(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> Response {
     let base = base(&state, &headers);
     match state.site.landing(&slug, &base) {
         Some(r) => html(r, StatusCode::OK),
@@ -44,7 +50,11 @@ pub async fn guides(State(state): State<Shared>, headers: HeaderMap) -> Response
     html(state.site.guides(&base), StatusCode::OK)
 }
 
-pub async fn guide(State(state): State<Shared>, headers: HeaderMap, Path(slug): Path<String>) -> Response {
+pub async fn guide(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> Response {
     let base = base(&state, &headers);
     match state.site.guide(&slug, &base) {
         Some(r) => html(r, StatusCode::OK),

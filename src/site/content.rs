@@ -122,16 +122,25 @@ pub struct Content {
 impl Content {
     /// 编译进来的那一份。TOML 写错了在启动时就报出来，不会等到有人访问那一页。
     pub fn embedded() -> Result<Self, String> {
-        Self::parse(include_str!("../../content/pages.toml"), include_str!("../../content/guides.toml"))
+        Self::parse(
+            include_str!("../../content/pages.toml"),
+            include_str!("../../content/guides.toml"),
+        )
     }
 
     fn parse(pages: &str, guides: &str) -> Result<Self, String> {
-        let pages: PagesFile = toml::from_str(pages).map_err(|e| format!("content/pages.toml: {e}"))?;
-        let guides: GuidesFile = toml::from_str(guides).map_err(|e| format!("content/guides.toml: {e}"))?;
+        let pages: PagesFile =
+            toml::from_str(pages).map_err(|e| format!("content/pages.toml: {e}"))?;
+        let guides: GuidesFile =
+            toml::from_str(guides).map_err(|e| format!("content/guides.toml: {e}"))?;
         let common = &pages.common_faq;
         let content = Self {
             updated: pages.updated,
-            pages: pages.page.into_iter().map(|p| page(p, common)).collect::<Result<_, _>>()?,
+            pages: pages
+                .page
+                .into_iter()
+                .map(|p| page(p, common))
+                .collect::<Result<_, _>>()?,
             guides: guides.guide.into_iter().map(guide).collect(),
         };
         content.check_links()?;
@@ -159,7 +168,10 @@ impl Content {
     pub fn paths(&self) -> Vec<String> {
         let pages = self.pages.iter().map(|p| p.path.clone());
         let guides = self.guides.iter().map(|g| g.path.clone());
-        pages.chain(std::iter::once("/guides".to_owned())).chain(guides).collect()
+        pages
+            .chain(std::iter::once("/guides".to_owned()))
+            .chain(guides)
+            .collect()
     }
 
     /// 互链写错了（指向不存在的教程 / 工具页）在启动时就报错。
@@ -188,11 +200,17 @@ impl Content {
 fn page(p: RawPage, common: &HashMap<String, Faq>) -> Result<Page, String> {
     let mut all_faq: Vec<Pair> = p.faq.into_iter().map(|f| (f.q, f.a)).collect();
     for key in &p.common {
-        let f = common.get(key).ok_or_else(|| format!("落地页 /{} 引用了不存在的通用问答 {key}", p.slug))?;
+        let f = common
+            .get(key)
+            .ok_or_else(|| format!("落地页 /{} 引用了不存在的通用问答 {key}", p.slug))?;
         all_faq.push((f.q.clone(), f.a.clone()));
     }
     Ok(Page {
-        path: if p.slug.is_empty() { "/".into() } else { format!("/{}", p.slug) },
+        path: if p.slug.is_empty() {
+            "/".into()
+        } else {
+            format!("/{}", p.slug)
+        },
         slug: p.slug,
         title: p.title,
         description: p.description,

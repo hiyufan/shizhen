@@ -13,7 +13,12 @@ pub async fn run(cfg: &Config, input: &str) -> Result<(), String> {
     let url = alcedo::util::extract_url(input).unwrap_or(input).to_owned();
     println!("链接: {url}\n");
 
-    let route = match (&cfg.relay, std::env::var("PARSE_VIDEO_PROXY_CN").ok().filter(|s| !s.is_empty())) {
+    let route = match (
+        &cfg.relay,
+        std::env::var("PARSE_VIDEO_PROXY_CN")
+            .ok()
+            .filter(|s| !s.is_empty()),
+    ) {
         (Some(r), _) => format!("中转 {}", r.url),
         (None, Some(p)) => format!("代理 {p}"),
         (None, None) => "服务器直连".into(),
@@ -32,11 +37,19 @@ pub async fn run(cfg: &Config, input: &str) -> Result<(), String> {
                 started.elapsed().as_secs_f64() * 1000.0,
                 info.source.map_or("?", alcedo::Source::as_str),
                 info.title.chars().take(30).collect::<String>(),
-                if info.video_url.is_empty() { "无" } else { "有" },
+                if info.video_url.is_empty() {
+                    "无"
+                } else {
+                    "有"
+                },
                 info.images.len(),
             );
         }
-        Err(e) => println!("[解析失败] {:.0}ms 原因={}  {e}", started.elapsed().as_secs_f64() * 1000.0, e.reason),
+        Err(e) => println!(
+            "[解析失败] {:.0}ms 原因={}  {e}",
+            started.elapsed().as_secs_f64() * 1000.0,
+            e.reason
+        ),
     }
     Ok(())
 }
@@ -65,6 +78,14 @@ async fn egress_ip(cfg: &Config) -> Result<(String, String), String> {
         .map_err(|e| e.to_string())?;
     let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let d = &v["data"];
-    let location: Vec<&str> = d["location"].as_array().into_iter().flatten().filter_map(|x| x.as_str()).collect();
-    Ok((d["ip"].as_str().unwrap_or("?").to_owned(), location.join(" ")))
+    let location: Vec<&str> = d["location"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|x| x.as_str())
+        .collect();
+    Ok((
+        d["ip"].as_str().unwrap_or("?").to_owned(),
+        location.join(" "),
+    ))
 }

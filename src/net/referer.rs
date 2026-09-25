@@ -66,8 +66,14 @@ mod tests {
 
     #[test]
     fn referer_matches_suffix_not_substring() {
-        assert_eq!(referer_for("https://upos-sz.bilivideo.com/x"), Some("https://www.bilibili.com/"));
-        assert_eq!(referer_for("https://bilivideo.com/x"), Some("https://www.bilibili.com/"));
+        assert_eq!(
+            referer_for("https://upos-sz.bilivideo.com/x"),
+            Some("https://www.bilibili.com/")
+        );
+        assert_eq!(
+            referer_for("https://bilivideo.com/x"),
+            Some("https://www.bilibili.com/")
+        );
         assert_eq!(referer_for("https://evilbilivideo.com/x"), None);
     }
 
@@ -80,9 +86,18 @@ mod tests {
                 ("Cookie".into(), "a=1".into()),
             ],
         );
-        let get = |k: &str| h.iter().find(|(ek, _)| ek.eq_ignore_ascii_case(k)).map(|(_, v)| v.as_str());
+        let get = |k: &str| {
+            h.iter()
+                .find(|(ek, _)| ek.eq_ignore_ascii_case(k))
+                .map(|(_, v)| v.as_str())
+        };
         assert_eq!(get("referer"), Some("https://custom/"));
         assert_eq!(get("cookie"), None);
-        assert_eq!(h.iter().filter(|(k, _)| k.eq_ignore_ascii_case("referer")).count(), 1);
+        assert_eq!(
+            h.iter()
+                .filter(|(k, _)| k.eq_ignore_ascii_case("referer"))
+                .count(),
+            1
+        );
     }
 }

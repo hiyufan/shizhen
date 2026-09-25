@@ -64,7 +64,8 @@ impl Span {
     /// 再切一小段（比如合并音视频时视频占前 80%，音频占后 20%）。
     pub fn sub(&self, from: f64, to: f64) -> Span {
         let width = self.to - self.from;
-        self.progress.span(self.from + width * from, self.from + width * to)
+        self.progress
+            .span(self.from + width * from, self.from + width * to)
     }
 }
 

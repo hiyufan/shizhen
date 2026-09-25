@@ -84,7 +84,14 @@ pub fn guide_ld(guide: &Guide, base: &str) -> String {
         "publisher": {"@type": "Organization", "name": SITE_NAME},
         "mainEntityOfPage": url,
     });
-    let trail = crumbs(base, &[(SITE_NAME, "/"), ("教程", "/guides"), (&guide.h1, &guide.path)]);
+    let trail = crumbs(
+        base,
+        &[
+            (SITE_NAME, "/"),
+            ("教程", "/guides"),
+            (&guide.h1, &guide.path),
+        ],
+    );
     dump(&json!([how_to, article, faq_ld(&guide.faq), trail]))
 }
 
@@ -99,10 +106,21 @@ pub fn sitemap(content: &Content, base: &str) -> String {
     let mut items: Vec<String> = content
         .pages
         .iter()
-        .map(|p| entry(&p.path, if p.slug.is_empty() { "1.0" } else { "0.8" }, "weekly"))
+        .map(|p| {
+            entry(
+                &p.path,
+                if p.slug.is_empty() { "1.0" } else { "0.8" },
+                "weekly",
+            )
+        })
         .collect();
     items.push(entry("/guides", "0.7", "weekly"));
-    items.extend(content.guides.iter().map(|g| entry(&g.path, "0.7", "monthly")));
+    items.extend(
+        content
+            .guides
+            .iter()
+            .map(|g| entry(&g.path, "0.7", "monthly")),
+    );
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{}</urlset>"#,
         items.concat()

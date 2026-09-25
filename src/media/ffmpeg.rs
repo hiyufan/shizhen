@@ -90,9 +90,17 @@ const SEGMENT_FPS: u32 = 30;
 impl Ffmpeg {
     /// 优先用 PATH 上的 ffmpeg，其次 `data/bin/` 里的。
     pub fn locate(bin_dir: &Path, threads: usize) -> Result<Self, String> {
-        let name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        let name = if cfg!(windows) {
+            "ffmpeg.exe"
+        } else {
+            "ffmpeg"
+        };
         let on_path = std::env::var_os("PATH")
-            .map(|p| std::env::split_paths(&p).map(|d| d.join(name)).find(|c| c.is_file()))
+            .map(|p| {
+                std::env::split_paths(&p)
+                    .map(|d| d.join(name))
+                    .find(|c| c.is_file())
+            })
             .unwrap_or_default();
         let local = bin_dir.join(name);
         let exe = on_path
@@ -143,9 +151,26 @@ impl Ffmpeg {
     pub async fn segment(&self, s: &Segment<'_>, progress: Option<&Span>) -> TaskResult<()> {
         let vf = format!("scale=-2:'min({MAX_HEIGHT},ih)':flags=lanczos,fps={SEGMENT_FPS}");
         let mut args = Args::new().seek(s.start, s.duration).input(s.src).flags(&[
-            "-vf", &vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-profile:v", "high",
-            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart+use_metadata_tags", "-map_metadata", "-1",
+            "-vf",
+            &vf,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "21",
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart+use_metadata_tags",
+            "-map_metadata",
+            "-1",
         ]);
         for (k, v) in s.metadata {
             args = args.flags(&["-metadata", &format!("{k}={v}")]);
@@ -162,8 +187,16 @@ impl Ffmpeg {
     pub async fn remux_live(&self, src: &Path, dst: &Path, identifier: &str) -> TaskResult<()> {
         let meta = format!("com.apple.quicktime.content.identifier={identifier}");
         let args = Args::new().input(src).flags(&[
-            "-c", "copy", "-map_metadata", "-1", "-movflags", "+faststart+use_metadata_tags",
-            "-metadata", &meta, "-f", "mov",
+            "-c",
+            "copy",
+            "-map_metadata",
+            "-1",
+            "-movflags",
+            "+faststart+use_metadata_tags",
+            "-metadata",
+            &meta,
+            "-f",
+            "mov",
         ]);
         self.run(args.output(dst), None).await
     }
@@ -171,22 +204,56 @@ impl Ffmpeg {
     /// 高清档的音视频分轨合成一个 mp4，不重编码。
     pub async fn merge(&self, video: &Path, audio: &Path, dst: &Path) -> TaskResult<()> {
         let args = Args::new().input(video).input(audio).flags(&[
-            "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-movflags", "+faststart", "-f", "mp4",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
         ]);
         self.run(args.output(dst), None).await
     }
 
     /// "仅音频"：DASH 的音轨是分片 mp4，换成普通 m4a，各种播放器都认。
     pub async fn extract_audio(&self, src: &Path, dst: &Path) -> TaskResult<()> {
-        let args = Args::new().input(src).flags(&["-vn", "-c", "copy", "-movflags", "+faststart", "-f", "ipod"]);
+        let args = Args::new().input(src).flags(&[
+            "-vn",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "ipod",
+        ]);
         self.run(args.output(dst), None).await
     }
 
     /// 读一个 HLS 播放列表存成 mp4（AcFun 这类只给 m3u8 的）。
-    pub async fn fetch_hls(&self, url: &str, headers: &[(String, String)], dst: &Path) -> TaskResult<()> {
-        let header_blob: String = headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect();
+    pub async fn fetch_hls(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        dst: &Path,
+    ) -> TaskResult<()> {
+        let header_blob: String = headers
+            .iter()
+            .map(|(k, v)| format!("{k}: {v}\r\n"))
+            .collect();
         let args = Args::new()
-            .flags(&["-headers", &header_blob, "-i", url, "-c", "copy", "-f", "mp4"])
+            .flags(&[
+                "-headers",
+                &header_blob,
+                "-i",
+                url,
+                "-c",
+                "copy",
+                "-f",
+                "mp4",
+            ])
             .output(dst);
         self.run(args, None).await
     }
@@ -202,18 +269,33 @@ impl Ffmpeg {
 
     /// 任意图片（webp / png / heic）转 JPEG。实况配对只认 JPEG。
     pub async fn to_jpeg(&self, src: &Path, dst: &Path) -> TaskResult<()> {
-        let args = Args::new().input(src).flags(&["-frames:v", "1", "-q:v", "2", "-f", "image2"]);
+        let args = Args::new()
+            .input(src)
+            .flags(&["-frames:v", "1", "-q:v", "2", "-f", "image2"]);
         self.run(args.output(dst), None).await
     }
 
     /// 一张横排的缩略图条，裁剪器的背景。
-    pub async fn filmstrip(&self, src: &Path, dst: &Path, duration: f64, frames: u32) -> TaskResult<()> {
+    pub async fn filmstrip(
+        &self,
+        src: &Path,
+        dst: &Path,
+        duration: f64,
+        frames: u32,
+    ) -> TaskResult<()> {
         let frames = frames.clamp(2, 40);
         let step = (duration / f64::from(frames)).max(0.04);
         let vf = format!("fps=1/{step:.4},scale=-2:72,tile={frames}x1");
-        let args = Args::new()
-            .input(src)
-            .flags(&["-vf", &vf, "-frames:v", "1", "-q:v", "5", "-f", "image2"]);
+        let args = Args::new().input(src).flags(&[
+            "-vf",
+            &vf,
+            "-frames:v",
+            "1",
+            "-q:v",
+            "5",
+            "-f",
+            "image2",
+        ]);
         self.run(args.output(dst), None).await
     }
 
@@ -244,7 +326,11 @@ impl Ffmpeg {
         if status.success() {
             return Ok(());
         }
-        let last = errors.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+        let last = errors
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("");
         Err(TaskError::new(format!("ffmpeg 失败: {}", last.trim())))
     }
 }
@@ -283,7 +369,12 @@ impl Args {
         self
     }
     fn seek(self, start: f64, duration: f64) -> Self {
-        self.flags(&["-ss", &format!("{start:.3}"), "-t", &format!("{duration:.3}")])
+        self.flags(&[
+            "-ss",
+            &format!("{start:.3}"),
+            "-t",
+            &format!("{duration:.3}"),
+        ])
     }
     fn input(mut self, path: &Path) -> Self {
         self.0.push("-i".into());
@@ -299,17 +390,22 @@ impl Args {
 static DURATION: LazyLock<Regex> = LazyLock::new(|| re(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)"));
 static SIZE: LazyLock<Regex> = LazyLock::new(|| re(r"Video:.*?\s(\d{2,5})x(\d{2,5})"));
 static FPS: LazyLock<Regex> = LazyLock::new(|| re(r"(\d+(?:\.\d+)?)\s*fps"));
-static ROTATE: LazyLock<Regex> = LazyLock::new(|| re(r"rotate\s*:\s*(-?\d+)|rotation of (-?\d+(?:\.\d+)?) degrees"));
+static ROTATE: LazyLock<Regex> =
+    LazyLock::new(|| re(r"rotate\s*:\s*(-?\d+)|rotation of (-?\d+(?:\.\d+)?) degrees"));
 
 fn re(pattern: &str) -> Regex {
     Regex::new(pattern).unwrap_or_else(|e| unreachable!("正则写错了: {e}"))
 }
 
 fn parse_probe(text: &str) -> Probe {
-    let num = |caps: &regex::Captures<'_>, i: usize| caps.get(i).and_then(|m| m.as_str().parse::<f64>().ok());
+    let num = |caps: &regex::Captures<'_>, i: usize| {
+        caps.get(i).and_then(|m| m.as_str().parse::<f64>().ok())
+    };
     let mut p = Probe::default();
     if let Some(c) = DURATION.captures(text) {
-        p.duration = num(&c, 1).unwrap_or(0.0) * 3600.0 + num(&c, 2).unwrap_or(0.0) * 60.0 + num(&c, 3).unwrap_or(0.0);
+        p.duration = num(&c, 1).unwrap_or(0.0) * 3600.0
+            + num(&c, 2).unwrap_or(0.0) * 60.0
+            + num(&c, 3).unwrap_or(0.0);
     }
     if let Some(c) = SIZE.captures(text) {
         p.width = c[1].parse().unwrap_or(0);
@@ -319,7 +415,9 @@ fn parse_probe(text: &str) -> Probe {
         p.fps = num(&c, 1).unwrap_or(0.0);
     }
     // 手机竖拍的视频常带旋转元数据：存的是横的，播放时转 90 度
-    let rotation = ROTATE.captures(text).and_then(|c| num(&c, 1).or_else(|| num(&c, 2)));
+    let rotation = ROTATE
+        .captures(text)
+        .and_then(|c| num(&c, 1).or_else(|| num(&c, 2)));
     if rotation.is_some_and(|r| (r.abs() - 90.0).abs() < 1.0 || (r.abs() - 270.0).abs() < 1.0) {
         std::mem::swap(&mut p.width, &mut p.height);
     }
@@ -346,8 +444,112 @@ mod tests {
 
     #[test]
     fn rotated_video_swaps_dimensions() {
-        let p = parse_probe(&format!("{SAMPLE}\n    Side data:\n      displaymatrix: rotation of -90.00 degrees"));
+        let p = parse_probe(&format!(
+            "{SAMPLE}\n    Side data:\n      displaymatrix: rotation of -90.00 degrees"
+        ));
         assert_eq!((p.width, p.height), (1080, 1920));
+    }
+
+    /// 本机有 ffmpeg 才跑（PATH 上或 data/bin/ 下），没有就跳过，CI 不强求。
+    fn local_ffmpeg() -> Option<Ffmpeg> {
+        Ffmpeg::locate(Path::new("data/bin"), 1).ok()
+    }
+
+    fn tmp(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("shizhen-ff-{}-{name}", rand::random::<u32>()))
+    }
+
+    /// 用 ffmpeg 自带的测试信号造一段带音轨的 H.264 小视频。
+    async fn sample_video(ff: &Ffmpeg, dst: &Path) {
+        let args = Args::new()
+            .flags(&[
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=320x240:rate=25:duration=2",
+            ])
+            .flags(&["-f", "lavfi", "-i", "sine=frequency=440:duration=2"])
+            .flags(&[
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+                "-f",
+                "mp4",
+            ])
+            .output(dst);
+        ff.run(args, None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn real_ffmpeg_pipeline() {
+        let Some(ff) = local_ffmpeg() else {
+            eprintln!("没有 ffmpeg，跳过");
+            return;
+        };
+        let (video, mov, png, jpg, gif) = (
+            tmp("v.mp4"),
+            tmp("l.MOV"),
+            tmp("i.png"),
+            tmp("i.jpg"),
+            tmp("g.gif"),
+        );
+        sample_video(&ff, &video).await;
+        let probe = ff.probe(&video).await.unwrap();
+        assert_eq!((probe.width, probe.height), (320, 240));
+        assert!((probe.duration - 2.0).abs() < 0.2);
+
+        // 平台实况：不重编码换成 MOV 并写入配对标识
+        ff.remux_live(&video, &mov, "ABC-123").await.unwrap();
+        assert!(crate::media::livephoto::mov_has_identifier(&mov, "ABC-123"));
+
+        // 任意图片转 JPEG
+        let args = Args::new()
+            .flags(&[
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x64:duration=1",
+                "-frames:v",
+                "1",
+            ])
+            .output(&png);
+        ff.run(args, None).await.unwrap();
+        ff.to_jpeg(&png, &jpg).await.unwrap();
+        assert!(std::fs::read(&jpg).unwrap().starts_with(&[0xFF, 0xD8]));
+
+        // GIF 的进度能走到接近 100%
+        let progress = crate::jobs::Progress::default();
+        let g = Gif {
+            src: &video,
+            dst: &gif,
+            start: 0.0,
+            duration: 1.0,
+            fps: 10,
+            width: 160,
+            dither: Dither::Bayer,
+            speed: 1.0,
+        };
+        ff.gif(&g, &progress.span(0.0, 1.0)).await.unwrap();
+        assert!(std::fs::read(&gif).unwrap().starts_with(b"GIF89a"));
+        assert!(progress.snapshot().0 > 0.5, "进度要随 -progress 输出推进");
+
+        for p in [video, mov, png, jpg, gif] {
+            std::fs::remove_file(p).ok();
+        }
+    }
+
+    #[tokio::test]
+    async fn ffmpeg_errors_are_reported() {
+        let Some(ff) = local_ffmpeg() else { return };
+        let err = ff
+            .to_jpeg(Path::new("does-not-exist.png"), &tmp("x.jpg"))
+            .await
+            .unwrap_err();
+        assert!(err.0.starts_with("ffmpeg 失败"), "{err}");
     }
 
     #[test]

@@ -38,7 +38,12 @@ pub struct ParseReply {
 
 impl ParseReply {
     fn failed(code: u16, msg: impl Into<String>, reason: &str) -> Self {
-        Self { code, msg: msg.into(), data: None, reason: Some(reason.to_owned()) }
+        Self {
+            code,
+            msg: msg.into(),
+            data: None,
+            reason: Some(reason.to_owned()),
+        }
     }
 
     pub fn ok(&self) -> bool {
@@ -72,13 +77,26 @@ pub struct ParseService {
 
 impl std::fmt::Debug for ParseService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ParseService").field("ttl", &self.ttl).finish_non_exhaustive()
+        f.debug_struct("ParseService")
+            .field("ttl", &self.ttl)
+            .finish_non_exhaustive()
     }
 }
 
 impl ParseService {
-    pub fn new(client: alcedo::Client, signer: Signer, edge: Option<EdgeImages>, ttl: Duration) -> Self {
-        Self { client, signer, edge, ttl, cache: Mutex::default() }
+    pub fn new(
+        client: alcedo::Client,
+        signer: Signer,
+        edge: Option<EdgeImages>,
+        ttl: Duration,
+    ) -> Self {
+        Self {
+            client,
+            signer,
+            edge,
+            ttl,
+            cache: Mutex::default(),
+        }
     }
 
     pub fn client(&self) -> &alcedo::Client {
@@ -87,22 +105,34 @@ impl ParseService {
 
     /// 从分享文案里抠出链接。
     pub fn extract_url(input: &str) -> Option<String> {
-        alcedo::util::extract_url(input).map(str::to_owned).or_else(|| {
-            let t = input.trim();
-            t.starts_with("http").then(|| t.to_owned())
-        })
+        alcedo::util::extract_url(input)
+            .map(str::to_owned)
+            .or_else(|| {
+                let t = input.trim();
+                t.starts_with("http").then(|| t.to_owned())
+            })
     }
 
     /// 平台标识（统计用）；认不出返回空串。
     pub fn platform_of(url: &str) -> String {
-        alcedo::registry::detect(url).map(|s| s.as_str().to_owned()).unwrap_or_default()
+        alcedo::registry::detect(url)
+            .map(|s| s.as_str().to_owned())
+            .unwrap_or_default()
     }
 
     pub async fn parse(&self, share_url: &str) -> Outcome {
         let source = Self::platform_of(share_url);
         if let Some(reply) = self.cached(share_url) {
-            let source = reply.data.as_ref().map_or(source, |d| d.video.source.clone());
-            return Outcome { reply, source, from_cache: true, elapsed: Duration::ZERO };
+            let source = reply
+                .data
+                .as_ref()
+                .map_or(source, |d| d.video.source.clone());
+            return Outcome {
+                reply,
+                source,
+                from_cache: true,
+                elapsed: Duration::ZERO,
+            };
         }
 
         let started = Instant::now();
@@ -115,8 +145,16 @@ impl ParseService {
         let reply = Arc::new(reply);
         self.store(share_url, &reply, ttl);
 
-        let source = reply.data.as_ref().map_or(source, |d| d.video.source.clone());
-        Outcome { reply, source, from_cache: false, elapsed: started.elapsed() }
+        let source = reply
+            .data
+            .as_ref()
+            .map_or(source, |d| d.video.source.clone());
+        Outcome {
+            reply,
+            source,
+            from_cache: false,
+            elapsed: started.elapsed(),
+        }
     }
 
     /// 给服务端自己用：拿到原始解析结果（准备原视频时挑一档来合并）。
@@ -127,7 +165,10 @@ impl ParseService {
     fn success(&self, info: &alcedo::VideoInfo, share_url: &str) -> ParseReply {
         let video = VideoDto::from_info(info, share_url, &self.signer);
         // 边缘取图地址要比结果缓存活得久，缓存里拿出来的也还能用
-        let edge = self.edge.as_ref().map(|e| (e, unix_now() + self.ttl.as_secs() + 3600));
+        let edge = self
+            .edge
+            .as_ref()
+            .map(|e| (e, unix_now() + self.ttl.as_secs() + 3600));
         ParseReply {
             code: 200,
             msg: "解析成功".into(),
@@ -138,10 +179,18 @@ impl ParseService {
 
     /// 成功的按配置缓存，但不超过结果里最早过期的那个直链；失败的只缓存一分钟。
     fn ttl_for(&self, reply: &ParseReply) -> Duration {
-        let Some(data) = &reply.data else { return ERROR_TTL.min(self.ttl) };
-        let earliest = data.sig.keys().filter_map(|u| alcedo::cache::url_expiry(u)).min();
+        let Some(data) = &reply.data else {
+            return ERROR_TTL.min(self.ttl);
+        };
+        let earliest = data
+            .sig
+            .keys()
+            .filter_map(|u| alcedo::cache::url_expiry(u))
+            .min();
         match earliest {
-            Some(exp) => self.ttl.min(Duration::from_secs(exp.saturating_sub(unix_now() + EXPIRY_MARGIN))),
+            Some(exp) => self.ttl.min(Duration::from_secs(
+                exp.saturating_sub(unix_now() + EXPIRY_MARGIN),
+            )),
             None => self.ttl,
         }
     }
@@ -165,10 +214,20 @@ impl ParseService {
             cache.retain(|_, c| c.stored.elapsed() < c.ttl);
         }
         if cache.len() >= CACHE_MAX {
-            let oldest = cache.iter().min_by_key(|(_, c)| c.stored).map(|(k, _)| k.clone());
+            let oldest = cache
+                .iter()
+                .min_by_key(|(_, c)| c.stored)
+                .map(|(k, _)| k.clone());
             oldest.map(|k| cache.remove(&k));
         }
-        cache.insert(key.to_owned(), Cached { reply: Arc::clone(reply), stored: Instant::now(), ttl });
+        cache.insert(
+            key.to_owned(),
+            Cached {
+                reply: Arc::clone(reply),
+                stored: Instant::now(),
+                ttl,
+            },
+        );
     }
 
     pub fn cache_len(&self) -> usize {
@@ -181,5 +240,8 @@ impl ParseService {
 }
 
 fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }

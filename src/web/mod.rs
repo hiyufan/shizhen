@@ -51,7 +51,9 @@ pub struct AppState {
 pub type Shared = Arc<AppState>;
 
 pub fn router(state: Shared) -> Router {
-    let upload_limit = usize::try_from(state.cfg.max_upload_bytes).unwrap_or(usize::MAX).saturating_add(1 << 20);
+    let upload_limit = usize::try_from(state.cfg.max_upload_bytes)
+        .unwrap_or(usize::MAX)
+        .saturating_add(1 << 20);
 
     // 可选 Basic Auth 管的路由：页面和业务接口
     let protected = Router::new()
@@ -64,7 +66,10 @@ pub fn router(state: Shared) -> Router {
         .route("/video/id/parse", get(parse::legacy_id))
         .route("/api/proxy", get(proxy::api_proxy))
         .route("/api/prepare", post(media::prepare))
-        .route("/api/upload", post(media::upload).layer(DefaultBodyLimit::max(upload_limit)))
+        .route(
+            "/api/upload",
+            post(media::upload).layer(DefaultBodyLimit::max(upload_limit)),
+        )
         .route("/api/source/{id}", get(media::source_file))
         .route("/api/source/{id}/strip", get(media::source_strip))
         .route("/api/convert", post(media::convert))
@@ -74,7 +79,10 @@ pub fn router(state: Shared) -> Router {
         .route("/api/jobs/{id}/file", get(jobs::file))
         .route("/api/jobs/{id}/preview", get(jobs::cover))
         .route("/api/jobs/{id}/video", get(jobs::motion))
-        .route_layer(middleware::from_fn_with_state(Arc::clone(&state), basic_auth));
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            basic_auth,
+        ));
 
     // 不需要登录的：健康检查、爬虫要看的、统计页（自带令牌）、静态资源
     let open = Router::new()
@@ -88,7 +96,10 @@ pub fn router(state: Shared) -> Router {
     protected
         .merge(open)
         .fallback(pages::fallback)
-        .layer(middleware::from_fn_with_state(Arc::clone(&state), site_headers))
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            site_headers,
+        ))
         .layer(CompressionLayer::new().compress_when(compressible()))
         .with_state(state)
 }
@@ -113,14 +124,25 @@ pub struct ClientIp(pub String);
 impl FromRequestParts<Shared> for ClientIp {
     type Rejection = std::convert::Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, state: &Shared) -> Result<Self, Self::Rejection> {
-        let peer = parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip().to_string());
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Shared,
+    ) -> Result<Self, Self::Rejection> {
+        let peer = parts
+            .extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|c| c.0.ip().to_string());
         Ok(Self(client_ip(&parts.headers, peer, state.cfg.trust_proxy)))
     }
 }
 
 fn client_ip(headers: &HeaderMap, peer: Option<String>, trust_proxy: bool) -> String {
-    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).map(str::trim);
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+    };
     let forwarded = trust_proxy
         .then(|| {
             header("x-forwarded-for")
@@ -130,7 +152,10 @@ fn client_ip(headers: &HeaderMap, peer: Option<String>, trust_proxy: bool) -> St
         })
         .flatten()
         .filter(|v| !v.is_empty());
-    forwarded.map(str::to_owned).or(peer).unwrap_or_else(|| "unknown".into())
+    forwarded
+        .map(str::to_owned)
+        .or(peer)
+        .unwrap_or_else(|| "unknown".into())
 }
 
 // ------------------------------------------------------------------ 中间件
@@ -151,7 +176,8 @@ async fn basic_auth(State(state): State<Shared>, req: Request, next: Next) -> Re
         return next.run(req).await;
     }
     let mut resp = (StatusCode::UNAUTHORIZED, "Incorrect username or password").into_response();
-    resp.headers_mut().insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Basic"));
+    resp.headers_mut()
+        .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Basic"));
     resp
 }
 
@@ -162,16 +188,27 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 /// 爬虫 / 脚本的浏览不计入统计。
 fn is_bot(ua: &str) -> bool {
     let ua = ua.to_ascii_lowercase();
-    ["bot", "spider", "crawl", "slurp", "fetch", "curl", "wget", "python", "http"]
-        .iter()
-        .any(|k| ua.contains(k))
+    [
+        "bot", "spider", "crawl", "slurp", "fetch", "curl", "wget", "python", "http",
+    ]
+    .iter()
+    .any(|k| ua.contains(k))
 }
 
 /// 安全响应头、缓存策略，顺带记页面浏览量。
-async fn site_headers(State(state): State<Shared>, ClientIp(ip): ClientIp, req: Request, next: Next) -> Response {
+async fn site_headers(
+    State(state): State<Shared>,
+    ClientIp(ip): ClientIp,
+    req: Request,
+    next: Next,
+) -> Response {
     let path = req.uri().path().to_owned();
     let is_get = req.method() == axum::http::Method::GET;
-    let bot = req.headers().get(header::USER_AGENT).and_then(|v| v.to_str().ok()).is_some_and(is_bot);
+    let bot = req
+        .headers()
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(is_bot);
     let mut resp = next.run(req).await;
 
     let is_html = resp
@@ -182,20 +219,33 @@ async fn site_headers(State(state): State<Shared>, ClientIp(ip): ClientIp, req: 
     let h = resp.headers_mut();
     if path.starts_with("/static/") {
         // 静态资源带内容版本号，可以长期缓存
-        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=31536000, immutable"));
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        );
     } else if is_html && is_get && !path.starts_with("/api") {
-        h.entry(header::CACHE_CONTROL).or_insert(HeaderValue::from_static("public, max-age=600"));
+        h.entry(header::CACHE_CONTROL)
+            .or_insert(HeaderValue::from_static("public, max-age=600"));
     }
-    h.entry("x-content-type-options").or_insert(HeaderValue::from_static("nosniff"));
-    h.entry("referrer-policy").or_insert(HeaderValue::from_static("strict-origin-when-cross-origin"));
-    h.entry("x-frame-options").or_insert(HeaderValue::from_static("DENY"));
-    h.entry("permissions-policy").or_insert(HeaderValue::from_static("camera=(), microphone=(), geolocation=()"));
+    h.entry("x-content-type-options")
+        .or_insert(HeaderValue::from_static("nosniff"));
+    h.entry("referrer-policy")
+        .or_insert(HeaderValue::from_static("strict-origin-when-cross-origin"));
+    h.entry("x-frame-options")
+        .or_insert(HeaderValue::from_static("DENY"));
+    h.entry("permissions-policy")
+        .or_insert(HeaderValue::from_static(
+            "camera=(), microphone=(), geolocation=()",
+        ));
     if is_html {
         if let Ok(csp) = HeaderValue::from_str(&csp(state.edge.as_ref())) {
             h.entry("content-security-policy").or_insert(csp);
         }
         if resp.status() == StatusCode::OK && is_get && path != "/stats" && !bot {
-            state.stats.record(Event::View { ip: &ip, path: &path });
+            state.stats.record(Event::View {
+                ip: &ip,
+                path: &path,
+            });
         }
     }
     resp
@@ -212,9 +262,16 @@ fn csp(edge: Option<&EdgeImages>) -> String {
 
 /// 请求的站点根地址（没配 `PARSE_VIDEO_SITE_URL` 时用）。
 fn request_base(headers: &HeaderMap, trust_proxy: bool) -> String {
-    let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("localhost");
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
     let proto = trust_proxy
-        .then(|| headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok()))
+        .then(|| {
+            headers
+                .get("x-forwarded-proto")
+                .and_then(|v| v.to_str().ok())
+        })
         .flatten()
         .unwrap_or("http");
     format!("{proto}://{host}")
@@ -227,7 +284,10 @@ mod tests {
     #[test]
     fn forwarded_ip_only_when_trusted() {
         let mut h = HeaderMap::new();
-        h.insert("x-forwarded-for", HeaderValue::from_static("9.9.9.9, 10.0.0.1"));
+        h.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("9.9.9.9, 10.0.0.1"),
+        );
         assert_eq!(client_ip(&h, Some("1.1.1.1".into()), false), "1.1.1.1");
         assert_eq!(client_ip(&h, Some("1.1.1.1".into()), true), "9.9.9.9");
         assert_eq!(client_ip(&HeaderMap::new(), None, true), "unknown");
@@ -237,6 +297,8 @@ mod tests {
     fn bots() {
         assert!(is_bot("Mozilla/5.0 (compatible; Googlebot/2.1)"));
         assert!(is_bot("curl/8.0"));
-        assert!(!is_bot("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)"));
+        assert!(!is_bot(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)"
+        ));
     }
 }

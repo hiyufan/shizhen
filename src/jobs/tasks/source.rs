@@ -24,7 +24,14 @@ pub async fn fetch_source(
     }
 
     progress.step(0.02, "正在下载原视频");
-    let path = materialize(kit, media, &kit.sources_dir, source_id, &progress.span(0.02, 0.92)).await?;
+    let path = materialize(
+        kit,
+        media,
+        &kit.sources_dir,
+        source_id,
+        &progress.span(0.02, 0.92),
+    )
+    .await?;
     let path = PartialFile::new(path); // 探测失败时也别留下
 
     progress.step(0.95, "正在读取视频信息");
@@ -55,12 +62,19 @@ fn output(source: &Source) -> JobOutput {
 }
 
 /// 裁剪器背景用的缩略图条；生成过就直接用。
-pub async fn make_strip(kit: &Toolkit, store: &Store, source: &Source, frames: u32) -> TaskResult<PathBuf> {
+pub async fn make_strip(
+    kit: &Toolkit,
+    store: &Store,
+    source: &Source,
+    frames: u32,
+) -> TaskResult<PathBuf> {
     if let Some(strip) = source.strip.as_ref().filter(|p| p.exists()) {
         return Ok(strip.clone());
     }
     let dest = PartialFile::new(kit.sources_dir.join(format!("{}_strip.jpg", source.id)));
-    kit.ffmpeg.filmstrip(&source.path, dest.path(), source.duration, frames).await?;
+    kit.ffmpeg
+        .filmstrip(&source.path, dest.path(), source.duration, frames)
+        .await?;
     let strip = dest.keep();
     store.set_strip(&source.id, strip.clone());
     Ok(strip)

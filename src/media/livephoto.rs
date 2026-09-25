@@ -34,7 +34,14 @@ pub fn new_identifier() -> String {
     b[6] = (b[6] & 0x0F) | 0x40; // version 4
     b[8] = (b[8] & 0x3F) | 0x80; // variant
     let h = hex::encode_upper(b);
-    format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
 }
 
 /// 给 JPEG 写上 Apple 的配对标识。`date` 形如 `2026:09:25 14:00:00`。
@@ -60,19 +67,29 @@ pub fn read_jpeg_identifier(path: &Path) -> Option<String> {
         let len = usize::try_from(be32(note, entry + 4)?).ok()?;
         let off = usize::try_from(be32(note, entry + 8)?).ok()?;
         let raw = note.get(off..off + len)?;
-        Some(String::from_utf8_lossy(raw).trim_end_matches('\0').to_owned())
+        Some(
+            String::from_utf8_lossy(raw)
+                .trim_end_matches('\0')
+                .to_owned(),
+        )
     })
 }
 
 /// MOV 里有没有写进这个标识。
 pub fn mov_has_identifier(path: &Path, identifier: &str) -> bool {
     std::fs::read(path).is_ok_and(|d| {
-        find(&d, MOV_IDENTIFIER_KEY.as_bytes()).is_some() && find(&d, identifier.as_bytes()).is_some()
+        find(&d, MOV_IDENTIFIER_KEY.as_bytes()).is_some()
+            && find(&d, identifier.as_bytes()).is_some()
     })
 }
 
 /// 安卓动态照片：JPEG + XMP + 接在末尾的 MP4。
-pub fn write_motion_photo(jpeg: &Path, mp4: &Path, out: &Path, presentation_us: u64) -> std::io::Result<()> {
+pub fn write_motion_photo(
+    jpeg: &Path,
+    mp4: &Path,
+    out: &Path,
+    presentation_us: u64,
+) -> std::io::Result<()> {
     let image = std::fs::read(jpeg)?;
     let video = std::fs::read(mp4)?;
     let mut xmp = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
@@ -99,7 +116,13 @@ fn apple_makernote(identifier: &str) -> Vec<u8> {
 
     let mut note = APPLE_MAKERNOTE_HEADER.to_vec();
     note.extend_from_slice(&1u16.to_be_bytes());
-    push_entry(&mut note, APPLE_CONTENT_IDENTIFIER, TYPE_ASCII, value.len(), data_offset);
+    push_entry(
+        &mut note,
+        APPLE_CONTENT_IDENTIFIER,
+        TYPE_ASCII,
+        value.len(),
+        data_offset,
+    );
     note.extend_from_slice(&0u32.to_be_bytes());
     note.extend_from_slice(&value);
     note
@@ -116,7 +139,11 @@ impl Entry {
     fn ascii(tag: u16, s: &str) -> Self {
         let mut value = s.as_bytes().to_vec();
         value.push(0);
-        Self { tag, typ: TYPE_ASCII, value }
+        Self {
+            tag,
+            typ: TYPE_ASCII,
+            value,
+        }
     }
 }
 
@@ -322,7 +349,10 @@ mod tests {
 
         let bytes = std::fs::read(&p).unwrap();
         assert!(find(&bytes, b"OLD-EXIF").is_none(), "旧 Exif 要被替换掉");
-        assert!(bytes.starts_with(&[0xFF, 0xD8, 0xFF, 0xE0]), "JFIF 仍然紧跟 SOI");
+        assert!(
+            bytes.starts_with(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            "JFIF 仍然紧跟 SOI"
+        );
         assert!(bytes.ends_with(&[0xFF, 0xD9]), "图像数据原样保留");
         std::fs::remove_file(p).ok();
     }
@@ -337,7 +367,11 @@ mod tests {
         let ptr_entry = 8 + 2 + 12 * 3;
         assert_eq!(be16(tiff, ptr_entry), Some(TAG_EXIF_IFD));
         let exif_at = usize::try_from(be32(tiff, ptr_entry + 8).unwrap()).unwrap();
-        assert_eq!(be16(tiff, exif_at), Some(2), "Exif IFD 有 DateTimeOriginal 和 MakerNote");
+        assert_eq!(
+            be16(tiff, exif_at),
+            Some(2),
+            "Exif IFD 有 DateTimeOriginal 和 MakerNote"
+        );
         // Make 的值落在数据区里，读出来是 "Apple"
         let make_off = usize::try_from(be32(tiff, 8 + 2 + 8).unwrap()).unwrap();
         assert_eq!(&tiff[make_off..make_off + 5], b"Apple");
@@ -360,7 +394,10 @@ mod tests {
         let bytes = std::fs::read(&out).unwrap();
         assert!(bytes.ends_with(b"FAKEMP4DATA"));
         let xmp_at = find(&bytes, b"http://ns.adobe.com/xap/1.0/").unwrap();
-        assert!(xmp_at > find(&bytes, b"OLD-EXIF").unwrap(), "XMP 放在已有 APP1 之后");
+        assert!(
+            xmp_at > find(&bytes, b"OLD-EXIF").unwrap(),
+            "XMP 放在已有 APP1 之后"
+        );
         assert!(find(&bytes, b"MicroVideoOffset=\"11\"").is_some());
         for p in [jpg, mp4, out] {
             std::fs::remove_file(p).ok();

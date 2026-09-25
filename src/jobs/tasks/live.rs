@@ -30,7 +30,13 @@ struct Pair {
     mov: Option<PathBuf>,
 }
 
-pub async fn pair_live(kit: &Toolkit, progress: &Progress, items: &[LiveItem], fmt: LiveFormat, title: &str) -> TaskResult<JobOutput> {
+pub async fn pair_live(
+    kit: &Toolkit,
+    progress: &Progress,
+    items: &[LiveItem],
+    fmt: LiveFormat,
+    title: &str,
+) -> TaskResult<JobOutput> {
     let id = unique_stem();
     let stem: String = safe_filename(title, "", "live").chars().take(40).collect();
     let work = WorkDir::create(kit.outputs_dir.join(format!("{id}_work")))?;
@@ -39,7 +45,10 @@ pub async fn pair_live(kit: &Toolkit, progress: &Progress, items: &[LiveItem], f
     let mut pairs = Vec::with_capacity(items.len());
     for (i, item) in items.iter().enumerate() {
         #[allow(clippy::cast_precision_loss)]
-        progress.step(i as f64 / total as f64, &format!("正在处理第 {}/{total} 张", i + 1));
+        progress.step(
+            i as f64 / total as f64,
+            &format!("正在处理第 {}/{total} 张", i + 1),
+        );
         pairs.push(pair_one(kit, &work, i + 1, item, fmt).await?);
     }
 
@@ -61,7 +70,13 @@ pub async fn pair_live(kit: &Toolkit, progress: &Progress, items: &[LiveItem], f
     })
 }
 
-async fn pair_one(kit: &Toolkit, work: &WorkDir, n: usize, item: &LiveItem, fmt: LiveFormat) -> TaskResult<Pair> {
+async fn pair_one(
+    kit: &Toolkit,
+    work: &WorkDir,
+    n: usize,
+    item: &LiveItem,
+    fmt: LiveFormat,
+) -> TaskResult<Pair> {
     let raw_image = work.join(format!("{n:04}.img"));
     let video = work.join(format!("{n:04}.mp4"));
     let jpg = work.join(format!("{n:04}.jpg"));
@@ -76,31 +91,61 @@ async fn pair_one(kit: &Toolkit, work: &WorkDir, n: usize, item: &LiveItem, fmt:
     if fmt == LiveFormat::MotionPhoto {
         let out = work.join(format!("MVIMG_{n:04}.jpg"));
         livephoto::write_motion_photo(&jpg, &video, &out, 0)?;
-        return Ok(Pair { image: out, mov: None });
+        return Ok(Pair {
+            image: out,
+            mov: None,
+        });
     }
 
     let mov = work.join(format!("{n:04}.MOV"));
     if kit.ffmpeg.remux_live(&video, &mov, &ident).await.is_err() {
         // 少数不是 H.264 的，重编码一次
         let probe = kit.ffmpeg.probe(&video).await?;
-        let duration = if probe.duration > 0.0 { probe.duration } else { 3.0 };
+        let duration = if probe.duration > 0.0 {
+            probe.duration
+        } else {
+            3.0
+        };
         let meta = [(MOV_IDENTIFIER_KEY, ident.clone())];
-        let seg = Segment { src: &video, dst: &mov, start: 0.0, duration, container: Container::Mov, metadata: &meta };
+        let seg = Segment {
+            src: &video,
+            dst: &mov,
+            start: 0.0,
+            duration,
+            container: Container::Mov,
+            metadata: &meta,
+        };
         kit.ffmpeg.segment(&seg, None).await?;
     }
     if !livephoto::mov_has_identifier(&mov, &ident) {
         return Err(TaskError::new("实况元数据写入失败"));
     }
-    Ok(Pair { image: jpg, mov: Some(mov) })
+    Ok(Pair {
+        image: jpg,
+        mov: Some(mov),
+    })
 }
 
 async fn download(kit: &Toolkit, url: &str, dest: &Path) -> TaskResult<()> {
     kit.media
-        .download(Download { url, headers: &[], dest, max_bytes: LIVE_ITEM_MAX_BYTES }, None)
+        .download(
+            Download {
+                url,
+                headers: &[],
+                dest,
+                max_bytes: LIVE_ITEM_MAX_BYTES,
+            },
+            None,
+        )
         .await
 }
 
-fn bundle_live(kit: &Toolkit, id: &str, stem: &str, pairs: &[Pair]) -> TaskResult<(PathBuf, String)> {
+fn bundle_live(
+    kit: &Toolkit,
+    id: &str,
+    stem: &str,
+    pairs: &[Pair],
+) -> TaskResult<(PathBuf, String)> {
     let prefix = id[..2].to_uppercase();
     let mut entries = Vec::new();
     for (i, p) in pairs.iter().enumerate() {
@@ -112,11 +157,20 @@ fn bundle_live(kit: &Toolkit, id: &str, stem: &str, pairs: &[Pair]) -> TaskResul
     }
     let dest = PartialFile::new(kit.outputs_dir.join(format!("{id}_live.zip")));
     zip_pairs(dest.path(), &entries)?;
-    let count = if pairs.len() > 1 { format!("x{}", pairs.len()) } else { String::new() };
+    let count = if pairs.len() > 1 {
+        format!("x{}", pairs.len())
+    } else {
+        String::new()
+    };
     Ok((dest.keep(), format!("{stem}_实况{count}.zip")))
 }
 
-fn bundle_motion(kit: &Toolkit, id: &str, stem: &str, pairs: &[Pair]) -> TaskResult<(PathBuf, String)> {
+fn bundle_motion(
+    kit: &Toolkit,
+    id: &str,
+    stem: &str,
+    pairs: &[Pair],
+) -> TaskResult<(PathBuf, String)> {
     let entries: Vec<(String, &Path)> = pairs
         .iter()
         .enumerate()
@@ -131,7 +185,8 @@ fn bundle_motion(kit: &Toolkit, id: &str, stem: &str, pairs: &[Pair]) -> TaskRes
 pub(super) fn zip_pairs(dest: &Path, entries: &[(String, &Path)]) -> TaskResult<()> {
     let file = std::fs::File::create(dest)?;
     let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     for (name, path) in entries {
         zip.start_file(name.as_str(), options).map_err(zip_error)?;
         zip.write_all(&std::fs::read(path)?)?;
@@ -156,9 +211,19 @@ mod tests {
         std::fs::write(&a, b"AAAA").unwrap();
         std::fs::write(&b, b"BB").unwrap();
         let out = dir.join("x.zip");
-        zip_pairs(&out, &[("IMG_1.JPG".into(), a.as_path()), ("IMG_1.MOV".into(), b.as_path())]).unwrap();
+        zip_pairs(
+            &out,
+            &[
+                ("IMG_1.JPG".into(), a.as_path()),
+                ("IMG_1.MOV".into(), b.as_path()),
+            ],
+        )
+        .unwrap();
         let bytes = std::fs::read(&out).unwrap();
-        assert!(bytes.windows(4).any(|w| w == b"AAAA"), "Stored 模式下内容原样可见");
+        assert!(
+            bytes.windows(4).any(|w| w == b"AAAA"),
+            "Stored 模式下内容原样可见"
+        );
         assert!(bytes.windows(9).any(|w| w == b"IMG_1.MOV"));
         std::fs::remove_dir_all(dir).ok();
     }

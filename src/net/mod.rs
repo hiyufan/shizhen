@@ -26,7 +26,9 @@ pub async fn is_public_url(raw: &str, check_dns: bool) -> bool {
         return false;
     }
     match url.host() {
-        Some(url::Host::Domain(host)) if check_dns => alcedo::http::ssrf::check_domain(host).await.is_ok(),
+        Some(url::Host::Domain(host)) if check_dns => {
+            alcedo::http::ssrf::check_domain(host).await.is_ok()
+        }
         _ => true,
     }
 }
@@ -66,7 +68,10 @@ mod tests {
 
     #[test]
     fn registrable_host_keeps_last_two_labels() {
-        assert_eq!(registrable_host("https://v5-dy.douyinvod.com/a.mp4"), "douyinvod.com");
+        assert_eq!(
+            registrable_host("https://v5-dy.douyinvod.com/a.mp4"),
+            "douyinvod.com"
+        );
         assert_eq!(registrable_host("https://example.com/"), "example.com");
         assert_eq!(registrable_host("garbage"), "");
     }

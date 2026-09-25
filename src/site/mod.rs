@@ -99,7 +99,10 @@ impl Site {
     }
 
     pub fn guides(&self, base: &str) -> Rendered {
-        let json_ld = seo::dump(&serde_json::json!([seo::crumbs(base, &[(seo::SITE_NAME, "/"), ("教程", "/guides")])]));
+        let json_ld = seo::dump(&serde_json::json!([seo::crumbs(
+            base,
+            &[(seo::SITE_NAME, "/"), ("教程", "/guides")]
+        )]));
         let meta = Meta {
             title: "教程：抖音小红书图片实况保存、视频转 GIF 和实况照片 - 拾帧",
             description: "拾帧教程：小红书实况图保存到 iPhone、抖音图集原图下载、视频转实况照片、视频转 GIF、YouTube 1080p 下载，每篇两分钟照着做。",
@@ -121,7 +124,10 @@ impl Site {
             path: &guide.path,
             json_ld: seo::guide_ld(guide, base),
         };
-        let tool = self.content.page(&guide.tool).unwrap_or_else(|| self.content.home());
+        let tool = self
+            .content
+            .page(&guide.tool)
+            .unwrap_or_else(|| self.content.home());
         let ctx = context! {
             page => tool,
             guide => guide,
@@ -133,12 +139,29 @@ impl Site {
     }
 
     pub fn not_found(&self, path: &str, base: &str) -> Rendered {
-        let meta = Meta { title: "页面不存在 - 拾帧", description: "这一页不存在。", keywords: "", path, json_ld: String::new() };
-        self.render("404.html", &meta, base, context! { page => self.content.home() })
+        let meta = Meta {
+            title: "页面不存在 - 拾帧",
+            description: "这一页不存在。",
+            keywords: "",
+            path,
+            json_ld: String::new(),
+        };
+        self.render(
+            "404.html",
+            &meta,
+            base,
+            context! { page => self.content.home() },
+        )
     }
 
     pub fn stats(&self, token: &str, ranges: &[&str], base: &str) -> Rendered {
-        let meta = Meta { title: "使用统计 - 拾帧", description: "", keywords: "", path: "/stats", json_ld: String::new() };
+        let meta = Meta {
+            title: "使用统计 - 拾帧",
+            description: "",
+            keywords: "",
+            path: "/stats",
+            json_ld: String::new(),
+        };
         let ctx = context! { page => self.content.home(), ranges => ranges, token => token };
         self.render("stats.html", &meta, base, ctx)
     }
@@ -167,7 +190,11 @@ impl Site {
 ///
 /// minijinja 默认还会把 `/` 转成 `&#x2f;`，浏览器照样认，但 canonical 之类的地址
 /// 会和 Python 版的输出不一样，搜索引擎看到的页面平白变了。
-fn escape_like_jinja2(out: &mut minijinja::Output<'_>, state: &minijinja::State<'_, '_>, value: &Value) -> Result<(), minijinja::Error> {
+fn escape_like_jinja2(
+    out: &mut minijinja::Output<'_>,
+    state: &minijinja::State<'_, '_>,
+    value: &Value,
+) -> Result<(), minijinja::Error> {
     if value.is_safe() || state.auto_escape() == minijinja::AutoEscape::None {
         return minijinja::escape_formatter(out, state, value);
     }
@@ -183,14 +210,21 @@ fn escape_like_jinja2(out: &mut minijinja::Output<'_>, state: &minijinja::State<
             c => escaped.push(c),
         }
     }
-    out.write_str(&escaped).map_err(|e| minijinja::Error::new(minijinja::ErrorKind::WriteFailure, e.to_string()))
+    out.write_str(&escaped)
+        .map_err(|e| minijinja::Error::new(minijinja::ErrorKind::WriteFailure, e.to_string()))
 }
 
 const TEMPLATES: &[(&str, &str)] = &[
     ("base.html", include_str!("../../web/templates/base.html")),
-    ("_footer.html", include_str!("../../web/templates/_footer.html")),
+    (
+        "_footer.html",
+        include_str!("../../web/templates/_footer.html"),
+    ),
     ("index.html", include_str!("../../web/templates/index.html")),
-    ("guides.html", include_str!("../../web/templates/guides.html")),
+    (
+        "guides.html",
+        include_str!("../../web/templates/guides.html"),
+    ),
     ("guide.html", include_str!("../../web/templates/guide.html")),
     ("404.html", include_str!("../../web/templates/404.html")),
     ("stats.html", include_str!("../../web/templates/stats.html")),
@@ -198,19 +232,54 @@ const TEMPLATES: &[(&str, &str)] = &[
 
 /// 静态资源：(文件名, 内容, Content-Type)。新增文件在这里加一行。
 const STATIC: &[(&str, &[u8], &str)] = &[
-    ("fonts.css", include_bytes!("../../web/static/fonts.css"), "text/css; charset=utf-8"),
-    ("site.css", include_bytes!("../../web/static/site.css"), "text/css; charset=utf-8"),
-    ("og.png", include_bytes!("../../web/static/og.png"), "image/png"),
-    ("inter.woff2", include_bytes!("../../web/static/inter.woff2"), "font/woff2"),
-    ("jetbrains-mono.woff2", include_bytes!("../../web/static/jetbrains-mono.woff2"), "font/woff2"),
-    ("noto-serif-sc-700.woff2", include_bytes!("../../web/static/noto-serif-sc-700.woff2"), "font/woff2"),
-    ("noto-serif-sc-900.woff2", include_bytes!("../../web/static/noto-serif-sc-900.woff2"), "font/woff2"),
-    ("playfair-italic.woff2", include_bytes!("../../web/static/playfair-italic.woff2"), "font/woff2"),
+    (
+        "fonts.css",
+        include_bytes!("../../web/static/fonts.css"),
+        "text/css; charset=utf-8",
+    ),
+    (
+        "site.css",
+        include_bytes!("../../web/static/site.css"),
+        "text/css; charset=utf-8",
+    ),
+    (
+        "og.png",
+        include_bytes!("../../web/static/og.png"),
+        "image/png",
+    ),
+    (
+        "inter.woff2",
+        include_bytes!("../../web/static/inter.woff2"),
+        "font/woff2",
+    ),
+    (
+        "jetbrains-mono.woff2",
+        include_bytes!("../../web/static/jetbrains-mono.woff2"),
+        "font/woff2",
+    ),
+    (
+        "noto-serif-sc-700.woff2",
+        include_bytes!("../../web/static/noto-serif-sc-700.woff2"),
+        "font/woff2",
+    ),
+    (
+        "noto-serif-sc-900.woff2",
+        include_bytes!("../../web/static/noto-serif-sc-900.woff2"),
+        "font/woff2",
+    ),
+    (
+        "playfair-italic.woff2",
+        include_bytes!("../../web/static/playfair-italic.woff2"),
+        "font/woff2",
+    ),
 ];
 
 /// 取一个静态资源：(内容, Content-Type)。
 pub fn static_file(name: &str) -> Option<(&'static [u8], &'static str)> {
-    STATIC.iter().find(|(n, _, _)| *n == name).map(|(_, body, ctype)| (*body, *ctype))
+    STATIC
+        .iter()
+        .find(|(n, _, _)| *n == name)
+        .map(|(_, body, ctype)| (*body, *ctype))
 }
 
 /// 静态资源版本号（按内容哈希）：改了字体 / 样式浏览器不会用旧缓存。
@@ -239,8 +308,16 @@ mod tests {
         let s = site();
         for p in &s.content.pages {
             let html = s.landing(&p.slug, "https://x.com").unwrap().unwrap();
-            assert!(html.contains(&format!("<title>{}</title>", p.title)), "{}", p.slug);
-            assert!(html.contains("https://x.com/api/parse"), "代码示例里的接口地址: {}", p.slug);
+            assert!(
+                html.contains(&format!("<title>{}</title>", p.title)),
+                "{}",
+                p.slug
+            );
+            assert!(
+                html.contains("https://x.com/api/parse"),
+                "代码示例里的接口地址: {}",
+                p.slug
+            );
             assert!(!html.contains("&#x2f;"), "斜杠不转义，和 Jinja2 一致");
         }
         for g in &s.content.guides {
@@ -248,8 +325,14 @@ mod tests {
             assert!(html.contains(&g.h1));
         }
         assert!(s.guides("https://x.com").unwrap().contains("/guide/"));
-        assert!(s.not_found("/nope", "https://x.com").unwrap().contains("<html"));
-        assert!(s.stats("tok", &["24h", "7d"], "https://x.com").unwrap().contains("\"tok\""));
+        assert!(s
+            .not_found("/nope", "https://x.com")
+            .unwrap()
+            .contains("<html"));
+        assert!(s
+            .stats("tok", &["24h", "7d"], "https://x.com")
+            .unwrap()
+            .contains("\"tok\""));
         assert!(s.landing("nope", "https://x.com").is_none());
     }
 
@@ -262,7 +345,10 @@ mod tests {
 
     #[test]
     fn static_files_and_version() {
-        assert_eq!(static_file("site.css").unwrap().1, "text/css; charset=utf-8");
+        assert_eq!(
+            static_file("site.css").unwrap().1,
+            "text/css; charset=utf-8"
+        );
         assert!(static_file("../Cargo.toml").is_none());
         assert_eq!(asset_version().len(), 8);
     }

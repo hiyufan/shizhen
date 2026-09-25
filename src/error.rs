@@ -61,7 +61,11 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let mut resp = (self.status, Json(serde_json::json!({ "detail": self.detail }))).into_response();
+        let mut resp = (
+            self.status,
+            Json(serde_json::json!({ "detail": self.detail })),
+        )
+            .into_response();
         if let Some(wait) = self.retry_after {
             if let Ok(v) = HeaderValue::from_str(&wait.as_secs().max(1).to_string()) {
                 resp.headers_mut().insert(header::RETRY_AFTER, v);

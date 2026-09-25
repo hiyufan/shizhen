@@ -61,6 +61,9 @@ mod tests {
         forged.insert(5, 'x');
         assert!(MediaToken::decode(&forged, &s).is_none());
         assert!(MediaToken::decode(&enc, &Signer::new(b"other".to_vec())).is_none());
-        assert!(MediaToken::decode("bv*[height<=1080]+ba", &s).is_none(), "yt-dlp 表达式不是令牌");
+        assert!(
+            MediaToken::decode("bv*[height<=1080]+ba", &s).is_none(),
+            "yt-dlp 表达式不是令牌"
+        );
     }
 }

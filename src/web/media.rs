@@ -26,21 +26,37 @@ use crate::parse::MediaToken;
 use crate::store::{source_id_for, Source};
 
 /// 入队：先占这个 IP 的任务名额，名额随任务一起结束。
-fn start_job<F, Fut>(state: &Shared, ip: &str, kind: &'static str, source_id: Option<String>, task: F) -> ApiResult<Value>
+fn start_job<F, Fut>(
+    state: &Shared,
+    ip: &str,
+    kind: &'static str,
+    source_id: Option<String>,
+    task: F,
+) -> ApiResult<Value>
 where
     F: FnOnce(Progress) -> Fut + Send + 'static,
     Fut: Future<Output = TaskResult<JobOutput>> + Send + 'static,
 {
     let slot = state.limits.jobs.acquire(ip)?;
-    let spec = JobSpec { kind, source_id, owner: ip.to_owned() };
+    let spec = JobSpec {
+        kind,
+        source_id,
+        owner: ip.to_owned(),
+    };
     let job = state.jobs.start(spec, slot, task).map_err(|_| {
-        ApiError::unavailable("服务器正忙，排队的任务太多了，请稍后再试", std::time::Duration::from_secs(30))
+        ApiError::unavailable(
+            "服务器正忙，排队的任务太多了，请稍后再试",
+            std::time::Duration::from_secs(30),
+        )
     })?;
     Ok(json!(job.view()))
 }
 
 fn source_or_404(state: &Shared, id: &str) -> ApiResult<Source> {
-    state.store.get(id).ok_or_else(|| ApiError::not_found("原视频已过期，请重新解析"))
+    state
+        .store
+        .get(id)
+        .ok_or_else(|| ApiError::not_found("原视频已过期，请重新解析"))
 }
 
 async fn ensure_ours(state: &Shared, url: &str, sig: &str) -> ApiResult<()> {
@@ -82,7 +98,11 @@ enum Origin {
 }
 
 /// 把原视频缓存到服务端，供转换预览 / 裁剪使用。已缓存则立即返回。
-pub async fn prepare(State(state): State<Shared>, ClientIp(ip): ClientIp, Json(req): Json<PrepareRequest>) -> ApiResult<Json<Value>> {
+pub async fn prepare(
+    State(state): State<Shared>,
+    ClientIp(ip): ClientIp,
+    Json(req): Json<PrepareRequest>,
+) -> ApiResult<Json<Value>> {
     state.limits.job.hit(&ip)?;
     let (origin, sid) = prepare_origin(&state, &req).await?;
 
@@ -91,43 +111,72 @@ pub async fn prepare(State(state): State<Shared>, ClientIp(ip): ClientIp, Json(r
     }
     // 同一个来源已经有人在准备了（爆款链接常见），跟着等那个任务
     if let Some(pending) = state.jobs.find_pending("prepare", &sid) {
-        return Ok(Json(json!({ "ready": false, "job": pending.view(), "source_id": sid })));
+        return Ok(Json(
+            json!({ "ready": false, "job": pending.view(), "source_id": sid }),
+        ));
     }
 
     let st = Arc::clone(&state);
     let (id, title) = (sid.clone(), req.title);
-    let job = start_job(&state, &ip, "prepare", Some(sid.clone()), move |progress| async move {
-        let media = match origin {
-            Origin::Ready(m) => m,
-            Origin::Page(page) => media_for_page(&st, &page).await?,
-        };
-        tasks::fetch_source(&st.kit, &st.store, &progress, &id, &media, &title).await
-    })?;
-    Ok(Json(json!({ "ready": false, "job": job, "source_id": sid })))
+    let job = start_job(
+        &state,
+        &ip,
+        "prepare",
+        Some(sid.clone()),
+        move |progress| async move {
+            let media = match origin {
+                Origin::Ready(m) => m,
+                Origin::Page(page) => media_for_page(&st, &page).await?,
+            };
+            tasks::fetch_source(&st.kit, &st.store, &progress, &id, &media, &title).await
+        },
+    )?;
+    Ok(Json(
+        json!({ "ready": false, "job": job, "source_id": sid }),
+    ))
 }
 
 async fn prepare_origin(state: &Shared, req: &PrepareRequest) -> ApiResult<(Origin, String)> {
     if !req.format_spec.is_empty() {
-        let token = MediaToken::decode(&req.format_spec, &state.signer).ok_or_else(ApiError::not_ours)?;
+        let token =
+            MediaToken::decode(&req.format_spec, &state.signer).ok_or_else(ApiError::not_ours)?;
         let sid = source_id_for(&[&token.video, &token.audio]);
         return Ok((Origin::Ready(MediaSource::Tracks(token)), sid));
     }
     if !req.page_url.is_empty() {
         ensure_ours(state, &req.page_url, &req.sig).await?;
-        return Ok((Origin::Page(req.page_url.clone()), source_id_for(&[&req.page_url, "default"])));
+        return Ok((
+            Origin::Page(req.page_url.clone()),
+            source_id_for(&[&req.page_url, "default"]),
+        ));
     }
     if req.url.is_empty() {
         return Err(ApiError::bad_request("缺少视频地址"));
     }
     ensure_ours(state, &req.url, &req.sig).await?;
-    let headers = req.headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    Ok((Origin::Ready(MediaSource::from_url(req.url.clone(), headers)), source_id_for(&[&req.url])))
+    let headers = req
+        .headers
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    Ok((
+        Origin::Ready(MediaSource::from_url(req.url.clone(), headers)),
+        source_id_for(&[&req.url]),
+    ))
 }
 
 /// 页面地址 -> 适合转换的一条：高清分轨里挑不超过 1080p 的最高一档，没有就用直链。
 async fn media_for_page(state: &Shared, page: &str) -> TaskResult<MediaSource> {
-    let info = state.parse.info(page).await.map_err(|e| TaskError::new(e.to_string()))?;
-    let headers: Vec<(String, String)> = info.video_headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let info = state
+        .parse
+        .info(page)
+        .await
+        .map_err(|e| TaskError::new(e.to_string()))?;
+    let headers: Vec<(String, String)> = info
+        .video_headers
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     let short = |f: &alcedo::Format| f.height;
     let best = info
         .formats
@@ -136,7 +185,11 @@ async fn media_for_page(state: &Shared, page: &str) -> TaskResult<MediaSource> {
         // 同高度优先 H.264：转换时重编码更快，老设备也放得了
         .max_by_key(|f| (short(f), f.codec.is_empty()));
     if let Some(f) = best {
-        let token = MediaToken { video: f.video_url.clone(), audio: f.audio_url.clone(), headers };
+        let token = MediaToken {
+            video: f.video_url.clone(),
+            audio: f.audio_url.clone(),
+            headers,
+        };
         return Ok(MediaSource::Tracks(token));
     }
     if info.video_url.is_empty() {
@@ -148,10 +201,18 @@ async fn media_for_page(state: &Shared, page: &str) -> TaskResult<MediaSource> {
 // ------------------------------------------------------------------ 上传
 
 /// 本地视频也能转 GIF / 实况。
-pub async fn upload(State(state): State<Shared>, ClientIp(ip): ClientIp, mut form: Multipart) -> ApiResult<Json<Value>> {
+pub async fn upload(
+    State(state): State<Shared>,
+    ClientIp(ip): ClientIp,
+    mut form: Multipart,
+) -> ApiResult<Json<Value>> {
     state.limits.upload.hit(&ip)?;
     let field = loop {
-        match form.next_field().await.map_err(|_| ApiError::bad_request("上传中断了"))? {
+        match form
+            .next_field()
+            .await
+            .map_err(|_| ApiError::bad_request("上传中断了"))?
+        {
             Some(f) if f.name() == Some("file") => break f,
             Some(_) => continue,
             None => return Err(ApiError::bad_request("没有收到文件")),
@@ -172,7 +233,10 @@ pub async fn upload(State(state): State<Shared>, ClientIp(ip): ClientIp, mut for
     if !probe.is_video() {
         return Err(ApiError::bad_request("这个文件不是可识别的视频"));
     }
-    let title = original_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let title = original_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let source = Source {
         id: sid,
         path: dest.keep(),
@@ -187,22 +251,40 @@ pub async fn upload(State(state): State<Shared>, ClientIp(ip): ClientIp, mut for
     Ok(Json(json!({ "ready": true, "source": source.view() })))
 }
 
-async fn receive(mut field: axum::extract::multipart::Field<'_>, dest: &std::path::Path, max: u64) -> ApiResult<()> {
-    let mut file = tokio::fs::File::create(dest).await.map_err(|_| ApiError::internal("写文件失败"))?;
+async fn receive(
+    mut field: axum::extract::multipart::Field<'_>,
+    dest: &std::path::Path,
+    max: u64,
+) -> ApiResult<()> {
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(|_| ApiError::internal("写文件失败"))?;
     let mut size = 0u64;
-    while let Some(chunk) = field.chunk().await.map_err(|_| ApiError::bad_request("上传中断了"))? {
+    while let Some(chunk) = field
+        .chunk()
+        .await
+        .map_err(|_| ApiError::bad_request("上传中断了"))?
+    {
         size += chunk.len() as u64;
         if size > max {
             return Err(ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "文件太大"));
         }
-        file.write_all(&chunk).await.map_err(|_| ApiError::internal("写文件失败"))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|_| ApiError::internal("写文件失败"))?;
     }
-    file.flush().await.map_err(|_| ApiError::internal("写文件失败"))
+    file.flush()
+        .await
+        .map_err(|_| ApiError::internal("写文件失败"))
 }
 
 // ------------------------------------------------------------------ 原视频文件与缩略图条
 
-pub async fn source_file(State(state): State<Shared>, Path(id): Path<String>, req: Request) -> ApiResult<Response> {
+pub async fn source_file(
+    State(state): State<Shared>,
+    Path(id): Path<String>,
+    req: Request,
+) -> ApiResult<Response> {
     let src = source_or_404(&state, &id)?;
     Ok(send(&src.path, "video/mp4", None, req).await)
 }
@@ -217,11 +299,19 @@ fn default_frames() -> u32 {
     16
 }
 
-pub async fn source_strip(State(state): State<Shared>, Path(id): Path<String>, Query(q): Query<StripQuery>, req: Request) -> ApiResult<Response> {
+pub async fn source_strip(
+    State(state): State<Shared>,
+    Path(id): Path<String>,
+    Query(q): Query<StripQuery>,
+    req: Request,
+) -> ApiResult<Response> {
     let src = source_or_404(&state, &id)?;
     let path: PathBuf = tasks::make_strip(&state.kit, &state.store, &src, q.n).await?;
     let mut resp = send(&path, "image/jpeg", None, req).await;
-    resp.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));
+    resp.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=3600"),
+    );
     Ok(resp)
 }
 
@@ -285,7 +375,11 @@ impl ConvertRequest {
     }
 }
 
-pub async fn convert(State(state): State<Shared>, ClientIp(ip): ClientIp, Json(req): Json<ConvertRequest>) -> ApiResult<Json<Value>> {
+pub async fn convert(
+    State(state): State<Shared>,
+    ClientIp(ip): ClientIp,
+    Json(req): Json<ConvertRequest>,
+) -> ApiResult<Json<Value>> {
     state.limits.job.hit(&ip)?;
     let spec = req.spec()?;
     let src = source_or_404(&state, &req.source_id)?;
@@ -312,9 +406,14 @@ pub struct DownloadRequest {
 }
 
 /// 需要服务端合并的清晰度：先下载合并，再给文件。
-pub async fn download(State(state): State<Shared>, ClientIp(ip): ClientIp, Json(req): Json<DownloadRequest>) -> ApiResult<Json<Value>> {
+pub async fn download(
+    State(state): State<Shared>,
+    ClientIp(ip): ClientIp,
+    Json(req): Json<DownloadRequest>,
+) -> ApiResult<Json<Value>> {
     state.limits.job.hit(&ip)?;
-    let token = MediaToken::decode(&req.format_spec, &state.signer).ok_or_else(ApiError::not_ours)?;
+    let token =
+        MediaToken::decode(&req.format_spec, &state.signer).ok_or_else(ApiError::not_ours)?;
     let st = Arc::clone(&state);
     let job = start_job(&state, &ip, "download", None, move |progress| async move {
         tasks::download_for_user(&st.kit, &progress, &MediaSource::Tracks(token), &req.title).await
@@ -347,10 +446,16 @@ fn default_live_format() -> String {
     "livephoto".into()
 }
 
-pub async fn live(State(state): State<Shared>, ClientIp(ip): ClientIp, Json(req): Json<LiveRequest>) -> ApiResult<Json<Value>> {
+pub async fn live(
+    State(state): State<Shared>,
+    ClientIp(ip): ClientIp,
+    Json(req): Json<LiveRequest>,
+) -> ApiResult<Json<Value>> {
     state.limits.job.hit(&ip)?;
     if req.items.is_empty() || req.items.len() > LIVE_MAX_ITEMS {
-        return Err(ApiError::bad_request(format!("一次打包 1 到 {LIVE_MAX_ITEMS} 张")));
+        return Err(ApiError::bad_request(format!(
+            "一次打包 1 到 {LIVE_MAX_ITEMS} 张"
+        )));
     }
     let fmt = match req.format.as_str() {
         "livephoto" => LiveFormat::LivePhoto,
@@ -364,7 +469,10 @@ pub async fn live(State(state): State<Shared>, ClientIp(ip): ClientIp, Json(req)
     let items: Vec<LiveItem> = req
         .items
         .into_iter()
-        .map(|i| LiveItem { image_url: i.image_url, video_url: i.video_url })
+        .map(|i| LiveItem {
+            image_url: i.image_url,
+            video_url: i.video_url,
+        })
         .collect();
     let st = Arc::clone(&state);
     let job = start_job(&state, &ip, "live", None, move |progress| async move {
