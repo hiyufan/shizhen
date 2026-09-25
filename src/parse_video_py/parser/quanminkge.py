@@ -1,7 +1,6 @@
 import json
 import re
 
-import fake_useragent
 
 from parse_video_py.utils import create_async_client, get_val_from_url_by_query_key
 
@@ -21,7 +20,7 @@ class QuanMinKGe(BaseParser):
         req_url = f"https://kg.qq.com/node/play?s={video_id}"
         async with create_async_client() as client:
             headers = {
-                "User-Agent": fake_useragent.UserAgent(os="windows").random,
+                "User-Agent": self.ua("windows"),
             }
             response = await client.get(req_url, headers=headers)
             response.raise_for_status()

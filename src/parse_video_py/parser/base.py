@@ -142,29 +142,37 @@ class VideoInfo:
     video_headers: Dict[str, str] = dataclasses.field(default_factory=dict)
 
 
-_ua_pool: fake_useragent.UserAgent | None = None
+_ua_pools: Dict[str, fake_useragent.UserAgent] = {}
+
+# fake_useragent 2.x 的系统名区分大小写。写成 "android" / "windows" 不报错，
+# 只是悄悄退回一个固定的 Windows Chrome UA（日志里一行 "suppressed with fallback"）——
+# 西瓜走手机页、本意是安卓 UA，实际一直发的是电脑 UA
+_OS_NAMES = {"ios": "iOS", "android": "Android", "windows": "Windows", "linux": "Linux", "mac os x": "Mac OS X"}
 
 
-def _random_ua() -> str:
+def _random_ua(os: str = "iOS") -> str:
     # UserAgent() 每构造一次要 40ms（读数据集），.random 取值只要 3ms。
-    # 池子本身是只读的，进程内留一个就够。
-    global _ua_pool
-    if _ua_pool is None:
-        _ua_pool = fake_useragent.UserAgent(os="iOS")
-    return _ua_pool.random
+    # 池子本身是只读的，每种系统进程内留一个就够。
+    os = _OS_NAMES.get(os.lower(), os)
+    pool = _ua_pools.get(os)
+    if pool is None:
+        pool = _ua_pools[os] = fake_useragent.UserAgent(os=os)
+    return pool.random
 
 
 class BaseParser(ABC):
-    _ua: str = ""
-
-    def get_default_headers(self) -> Dict[str, str]:
+    def ua(self, os: str = "iOS") -> str:
         # 一次解析要发好几个请求（短链跳转、接口、页面），每个都换 UA 的话，
         # 在平台看来就是同一个 IP 上一串对不上号的客户端——本来就是风控信号，
         # 也让 cookie 握手那类要求会话一致的流程不可能成立。
         # 解析器每次解析都是新实例，所以这里按实例缓存 = 每次解析换一个 UA。
-        if not self._ua:
-            self._ua = _random_ua()
-        return {"User-Agent": self._ua}
+        cache = self.__dict__.setdefault("_uas", {})
+        if os not in cache:
+            cache[os] = _random_ua(os)
+        return cache[os]
+
+    def get_default_headers(self) -> Dict[str, str]:
+        return {"User-Agent": self.ua()}
 
     @abstractmethod
     async def parse_share_url(self, share_url: str) -> VideoInfo:
