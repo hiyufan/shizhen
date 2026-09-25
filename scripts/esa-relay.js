@@ -4,6 +4,7 @@
  * 一个文件两个用途：
  *   /probe?xhs=<小红书分享链接>   探测：这个边缘节点的出口 IP、B站 API 状态、小红书页面是否有笔记数据
  *   /relay?url=<目标地址>          中继：拾帧把国内平台的解析请求发到这里，由边缘节点代为访问
+ *   /img?url=&e=&s=                图片：浏览器直接从国内边缘节点取国内平台的图（拾帧设 PARSE_VIDEO_EDGE_IMG=1 才会用）
  *
  * 部署（边缘函数）：ESA 控制台 → 边缘函数 → 新建 → 把本文件贴进去 → 改 TOKEN → 发布，绑定一个域名或用默认地址。
  * 部署（边缘 Pages）：把本文件放到项目的 functions/[[path]].js，把末尾的 export default 换成
@@ -33,6 +34,7 @@ export default {
 async function handle(request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith("/relay")) return relay(request, url);
+  if (url.pathname.endsWith("/img")) return img(url);
   // 其它路径（含根路径）都当探测用，直接打开函数地址就能看结果
   return probe(url);
 }
@@ -77,6 +79,59 @@ async function relay(request, url) {
       "x-relay-headers": b64e(JSON.stringify(pairs)),
     },
   });
+}
+
+// /img?url=&e=&s=  浏览器直接从这里取国内平台的图片，不用绕海外服务器跨两次太平洋。
+// 只接受拾帧签过名、没过期的地址，只转白名单里的图片 CDN，只回 image/*，免得被当成通用代理 / 视频带宽。
+// 白名单和服务器端 convert/relay.py 的 _EDGE_IMG_HOSTS 保持一致
+const IMG_REFERERS = [
+  ["xhscdn.com", "https://www.xiaohongshu.com/"],
+  ["xiaohongshu.com", "https://www.xiaohongshu.com/"],
+  ["douyinpic.com", "https://www.douyin.com/"],
+  ["yximgs.com", "https://www.kuaishou.com/"],
+  ["hdslb.com", "https://www.bilibili.com/"],
+  ["sinaimg.cn", "https://weibo.com/"],
+];
+
+const imgReferer = (host) => (IMG_REFERERS.find(([s]) => host === s || host.endsWith("." + s)) || [])[1];
+
+async function hmacHex(message) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(TOKEN), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+  return Array.from(mac, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function sameString(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function img(url) {
+  const target = url.searchParams.get("url") || "";
+  const exp = Number(url.searchParams.get("e") || 0);
+  const sig = url.searchParams.get("s") || "";
+  if (!(exp > Date.now() / 1000)) return new Response("expired", { status: 403 });
+  if (!sameString((await hmacHex(`img\n${exp}\n${target}`)).slice(0, 32), sig)) return new Response("forbidden", { status: 403 });
+  let ref;
+  try { ref = imgReferer(new URL(target).hostname); } catch (e) {}
+  if (!ref || !/^https?:\/\//i.test(target)) return new Response("bad url", { status: 400 });
+
+  let resp;
+  try {
+    resp = await fetch(target, { headers: { "User-Agent": UA, Referer: ref, Accept: "image/avif,image/webp,image/*,*/*;q=0.8" } });
+  } catch (e) {
+    return new Response("fetch failed", { status: 502 });
+  }
+  const ctype = resp.headers.get("content-type") || "";
+  // 跳转之后也得还在白名单里
+  let finalOk = true;
+  try { finalOk = !resp.url || !!imgReferer(new URL(resp.url).hostname); } catch (e) {}
+  if (!resp.ok || !ctype.startsWith("image/") || !finalOk) return new Response("upstream " + resp.status, { status: 502 });
+  const headers = { "content-type": ctype, "cache-control": "public, max-age=86400", "x-content-type-options": "nosniff" };
+  if (resp.headers.get("content-length")) headers["content-length"] = resp.headers.get("content-length");
+  return new Response(resp.body, { headers });
 }
 
 async function probe(url) {

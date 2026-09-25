@@ -86,7 +86,8 @@ async def _lifespan(_: FastAPI):
 app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 _CSP = (
-    "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
+    "default-src 'self'; img-src 'self' data: blob:" + (" " + relay.edge_origin() if relay.edge_img_enabled() else "")
+    + "; media-src 'self' blob:; "
     "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self'; "
     "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 )
@@ -452,6 +453,11 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
         urls |= {i.get("url") for i in data["images"]} | {i.get("live_photo_url") for i in data["images"]}
         urls |= {f.get("url") for f in data["formats"]}
         data["sig"] = {u: net.sign(u) for u in urls if u}
+        if relay.edge_img_enabled():
+            # 结果会被缓存 PARSE_CACHE_SECONDS, 边缘签名要比缓存活得久
+            ttl = cconfig.PARSE_CACHE_SECONDS + 3600
+            imgs = {data.get("cover_url")} | {i.get("url") for i in data["images"]}
+            data["edge"] = {u: e for u in imgs if u and (e := relay.edge_img_url(u, ttl))}
         result = {"code": 200, "msg": "解析成功", "data": data}
     stats.record("parse", _ip, source=(result.get("data") or {}).get("source") or platform,
                  ok=result["code"] == 200, reason=result.get("reason", ""), ms=(time.monotonic() - t0) * 1000)
