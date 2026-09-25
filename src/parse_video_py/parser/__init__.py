@@ -174,8 +174,10 @@ video_source_info_mapping = {
 }
 
 
-# 这些站点上游只给低清直链, 同时让 yt-dlp 列出高清档位 (需要服务端合并下载)
-_ENRICH_WITH_YTDLP = {VideoSource.BiliBili}
+# 这些站点原生解析失败时退回 yt-dlp（B 站开始强制 WBI 签名、海外出口 412 之类）。
+# 以前是每次都和 yt-dlp 同时跑、等它列出高清档位，整次解析被拖到 ~1100ms；
+# 现在原生解析器自己从 DASH 接口拿档位，yt-dlp 只在失败时才上。
+_FALLBACK_TO_YTDLP = {VideoSource.BiliBili}
 
 
 async def _ytdlp_extra(share_url: str):
@@ -189,20 +191,6 @@ async def _ytdlp_extra(share_url: str):
         return await asyncio.wait_for(YtDlp().parse_share_url(share_url), 25)
     except Exception:
         return None
-
-
-def _merge_ytdlp(video_info: VideoInfo, extra, share_url: str) -> None:
-    if extra is None:
-        return
-    base_height = video_info.height or 480
-    video_info.formats = [f for f in extra.formats if f.height > base_height or f.height == 0] + [
-        f for f in video_info.formats if f.url
-    ]
-    video_info.duration = video_info.duration or extra.duration
-    if not video_info.video_url and extra.video_url:
-        video_info.video_url, video_info.video_headers = extra.video_url, extra.video_headers
-        video_info.width, video_info.height = extra.width, extra.height
-    video_info.page_url = extra.page_url or share_url
 
 
 def detect_source(share_url: str) -> VideoSource:
@@ -228,20 +216,18 @@ async def parse_video_share_url(share_url: str) -> VideoInfo:
     _obj = url_parser()
     token = current_source.set(source.value)
     try:
-        if source in _ENRICH_WITH_YTDLP:
-            # 两边同时跑, 总耗时取最慢的那个
-            extra_task = asyncio.create_task(_ytdlp_extra(share_url))
+        if source in _FALLBACK_TO_YTDLP:
             try:
                 video_info = await _obj.parse_share_url(share_url)
             except Exception as exc:  # noqa: BLE001
-                # 上游解析器被风控（海外 IP 常见 412）时, yt-dlp 的结果照样能用
-                extra = await extra_task
+                # 内容删了 / 链接不对：换 yt-dlp 也是一样的结果，别让用户多等几秒
+                if classify(exc).reason in ("deleted", "unsupported"):
+                    raise
+                extra = await _ytdlp_extra(share_url)
                 if extra is None or not (extra.formats or extra.video_url):
                     raise
                 video_info = extra
                 video_info.source = source.value
-            else:
-                _merge_ytdlp(video_info, await extra_task, share_url)
         else:
             video_info = await _obj.parse_share_url(share_url)
     except Exception as exc:  # noqa: BLE001 - 统一归类
