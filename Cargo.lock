@@ -20,7 +20,7 @@ dependencies = [
 [[package]]
 name = "alcedo"
 version = "0.1.0"
-source = "git+https://github.com/hiyufan/alcedo?rev=50182b2#50182b247200a9af9b9d7fd483a8ae4cff2003c8"
+source = "git+https://github.com/hiyufan/alcedo?rev=a6e7c11#a6e7c1148f7903ada011453404dd4b589a2a22a6"
 dependencies = [
  "base64 0.22.1",
  "bytes",

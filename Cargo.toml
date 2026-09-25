@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 # 解析全部交给 alcedo，这里不保留任何平台解析器。锁定到具体提交，升级是一次显式改动
-alcedo = { git = "https://github.com/hiyufan/alcedo", rev = "50182b2" }
+alcedo = { git = "https://github.com/hiyufan/alcedo", rev = "a6e7c11" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process", "signal", "sync", "time", "net"] }
 tokio-util = { version = "0.7", features = ["io"] }
