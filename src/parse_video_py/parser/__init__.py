@@ -119,7 +119,8 @@ video_source_info_mapping = {
         "parser": WeiShi,
     },
     VideoSource.XiGua: {
-        "domain_list": ["v.ixigua.com", "www.ixigua.com"],
+        # m.ixigua.com/video/<id> 是手机网页版链接，以前没列进来，会被当成未知站点交给 yt-dlp
+        "domain_list": ["v.ixigua.com", "www.ixigua.com", "m.ixigua.com"],
         "parser": XiGua,
     },
     VideoSource.XinPianChang: {

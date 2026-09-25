@@ -259,14 +259,14 @@ class DouYin(BaseParser):
         if not location:
             return ""
 
-        # 抖音的分享链接有时会跳到西瓜视频。这里拿不到 aweme_id，交给上层报错，
-        # 但要自己说清楚原因：以前返回空字符串，上层统一抛 "Failed to parse
-        # video ID"，被 classify 的 deleted 规则收走，对用户谎称"内容已被删除"。
-        # 站点本身是支持西瓜视频的，引导用户直接贴西瓜链接即可。
-        if "ixigua.com" in location:
-            raise ParseError("unsupported", "这条分享链接跳转到了西瓜视频，直接粘贴西瓜视频的链接就能解析")
-
-        return self._parse_video_id_from_path(location)
+        # 抖音的分享链接有时会跳到西瓜视频。西瓜已并入抖音，作品 ID 就是 aweme_id，
+        # 路径里的数字照取、照常走 slidesinfo 即可（见 xigua.py）。取不到数字时
+        # 要自己说清楚原因：返回空的话上层统一抛 "Failed to parse video ID"，
+        # 会被 classify 的 deleted 规则收走，对用户谎称"内容已被删除"。
+        video_id = self._parse_video_id_from_path(location)
+        if not video_id and "ixigua.com" in location:
+            raise ParseError("unsupported", "这条分享链接跳转到了西瓜视频的非作品页")
+        return video_id
 
     def _parse_video_id_from_path(self, url_path: str) -> str:
         """从URL路径中解析视频ID"""
