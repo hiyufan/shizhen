@@ -1,6 +1,5 @@
 from urllib.parse import urlparse
 
-import fake_useragent
 
 from ..utils import create_async_client
 from .base import BaseParser, VideoInfo
@@ -26,7 +25,7 @@ class PiPiGaoXiao(BaseParser):
             headers = {
                 "Referer": req_url,
                 "Content-Type": "text/plain;charset=UTF-8",
-                "User-Agent": fake_useragent.UserAgent(os=["windows"]).random,
+                "User-Agent": self.ua("windows"),
             }
             # pid需要是数字，这里直接拼接json字符串，不用json.dumps
             post_content = '{"pid":' + video_id + ',"type":"post","mid":null}'

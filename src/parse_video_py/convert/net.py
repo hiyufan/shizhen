@@ -1,6 +1,7 @@
 """代理 / 下载时的请求头、SSRF 防护和链接签名。"""
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import hmac
@@ -76,50 +77,78 @@ def _ip_is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
             or (isinstance(ip, ipaddress.IPv6Address) and ip.is_site_local))
 
 
+def _check_without_dns(url: str) -> tuple[bool | None, str]:
+    """不查 DNS 就能下结论的直接给结论; 否则返回 (None, 要查的域名)。"""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False, ""
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False, ""
+    host = parsed.hostname.lower()
+    if host == "localhost" or host.endswith((".local", ".internal", ".localhost", ".arpa")):
+        return False, host
+    try:
+        return not _ip_is_internal(ipaddress.ip_address(host)), host
+    except ValueError:
+        pass  # 普通域名
+    if not _DNS_CHECK:
+        return True, host
+    return _dns_cached(host), host
+
+
 def is_safe_url(url: str) -> bool:
     """只放行公网 http(s)。
 
     字面 IP 直接判; 域名解析一次, 解析到内网 / 云元数据地址 (169.254.169.254) 的也拒绝,
     防止用自定义域名或 nip.io 这类服务把代理引到内网。
+
+    同步版本会在调用线程里查 DNS; 事件循环里请用 is_safe_url_async。
     """
+    verdict, host = _check_without_dns(url)
+    if verdict is not None:
+        return verdict
     try:
-        parsed = urlparse(url)
-    except ValueError:
-        return False
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        return False
-    host = parsed.hostname.lower()
-    if host == "localhost" or host.endswith((".local", ".internal", ".localhost", ".arpa")):
-        return False
-    try:
-        return not _ip_is_internal(ipaddress.ip_address(host))
-    except ValueError:
-        pass  # 普通域名
-    if not _DNS_CHECK:
-        return True
-    return _host_resolves_public(host)
+        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        infos = []
+    return _dns_store(host, infos)
 
 
-# 解析结果缓存: getaddrinfo 是同步的, 直接跑在事件循环上, 实测 13-200ms 一次。
-# 同一个平台域名一次解析里要查好几遍, 缓存一下省掉重复开销。
+async def is_safe_url_async(url: str) -> bool:
+    """同 is_safe_url, 但 DNS 查询放到线程池里。
+
+    getaddrinfo 是同步的, 直接在事件循环上调一次 13-200ms, 这期间所有正在转发的
+    视频流、其他人的解析全都停住。站点流量小, 缓存经常是凉的, 这个停顿很常见。
+    """
+    verdict, host = _check_without_dns(url)
+    if verdict is not None:
+        return verdict
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        infos = []
+    return _dns_store(host, infos)
+
+
+# 解析结果缓存: 同一个平台域名一次解析里要查好几遍, 缓存一下省掉重复开销。
 # 注意这里必须查 AF_UNSPEC: 只查 A 记录会漏掉 AAAA 指向内网的情况, 那是 SSRF 的口子。
 _DNS_TTL = float(os.environ.get("PARSE_VIDEO_DNS_TTL", 300))
 _dns_cache: dict[str, tuple[float, bool]] = {}
 
 
-def _host_resolves_public(host: str) -> bool:
-    now = time.time()
+def _dns_cached(host: str) -> bool | None:
     hit = _dns_cache.get(host)
-    if hit and now - hit[0] < _DNS_TTL:
+    if hit and time.time() - hit[0] < _DNS_TTL:
         return hit[1]
-    try:
-        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
-        ok = bool(infos) and not any(_ip_is_internal(ipaddress.ip_address(i[4][0])) for i in infos)
-    except socket.gaierror:
-        ok = False
+    return None
+
+
+def _dns_store(host: str, infos: list) -> bool:
+    ok = bool(infos) and not any(_ip_is_internal(ipaddress.ip_address(i[4][0])) for i in infos)
     if len(_dns_cache) > 2048:
         _dns_cache.clear()
-    _dns_cache[host] = (now, ok)
+    _dns_cache[host] = (time.time(), ok)
     return ok
 
 
@@ -129,7 +158,7 @@ class UnsafeURL(httpx.RequestError):
 
 async def _ssrf_request_hook(request: httpx.Request) -> None:
     """挂在 httpx 上, 每一跳 (含 302 之后) 都检查, 外网地址跳到内网也拦得住。"""
-    if not is_safe_url(str(request.url)):
+    if not await is_safe_url_async(str(request.url)):
         raise UnsafeURL(f"blocked: {request.url.host}", request=request)
 
 
