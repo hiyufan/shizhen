@@ -1,4 +1,4 @@
-"""重新生成 Noto Serif SC 子集：改了站内文案（模板 / seo.py / guides.py）后跑一次。
+"""重新生成 Noto Serif SC 子集：改了站内文案（web/templates / content/*.toml）后跑一次；这是开发用工具，线上服务不依赖 Python。
 
 需要 Noto Serif CJK SC 的 Bold / Black OTF（https://github.com/notofonts/noto-cjk/tree/main/Serif/OTF/SimplifiedChinese）
 放在 fonts/ 目录或用 --src 指定。
@@ -12,14 +12,14 @@ import subprocess
 import sys
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-PKG = os.path.join(ROOT, "src", "parse_video_py")
+PKG = os.path.join(ROOT, "web")
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--src", default=os.path.join(ROOT, "fonts"), help="存放 NotoSerifCJKsc-Bold.otf / -Black.otf 的目录")
 args = ap.parse_args()
 
 text = ""
-for f in glob.glob(os.path.join(PKG, "templates", "*.html")) + [os.path.join(PKG, "seo.py"), os.path.join(PKG, "guides.py")]:
+for f in glob.glob(os.path.join(PKG, "templates", "*.html")) + glob.glob(os.path.join(ROOT, "content", "*.toml")):
     text += open(f, encoding="utf-8").read()
 chars = {ch for ch in text if ord(ch) > 0x2000}
 chars |= set("0123456789+-–—·…（）()[]{}“”‘’、。，：；！？%×") | {chr(c) for c in range(0x20, 0x7F)}

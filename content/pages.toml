@@ -1,0 +1,227 @@
+# 落地页。slug 为空的是首页。改文案直接改这里，重新编译即可。
+updated = "2026-09-20"
+
+[common_faq]
+links = { q = "支持哪些链接？", a = "抖音、小红书、快手、微博、B站、西瓜、皮皮虾、AcFun 等国内平台，以及 YouTube、X（Twitter）、TikTok、Instagram 等国外平台。直接粘贴 App 里\"复制链接\"得到的整段文字即可，不用手动摘出网址。" }
+watermark = { q = "视频有水印吗？图片是原图吗？", a = "视频取的是平台无水印的播放地址；小红书图片会换成原图分辨率，抖音图集取的是不带水印的 JPEG 原始尺寸。个别平台只提供 720p 的无水印版本。" }
+iphone = { q = "实况照片怎么导入 iPhone？", a = "下载得到的 zip 里是一对 JPG + MOV，两者写入了相同的 Apple 内容标识。把它们传到手机后，用任意支持\"图片 + 视频合成实况\"的 App 或快捷指令导入相册即可。网页本身无法直接写入 iOS 相册。" }
+android = { q = "安卓动态照片怎么用？", a = "下载的 MVIMG_xxx.jpg 直接保存到手机相册，Google 相册、三星、小米、OPPO、vivo 等相册会识别为动态照片，长按即可播放。" }
+gifsize = { q = "GIF 太大怎么办？", a = "GIF 的体积主要由宽度 × 帧率 × 时长决定。480 像素宽、12 帧、10 秒大约 10 MB；改成 360 像素宽、10 帧、5 秒就只有 2–3 MB。" }
+ratelimit = { q = "提示\"请求太频繁\"？", a = "为了让服务对所有人可用，每个 IP 每分钟的解析次数和同时进行的转换任务数有限制。等一会儿再试就好。" }
+free = { q = "需要注册或付费吗？", a = "不需要。所有功能免费，不用登录，也不会保存你粘贴的链接和下载的文件（临时文件一小时内自动清理）。" }
+
+[[page]]
+slug = ""
+title = "拾帧 - 抖音小红书视频图片提取，在线转 GIF 和实况照片"
+description = "粘贴抖音、小红书、快手、YouTube、X 的分享链接，免费提取无水印视频和原图，一键做成 GIF、iPhone 实况照片或安卓动态照片。不用登录。"
+h1 = "把链接变成 <em>GIF</em>、<br>实况与原图。"
+lead = "抖音、小红书、快手、YouTube、X 里复制的整段分享文字直接贴进来就行。视频没有水印，图片是原图。"
+keywords = "视频提取,图片提取,去水印,视频转GIF,视频转实况照片,抖音,小红书,快手,YouTube,推特"
+placeholder = "粘贴分享链接…"
+nav_label = "首页"
+common = ["links", "watermark", "iphone", "android", "gifsize", "ratelimit", "free"]
+guides = ["xiaohongshu-live-photo-iphone", "video-to-gif", "video-to-live-photo"]
+
+[[page]]
+slug = "douyin"
+title = "抖音去水印下载_图集原图_实况图提取 - 拾帧"
+description = "在线解析抖音分享链接：无水印视频（含 H.265 高清档）、图集无水印原图、实况图打包成 iPhone 实况或安卓动态照片、背景音乐。免费不用登录。"
+h1 = "抖音去水印，<br>图集与实况一键拿走。"
+lead = "打开抖音，点分享 → 复制链接，把整段文字贴进来。视频无水印，图集是无水印原图，实况图可以直接打包成 iPhone 实况。"
+keywords = "抖音去水印,抖音视频下载,抖音图集下载,抖音实况图保存,抖音背景音乐提取,抖音无水印解析"
+placeholder = "粘贴抖音分享链接，如 https://v.douyin.com/xxxx/"
+nav_label = "抖音去水印"
+common = ["watermark", "iphone", "free"]
+guides = ["douyin-no-watermark", "douyin-image-post-original", "video-to-gif"]
+[[page.faq]]
+q = "抖音实况图能保存吗？"
+a = "能。图集里带实况的图片会标出来，点\"iPhone 实况\"打包成配对好的 JPG + MOV，点\"安卓动态照片\"得到内嵌视频的 JPG，多张实况一次打包。"
+[[page.faq]]
+q = "为什么有的抖音视频只有 720p？"
+a = "抖音网页端只对部分视频提供 1080p。有更高清晰度或 H.265 版本时，\"其他清晰度\"菜单里会列出来。"
+[[page.body]]
+title = "抖音链接能拿到什么"
+html = "视频帖子：无水印 MP4（H.264，浏览器可直接播放），有更高档位时列出 H.265 版本和文件大小，另有背景音乐 MP3。图集帖子：每张图的无水印原始尺寸 JPEG，不是 App 里带用户名水印的那份；带实况的图片连同 2–3 秒的短视频一起，可打包成 iPhone 实况照片或安卓动态照片。"
+[[page.body]]
+title = "三步操作"
+html = "在抖音 App 里点分享 → 复制链接；把整段文字贴进上面的输入框（网址会自动识别）；点解析，选择要保存的内容。整个过程不需要登录抖音，也不需要安装任何软件。"
+[[page.body]]
+title = "哪些链接不行"
+html = "直播间、私密作品、仅好友可见的作品，平台不会返回数据，会提示\"已删除或设为私密\"。个人主页链接不支持，只解析单个作品。"
+
+[[page]]
+slug = "xiaohongshu"
+title = "小红书图片原图下载_视频去水印_实况图保存 - 拾帧"
+description = "粘贴小红书分享链接，取出笔记原图（原始分辨率）、无水印视频和实况图。实况图可打包成 iPhone 实况照片或安卓动态照片。免费不用登录。"
+h1 = "小红书原图、视频与实况，<br>整篇取出来。"
+lead = "小红书 App 里点分享 → 复制链接，贴进来就行。图片是原始分辨率，视频无水印，实况图直接打包。"
+keywords = "小红书图片下载,小红书原图,小红书视频去水印,小红书实况图保存,小红书笔记图片提取,xhslink 解析"
+placeholder = "粘贴小红书分享链接，如 http://xhslink.com/xxxx"
+nav_label = "小红书图片下载"
+common = ["watermark", "iphone", "links"]
+guides = ["xiaohongshu-live-photo-iphone", "xiaohongshu-link-expired", "video-to-live-photo"]
+[[page.faq]]
+q = "小红书链接提示已过期？"
+a = "小红书分享链接里带一个有时效的 token，过期后平台会拒绝访问。回到 App 重新复制一次链接即可。"
+[[page.faq]]
+q = "小红书原图是什么格式？"
+a = "小红书存的原始文件是 HEIC，浏览器打不开，所以这里给的是原始分辨率的 JPEG（质量 90），比 App 里长按保存的更清晰。"
+[[page.body]]
+title = "小红书笔记能拿到什么"
+html = "图文笔记：每张图按原始分辨率取（常见 1920×2560），比 App 长按保存的 1080 宽版本更清晰；带实况的图片会标出来，可以整篇打包成 iPhone 实况或安卓动态照片。视频笔记：无水印 MP4，多档清晰度时选最高的。"
+[[page.body]]
+title = "链接必须是新鲜的"
+html = "小红书的分享链接带一个几小时内有效的 xsec_token，过期就打不开。请在 App 里现复制现贴，不要用几天前保存的链接。xhslink.com 短链和网页版分享出来的长链接都可以。"
+[[page.body]]
+title = "和 App 内保存的区别"
+html = "App 内长按保存的是压缩后的 1080 宽图片，实况图只剩静态一帧。通过链接解析拿到的是平台存储的原始尺寸，实况图连视频一起。"
+
+[[page]]
+slug = "kuaishou"
+title = "快手视频去水印下载_图集提取 - 拾帧"
+description = "粘贴快手分享链接，在线下载无水印视频和图集原图，可截一段转 GIF 或实况照片。免费不用登录。"
+h1 = "快手去水印，<br>视频图集直接存。"
+lead = "快手 App 里点分享 → 复制链接，把整段文字贴进来。"
+keywords = "快手去水印,快手视频下载,快手图集下载,快手无水印解析"
+placeholder = "粘贴快手分享链接，如 https://v.kuaishou.com/xxxx"
+nav_label = "快手去水印"
+common = ["watermark", "links", "free"]
+guides = ["video-to-gif", "video-to-live-photo"]
+[[page.faq]]
+q = "快手长视频能解析吗？"
+a = "能。快手的短视频、长视频和图集用的是同一套分享链接，贴进来都能认，不用区分类型。"
+[[page.faq]]
+q = "为什么有的快手作品打不开？"
+a = "私密作品、已删除的作品和直播回放拿不到数据。另外快手的分享链接有时效，隔太久再用可能已经失效，回 App 重新复制一次就好。"
+[[page.body]]
+title = "快手链接能拿到什么"
+html = "视频作品：无水印 MP4，不带右下角的用户号水印。图集作品：每张图按原始尺寸列出来，可以逐张保存。解析完还能直接截一段做 GIF 或实况照片。"
+[[page.body]]
+title = "怎么复制链接"
+html = "在快手 App 里点右侧的分享按钮 → 复制链接，会得到 v.kuaishou.com 开头的短链，整段文字贴进输入框即可，不用手动摘出网址。网页版 kuaishou.com 的长链接同样支持。"
+[[page.body]]
+title = "和 App 内保存的区别"
+html = "快手 App 里保存的视频右下角带用户号水印，图集只能一张张长按。通过链接解析拿到的是无水印的原始文件，图集一次列全，逐张保存。"
+
+[[page]]
+slug = "youtube"
+title = "YouTube 视频下载_1080p 4K_仅音频 - 拾帧"
+description = "粘贴 YouTube 链接，在线下载 1080p、1440p、4K 视频或仅音频 m4a，还能截一段做 GIF 或实况照片。免费不用登录。"
+h1 = "<em>YouTube</em> 下载，<br>1080p 到 4K 都能选。"
+lead = "把 YouTube 视频链接贴进来，清晰度列表里选一个，服务器合并音视频后给你一个完整的 MP4。"
+keywords = "YouTube视频下载,油管下载,YouTube转MP4,YouTube转MP3,YouTube 1080p下载"
+placeholder = "粘贴 YouTube 链接，如 https://youtu.be/xxxx"
+nav_label = "YouTube 下载"
+common = ["free", "ratelimit", "gifsize"]
+guides = ["youtube-1080p-download", "video-to-gif"]
+[[page.faq]]
+q = "YouTube 高清下载为什么要等一会儿？"
+a = "1080p 以上 YouTube 把画面和声音分开存，服务器要分别下载再合并，视频越长等得越久。360p / 720p 的合一版本可以直接播放和保存。"
+[[page.body]]
+title = "YouTube 链接能拿到什么"
+html = "360p 的合一版本可以直接播放和保存；720p、1080p、1440p、4K 由服务器下载并合并音视频后提供完整 MP4；「仅音频」给原始 m4a 音轨。清晰度菜单里会显示每档的预估大小。"
+[[page.body]]
+title = "等待时间"
+html = "高清档位需要服务器先下载再合并，10 分钟的 1080p 视频通常在一分钟内完成，4K 长视频可能要几分钟。页面上有进度条，完成后点保存即可。"
+
+[[page]]
+slug = "x"
+title = "X (Twitter) 视频下载_推文图片原图 - 拾帧"
+description = "粘贴 X / Twitter 推文链接，在线下载推文里的视频（最高码率）和图片原图，可转 GIF 或实况照片。免费不用登录。"
+h1 = "<em>X</em> 推文里的视频与图片，<br>直接保存。"
+lead = "复制推文链接（x.com 或 twitter.com 都行）贴进来。视频取最高码率的 MP4，图片是原图。"
+keywords = "推特视频下载,Twitter视频下载,X视频下载,推特图片原图,twitter gif 下载"
+placeholder = "粘贴推文链接，如 https://x.com/user/status/xxxx"
+nav_label = "X 视频下载"
+common = ["watermark", "links", "free"]
+guides = ["video-to-gif"]
+[[page.faq]]
+q = "推文里的 GIF 下载下来为什么是 MP4？"
+a = "X 在上传时就把 GIF 转成了循环播放的 MP4，平台本身不再保存 GIF 原文件，所以这里拿到的也是 MP4。确实需要 GIF 的话，解析后点\"转 GIF\"再转一次即可。"
+[[page.faq]]
+q = "需要登录才能看的推文能解析吗？"
+a = "能，而且不需要你登录 X。标记为敏感内容、或者提示\"登录后查看\"的推文会自动换一条通道取数据。已删除、账号已注销、设为仅关注者可见的推文拿不到。"
+[[page.body]]
+title = "推文能拿到什么"
+html = "视频：从所有码率版本里挑最高的那个 MP4。图片：多图推文把每张都列出来，按原图尺寸保存，不是时间线上压缩过的缩略图。GIF：以 MP4 形式给出，可以再转成真正的 GIF 文件。"
+[[page.body]]
+title = "x.com 和 twitter.com 都认"
+html = "改名前后的两种域名都支持，App 分享出来的带一串参数的链接也能直接贴。复制地址栏里的推文链接，或者点推文下方的分享 → 复制链接，整段贴进来即可。"
+[[page.body]]
+title = "常见用法"
+html = "把推文里的短视频做成表情包：解析后点\"转 GIF\"，拖出想要的几秒。保存多图推文的全部原图：解析后逐张保存。把一段视频做成 iPhone 实况照片：点\"做成实况照片\"，自己选段和封面帧。"
+
+[[page]]
+slug = "bilibili"
+title = "B站视频下载_1080p 高清_仅音频 - 拾帧"
+description = "粘贴 B站 视频链接，在线下载 1080p / 720p 视频或仅音频，可截一段做 GIF 或实况照片。b23.tv 短链也支持。免费不用登录。"
+h1 = "B站视频下载，<br>1080p 高清直接选。"
+lead = "把 B站 链接（bilibili.com 或 b23.tv）贴进来，清晰度列表里选一档。"
+keywords = "B站视频下载,bilibili下载,哔哩哔哩视频保存,B站1080p下载,B站音频提取"
+placeholder = "粘贴 B站 链接，如 https://b23.tv/xxxx"
+nav_label = "B站下载"
+common = ["free", "ratelimit", "links"]
+guides = ["video-to-gif", "video-to-live-photo"]
+[[page.faq]]
+q = "为什么默认只给 480p？"
+a = "网页端接口直接返回的播放地址就是 480p 的合一版本，点开立刻能播能存。720p 和 1080p 在 B站 是画面与声音分开存的，要服务器分别下载再合并，所以单列在\"其他清晰度\"里，点了需要等一会儿。"
+[[page.faq]]
+q = "多 P 视频会解析哪一集？"
+a = "固定解析第一 P。链接里的 p= 参数目前不生效，所以合集、课程这类多 P 投稿只能拿到第 1 集。"
+[[page.body]]
+title = "B站链接能拿到什么"
+html = "默认给一个可直接播放的 480p MP4；720p、1080p 和仅音频由服务器下载合并后提供完整文件。BV 号完整链接、b23.tv 短链、手机 App 分享出来的链接都能直接贴。"
+[[page.body]]
+title = "支持哪些链接"
+html = "只支持普通投稿视频，也就是网址里带 /video/BV… 的那种。番剧、影视、课堂和直播回放（/bangumi/、/cheese/ 等路径）不在支持范围内。多 P 投稿固定取第一 P。"
+[[page.body]]
+title = "清晰度说明"
+html = "不登录的情况下最高到 1080p。4K、HDR、杜比这些档位属于大会员专属，网页端不登录拿不到，这里也就不提供。仅音频档给的是从视频里分离出来的原始音轨，适合存 BGM 或者课程录音。"
+
+[[page]]
+slug = "gif"
+title = "视频转 GIF 在线工具_抖音小红书链接直接转 - 拾帧"
+description = "在线把视频转成 GIF：粘贴抖音、小红书、YouTube 链接或上传本地视频，拖缩略图条选段，可调帧率、宽度、速度和抖动。免费不用登录。"
+h1 = "视频转 <em>GIF</em>，<br>选一段就好。"
+lead = "贴一个视频链接，或者上传本地视频。在缩略图条上拖出要的那几秒，帧率、宽度、速度都能调。"
+keywords = "视频转GIF,在线GIF制作,抖音视频转GIF,MP4转GIF,GIF压缩,GIF制作工具"
+placeholder = "粘贴分享链接…"
+nav_label = "视频转 GIF"
+common = ["gifsize", "ratelimit", "free"]
+guides = ["video-to-gif", "douyin-no-watermark"]
+[[page.faq]]
+q = "GIF 最长能做多长？"
+a = "30 秒。GIF 超过 10 秒体积会很大，一般 3–8 秒最好用。"
+[[page.faq]]
+q = "怎么让 GIF 更清晰或更小？"
+a = "清晰：把宽度拉大、抖动选\"误差扩散\"。小：降帧率到 8–10、宽度 320–360、时长缩短。"
+[[page.body]]
+title = "怎么用"
+html = "贴链接解析后点「转 GIF」，或者点右上角「本地视频」上传手机里的视频。在缩略图条上拖两个把手选段，右侧调帧率、宽度、速度，点生成，几秒后直接预览并保存。"
+[[page.body]]
+title = "推荐参数"
+html = "微信表情包：240–320 px、8–10 fps、2–3 秒，体积 1 MB 以内。群聊里看字幕：360–480 px、12 fps。想保留细节：640 px 以上，但体积会很大。"
+
+[[page]]
+slug = "live-photo"
+title = "视频转实况照片_Live Photo 动态照片在线制作 - 拾帧"
+description = "在线把视频片段做成 iPhone 实况照片（配对好的 JPG + MOV）或安卓动态照片（内嵌视频的 JPG），支持抖音、小红书链接和本地视频，可选封面帧。"
+h1 = "视频做成 <em>Live Photo</em>，<br>iPhone 与安卓都行。"
+lead = "贴链接或上传视频，选最多 10 秒，挑一帧做封面。iPhone 得到配对好的 JPG + MOV，安卓得到一张会动的 JPG。"
+keywords = "视频转实况照片,视频转Live Photo,实况照片制作,动态照片制作,Motion Photo,小红书实况图,抖音实况图"
+placeholder = "粘贴分享链接…"
+nav_label = "视频转实况"
+common = ["iphone", "android", "free"]
+guides = ["video-to-live-photo", "xiaohongshu-live-photo-iphone", "douyin-image-post-original"]
+[[page.faq]]
+q = "实况照片的封面能自己选吗？"
+a = "能。转换面板里拖\"封面帧\"，或者把预览播到想要的画面点\"用当前画面做封面\"。"
+[[page.faq]]
+q = "为什么 iPhone 不能直接保存实况？"
+a = "网页没有权限往 iOS 相册写入配对的实况。zip 里的 JPG 和 MOV 已经配好对，用支持合成实况的 App 或快捷指令导入即可，相册会显示为一张实况。"
+[[page.body]]
+title = "两种输出"
+html = "iPhone 实况照片：一对 JPG + MOV，写入相同的 Apple 内容标识，打包成 zip；导入相册后长按会动，可设为锁屏动态壁纸。安卓动态照片：一张内嵌 MP4 的 JPG（MVIMG_ 开头），存到相册即可，Google 相册、三星、小米、OPPO、vivo 都识别。"
+[[page.body]]
+title = "从哪里来的视频都行"
+html = "抖音、小红书、YouTube 等链接解析后点「做成实况照片」；本地视频点右上角上传。小红书和抖音图集里自带的实况图不用裁剪，解析后直接「实况原样打包」。"

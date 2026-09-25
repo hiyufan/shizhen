@@ -1,0 +1,69 @@
+[package]
+name = "shizhen"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.85"
+description = "拾帧：粘贴链接，取出无水印视频和原图，做成 GIF、iPhone 实况或安卓动态照片"
+license = "MIT"
+publish = false
+
+[dependencies]
+# 解析全部交给 alcedo，这里不保留任何平台解析器。锁定到具体提交，升级是一次显式改动
+alcedo = { git = "https://github.com/hiyufan/alcedo", rev = "50182b2" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "process", "signal", "sync", "time", "net"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+bytes = "1"
+
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json", "multipart", "form"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.6", features = ["compression-gzip", "fs"] }
+
+# 和 alcedo 用同一个 reqwest；加密后端同样选 ring，不引入 aws-lc 的 C 工具链
+# gzip 等 feature 开着是为了能显式调 no_gzip() 关掉：媒体直链要原样转发
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "stream", "socks", "gzip", "brotli", "zstd", "deflate"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+url = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+minijinja = { version = "2", default-features = false, features = ["builtins", "serde", "json", "multi_template", "adjacent_loop_items", "speedups"] }
+
+# 统计沿用线上现有的 data/stats.db
+rusqlite = { version = "0.37", features = ["bundled"] }
+
+# 实况照片的 EXIF 时间要本地时间
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+rand = "0.9"
+regex = "1"
+percent-encoding = "2"
+zip = { version = "5", default-features = false }
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
+
+[dev-dependencies]
+tower = { version = "0.5", default-features = false, features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+# 超过 80 行的函数说明该拆了
+too_many_lines = "warn"
+cast_possible_truncation = "warn"
+redundant_clone = "warn"

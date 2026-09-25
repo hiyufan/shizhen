@@ -180,3 +180,6 @@ style.md
 # 本机部署覆盖：每台机器的端口绑定、域名、中继地址和 TOKEN 都不一样，
 # 而且里面是真凭证，不该进仓库。docker-compose.yml 给的是通用模板。
 docker-compose.override.yml
+
+# Rust
+/target/
