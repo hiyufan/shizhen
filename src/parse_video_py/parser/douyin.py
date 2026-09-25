@@ -9,10 +9,28 @@ from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
 
 
+# slidesinfo 的两个入口主机，按优先级排。同一个接口两个域名都挂着，走的是不同的
+# CDN 边缘。热连接实测（各 15 次）：www.douyin.com p50 ~200ms / p90 ~220ms，
+# www.iesdouyin.com p50 226~266ms / p90 273~349ms——前者不仅快，尾部也稳得多。
+# 后者留作退路：某个域名被风控或出口不通时，换一个往往就过了。
+_SLIDES_HOSTS = ("www.douyin.com", "www.iesdouyin.com")
+
+
+def _looks_like_note(url: str) -> bool:
+    """地址是不是图文作品（/note/{id}、/share/note/{id}/、/share/slides/{id}/）。"""
+    try:
+        parts = urlparse(url).path.split("/")
+    except Exception:  # noqa: BLE001
+        return False
+    return "note" in parts or "slides" in parts
+
+
 class DouYin(BaseParser):
     """
     抖音 / 抖音火山版
     """
+
+    _note = False   # 地址上看出来是图文（/note/、/slides/）
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         # 解析URL获取域名
@@ -21,6 +39,7 @@ class DouYin(BaseParser):
 
         if host in ["www.iesdouyin.com", "www.douyin.com"]:
             # 支持电脑网页端链接
+            self._note = _looks_like_note(share_url)
             video_id = self._parse_video_id_from_path(share_url)
             if not video_id:
                 raise ValueError("Failed to parse video ID from PC share URL")
@@ -263,6 +282,7 @@ class DouYin(BaseParser):
         # 路径里的数字照取、照常走 slidesinfo 即可（见 xigua.py）。取不到数字时
         # 要自己说清楚原因：返回空的话上层统一抛 "Failed to parse video ID"，
         # 会被 classify 的 deleted 规则收走，对用户谎称"内容已被删除"。
+        self._note = _looks_like_note(location)
         video_id = self._parse_video_id_from_path(location)
         if not video_id and "ixigua.com" in location:
             raise ParseError("unsupported", "这条分享链接跳转到了西瓜视频的非作品页")
@@ -341,18 +361,13 @@ class DouYin(BaseParser):
 
     async def _get_slides_info(self, video_id: str) -> dict:
         """获取抖音视频或图集的详细信息，包括 Live Photo"""
-        # 普通视频不带 request_source 可以拿到数据；
-        # 图文（note）需要带 request_source=200。这里逐个尝试。
-        api_urls = [
-            (
-                f"https://www.iesdouyin.com/web/api/v2/aweme/slidesinfo/"
-                f"?aweme_ids=%5B{video_id}%5D"
-            ),
-            (
-                f"https://www.iesdouyin.com/web/api/v2/aweme/slidesinfo/"
-                f"?aweme_ids=%5B{video_id}%5D&request_source=200"
-            ),
-        ]
+        # 普通视频不带 request_source 可以拿到数据；图文（note）需要带
+        # request_source=200。跳转地址里已经看出是图文，就先发后者，省掉先撞一次
+        # filter 的往返。
+        plain = f"aweme_ids=%5B{video_id}%5D"
+        queries = [plain, f"{plain}&request_source=200"]
+        if self._note:
+            queries.reverse()
 
         # 抖音对某些作品会返回 status_code=0 + aweme_details=null + filter_list，
         # 表示"接口正常，但这条不对外给数据"（作者限制分享 / 要登录 / 被限流）。
@@ -360,19 +375,23 @@ class DouYin(BaseParser):
         filtered = None
 
         async with create_async_client() as client:
-            for api_url in api_urls:
-                try:
-                    response = await client.get(
-                        api_url, headers=self.get_default_headers()
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                except Exception:
-                    continue
-                if data and data.get("aweme_details"):
-                    return data
-                if data and data.get("filter_list"):
-                    filtered = data["filter_list"][0]
+            for query in queries:
+                for host in _SLIDES_HOSTS:
+                    try:
+                        response = await client.get(
+                            f"https://{host}/web/api/v2/aweme/slidesinfo/?{query}",
+                            headers=self.get_default_headers(),
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                    except Exception:
+                        continue  # 这个主机没拿到, 换一个
+                    if data and data.get("aweme_details"):
+                        return data
+                    if data and data.get("filter_list"):
+                        # 平台明确说了"这条不给"，换主机也一样，试下一个 query
+                        filtered = data["filter_list"][0]
+                        break
 
         if filtered:
             # filter_list 一般只给个 reason 码，没有 detail_msg；有就带上
