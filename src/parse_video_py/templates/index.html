@@ -203,13 +203,43 @@ const fmtTime = (s) => {
 const fmtClock = (s) => { s = Math.round(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const fmtSize = (b) => !b ? '' : b < 1 << 20 ? (b / 1024).toFixed(0) + ' KB' : (b / (1 << 20)).toFixed(1) + ' MB';
 let sigs = {};
+let edges = {};
 const sigOf = (url) => sigs[url] || '';
 const proxy = (url, name, download) =>
   '/api/proxy?url=' + encodeURIComponent(url) + '&sig=' + sigOf(url) + (name ? '&filename=' + encodeURIComponent(name) : '') + (download ? '&download=1' : '');
+// 国内平台的图先从国内边缘节点直接拿（edges 里有地址的话），不绕海外服务器；
+// 边缘拿不到就走服务器转发。转发是跨境的，偶尔断在半路：再自动重试两次，还不行就让用户点一下再试。
+// 加 &retry=n 换个地址，浏览器不会拿缓存里那份残缺的
+function proxyImg(url, attrs = {}) {
+  const src = proxy(url);
+  const srcs = [edges[url], src, src + '&retry=1', src + '&retry=2'].filter(Boolean);
+  let i = 0;
+  const img = el('img', { ...attrs, src: srcs[0] });
+  img.addEventListener('error', () => {
+    const fromEdge = srcs[i] === edges[url];
+    if (++i < srcs.length) setTimeout(() => { img.src = srcs[i]; }, fromEdge ? 0 : 800 * i);
+    else { img.classList.add('failed'); img.title = '图片没加载出来，点一下重试'; }
+  });
+  img.addEventListener('click', () => {
+    if (!img.classList.contains('failed')) return;
+    img.classList.remove('failed'); img.title = '';
+    i = srcs.length - 1;
+    img.src = src + '&retry=' + Date.now();
+  });
+  return img;
+}
 const safeName = (s) => (s || '').replace(/[\\/:*?"<>|\n\r]+/g, ' ').trim().slice(0, 60);
 
+// 跨境链路偶尔断一下。GET 是幂等的，断了自动再试一次；POST 不重试，免得重复建任务
 async function api(path, opts = {}) {
-  const res = await fetch(path, opts);
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    try { res = await fetch(path, opts); break; }
+    catch (_) {
+      if (attempt === 0 && (opts.method || 'GET') === 'GET') { await new Promise(r => setTimeout(r, 1000)); continue; }
+      throw new Error('网络连接中断了，检查一下网络再试');
+    }
+  }
   let body = null;
   try { body = await res.json(); } catch (_) {}
   if (!res.ok) throw new Error((body && (body.detail || body.msg)) || ('请求失败 ' + res.status));
@@ -280,6 +310,7 @@ $('#paste-form').addEventListener('submit', async (e) => {
     if (r.code !== 200) { const e = new Error(r.msg || '解析失败'); e.reason = r.reason; throw e; }
     current = r.data;
     sigs = r.data.sig || {};
+    edges = r.data.edge || {};
     renderResult(current);
   } catch (err) {
     notice(err.message.replace(/[。.]$/, '') + '。' + (REASON_TIPS[err.reason] || ''));
@@ -340,7 +371,7 @@ function renderResult(d) {
       const video = el('video', { controls: true, playsinline: true, preload: 'metadata', src: proxy(d.video_url), poster: d.cover_url ? proxy(d.cover_url) : null });
       body.append(el('div', { class: 'media' + (portrait ? ' portrait' : '') }, video));
     } else {
-      body.append(el('div', { class: 'media portrait' }, d.cover_url ? el('img', { src: proxy(d.cover_url), alt: '' }) : null));
+      body.append(el('div', { class: 'media portrait' }, d.cover_url ? proxyImg(d.cover_url, { alt: '' }) : null));
     }
 
     const dl = el('div', { class: 'group' });
@@ -394,7 +425,7 @@ function renderResult(d) {
     const grid = el('div', { class: 'grid' });
     images.forEach((img, i) => {
       const name = baseName + '_' + (i + 1);
-      const tile = el('div', { class: 'tile' }, el('img', { src: proxy(img.url), alt: '', loading: 'lazy' }));
+      const tile = el('div', { class: 'tile' }, proxyImg(img.url, { alt: '', loading: 'lazy' }));
       if (img.live_photo_url) tile.append(el('span', { class: 'live' }, '实况'));
       tile.append(el('div', { class: 'bar' }, el('span', {}, i + 1),
         el('div', {},
