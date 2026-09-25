@@ -1,6 +1,5 @@
 import json
 
-import fake_useragent
 from parsel import Selector
 
 from ..utils import create_async_client
@@ -14,7 +13,7 @@ class XinPianChang(BaseParser):
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         headers = {
-            "User-Agent": fake_useragent.UserAgent(os=["windows"]).random,
+            "User-Agent": self.ua("windows"),
             "Upgrade-Insecure-Requests": "1",
             "Referer": "https://www.xinpianchang.com/",
         }

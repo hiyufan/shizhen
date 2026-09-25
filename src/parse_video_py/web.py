@@ -27,7 +27,7 @@ from parse_video_py.convert import config as cconfig
 from parse_video_py.convert import ffmpeg, jobs, limits, store, tasks, updater
 from parse_video_py.parser.errors import ParseError, classify
 from parse_video_py.convert import net, relay
-from parse_video_py.convert.net import headers_for, is_safe_url, safe_filename
+from parse_video_py.convert.net import headers_for, is_safe_url_async, safe_filename
 from parse_video_py.utils import extract_url
 from parse_video_py import guides as guides_mod
 from parse_video_py import seo
@@ -270,7 +270,7 @@ async def sitemap(request: Request):
 @app.get("/video/share/url/parse", dependencies=_auth_dependency)
 async def share_url_parse(url: str):
     video_share_url = extract_url(url)
-    if video_share_url is None or not is_safe_url(video_share_url):
+    if video_share_url is None or not await is_safe_url_async(video_share_url):
         return {
             "code": 400,
             "msg": "未检测到有效的分享链接",
@@ -433,7 +433,7 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
         stats.record("parse", _ip, source=(cached.get("data") or {}).get("source") or platform,
                      ok=cached.get("code") == 200, reason="cache")
         return cached
-    if not is_safe_url(share_url):
+    if not await is_safe_url_async(share_url):
         stats.record("parse", _ip, source=platform, ok=False, reason="unsupported")
         return {"code": 400, "msg": "不支持这个地址", "reason": "unsupported"}
     t0 = time.monotonic()
@@ -474,7 +474,7 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
     """
     if not net.verify(url, sig):
         raise HTTPException(403, "这个地址不是解析结果里的，拒绝转发")
-    if not is_safe_url(url):
+    if not await is_safe_url_async(url):
         raise HTTPException(400, "不支持的地址")
     upstream_headers = headers_for(url)
     if rng := request.headers.get("range"):
@@ -549,7 +549,7 @@ async def api_prepare(req: PrepareRequest, ip: str = Depends(limits.job_limit)):
         raise HTTPException(400, "缺少视频地址")
     if not net.verify(target, req.sig):
         raise HTTPException(403, "这个地址不是解析结果里的")
-    if not is_safe_url(target):
+    if not await is_safe_url_async(target):
         raise HTTPException(400, "不支持的地址")
     if req.page_url:
         sid = store.source_id_for(req.page_url, req.format_spec or "default")
@@ -630,7 +630,7 @@ async def api_download(req: DownloadRequest, ip: str = Depends(limits.job_limit)
     """需要服务端合并的清晰度：先下载再给文件。"""
     if not net.verify(req.page_url, req.sig):
         raise HTTPException(403, "这个地址不是解析结果里的")
-    if not is_safe_url(req.page_url):
+    if not await is_safe_url_async(req.page_url):
         raise HTTPException(400, "无效的页面地址")
 
     async def fn(job: jobs.Job) -> None:
@@ -647,7 +647,7 @@ async def api_live(req: LiveRequest, ip: str = Depends(limits.job_limit)):
     for it in req.items:
         if not (net.verify(it.image_url, it.image_sig) and net.verify(it.video_url, it.video_sig)):
             raise HTTPException(403, "这个地址不是解析结果里的")
-        if not (is_safe_url(it.image_url) and is_safe_url(it.video_url)):
+        if not (await is_safe_url_async(it.image_url) and await is_safe_url_async(it.video_url)):
             raise HTTPException(400, "不支持的地址")
 
     async def fn(job: jobs.Job) -> None:

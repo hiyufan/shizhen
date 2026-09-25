@@ -1,6 +1,5 @@
 import re
 
-import fake_useragent
 
 from ..utils import create_async_client
 from .base import BaseParser, VideoAuthor, VideoInfo
@@ -25,7 +24,7 @@ class HuYa(BaseParser):
         req_url = f"https://liveapi.huya.com/moment/getMomentContent?videoId={video_id}"
         async with create_async_client() as client:
             headers = {
-                "User-Agent": fake_useragent.UserAgent(os=["windows"]).random,
+                "User-Agent": self.ua("windows"),
                 "Referer": "https://v.huya.com/",
             }
             response = await client.get(req_url, headers=headers)
