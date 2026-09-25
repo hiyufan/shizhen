@@ -12,8 +12,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
+import hmac
 import json
 import os
+import time
 
 import httpx
 
@@ -25,6 +28,37 @@ _DROP = {"host", "content-length", "connection", "accept-encoding"}
 
 def enabled() -> bool:
     return bool(RELAY_URL and RELAY_TOKEN)
+
+
+# ------------------------------------------------------------------ 边缘取图: 浏览器直接找国内边缘节点要图
+
+# 服务器在海外时, 图片走 /api/proxy 要 国内 CDN -> 海外 -> 国内 跨两次太平洋。
+# 中继的边缘节点本来就在国内, 让它给浏览器直接送图, 两段都在国内。
+# 默认关: esa-relay.js 要先部署带 /img 的新版, 否则只会白白多一次失败再回退
+EDGE_IMG = os.environ.get("PARSE_VIDEO_EDGE_IMG", "0") == "1"
+
+# 和 esa-relay.js 的 IMG_REFERERS 保持一致
+_EDGE_IMG_HOSTS = ("xhscdn.com", "xiaohongshu.com", "douyinpic.com", "yximgs.com", "hdslb.com", "sinaimg.cn")
+
+
+def edge_img_enabled() -> bool:
+    return EDGE_IMG and enabled() and RELAY_URL.endswith("/relay")
+
+
+def edge_origin() -> str:
+    """给 CSP img-src 用。"""
+    u = httpx.URL(RELAY_URL)
+    return f"{u.scheme}://{u.netloc.decode()}"
+
+
+def edge_img_url(url: str, ttl: int) -> str | None:
+    """白名单里的图片 CDN 才给边缘地址, 签名带过期时间, 过期后边缘节点拒绝。"""
+    host = (httpx.URL(url).host or "").lower()
+    if not any(host == s or host.endswith("." + s) for s in _EDGE_IMG_HOSTS):
+        return None
+    exp = int(time.time()) + ttl
+    sig = hmac.new(RELAY_TOKEN.encode(), f"img\n{exp}\n{url}".encode(), hashlib.sha256).hexdigest()[:32]
+    return str(httpx.URL(RELAY_URL[: -len("/relay")] + "/img", params={"url": url, "e": exp, "s": sig}))
 
 
 class RelayTransport(httpx.AsyncBaseTransport):
