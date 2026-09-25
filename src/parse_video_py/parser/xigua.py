@@ -1,77 +1,45 @@
-import json
-import re
-
+from urllib.parse import urlparse
 
 from ..utils import create_async_client
-from .base import BaseParser, VideoAuthor, VideoInfo
+from .base import BaseParser, VideoInfo
+from .douyin import DouYin
+from .errors import ParseError
+
+
+def _video_id_from(url: str) -> str:
+    """路径里从后往前第一个纯数字段就是作品 ID。
+
+    www.ixigua.com/<id>、m.ixigua.com/video/<id>/、www.iesdouyin.com/xg/video/<id>/
+    都是这个形状；短链跳到首页 / 活动页这类地址时返回空，别拿别的段瞎猜。
+    """
+    for part in reversed(urlparse(url).path.strip("/").split("/")):
+        if part.isdigit():
+            return part
+    return ""
 
 
 class XiGua(BaseParser):
     """
     西瓜视频
+
+    西瓜已并入抖音：作品 ID 就是抖音的 aweme_id，官方分享链接也换成了
+    www.iesdouyin.com/xg/video/<id>。原来用的 m.ixigua.com/douyin/share/video 分享页
+    其实就是抖音分享页换了个域名，2026-09 实测它和抖音一样不再在 SSR 里渲染
+    videoInfoRes，所有作品都报 KeyError。数据直接走抖音解析器的 slidesinfo 接口。
     """
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        headers = {
-            "User-Agent": self.ua("android"),
-        }
-        if share_url.startswith("https://www.ixigua.com/"):
-            # 支持电脑网页版链接 https://www.ixigua.com/xxxxxx
-            video_id = share_url.strip("/").split("/")[-1]
-            return await self.parse_video_id(video_id)
-
-        async with create_async_client(follow_redirects=False) as client:
-            response = await client.get(share_url, headers=headers)
-
-        location_url = response.headers.get("location", "")
-        video_id = location_url.split("?")[0].strip("/").split("/")[-1]
-        if len(video_id) <= 0:
-            raise Exception("failed to get video_id from share URL")
-
+        video_id = _video_id_from(share_url)
+        if not video_id and urlparse(share_url).hostname == "v.ixigua.com":
+            # 短链：不跟跳转，从 Location 里取 ID
+            async with create_async_client(follow_redirects=False) as client:
+                response = await client.get(share_url, headers={"User-Agent": self.ua("android")})
+            video_id = _video_id_from(response.headers.get("location", ""))
+            if not video_id:
+                raise ParseError("deleted", "西瓜短链没有跳转到作品页")
+        if not video_id:
+            raise ParseError("unsupported", "链接里没有西瓜视频的作品 ID")
         return await self.parse_video_id(video_id)
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
-        # 注意： url中的 video_id 后面不要有 /， 否则返回格式不一样
-        req_url = (
-            f"https://m.ixigua.com/douyin/share/video/{video_id}"
-            f"?aweme_type=107&schema_type=1&utm_source=copy"
-            f"&utm_campaign=client_share&utm_medium=android&app=aweme"
-        )
-
-        async with create_async_client(follow_redirects=True) as client:
-            response = await client.get(req_url, headers=self.get_default_headers())
-            response.raise_for_status()
-
-        pattern = re.compile(
-            pattern=r"window\._ROUTER_DATA\s*=\s*(.*?)</script>",
-            flags=re.DOTALL,
-        )
-        find_res = pattern.search(response.text)
-
-        if not find_res or not find_res.group(1):
-            raise ValueError("parse video json info from html fail")
-
-        json_data = json.loads(find_res.group(1).strip())
-        original_video_info = json_data["loaderData"]["video_(id)/page"]["videoInfoRes"]
-
-        # 如果没有视频信息，获取并抛出异常
-        if len(original_video_info["item_list"]) == 0:
-            err_detail_msg = "failed to parse video info from HTML"
-            if len(filter_list := original_video_info["filter_list"]) > 0:
-                err_detail_msg = filter_list[0]["detail_msg"]
-            raise Exception(err_detail_msg)
-
-        data = original_video_info["item_list"][0]
-        video_url = data["video"]["play_addr"]["url_list"][0].replace("playwm", "play")
-
-        video_info = VideoInfo(
-            video_url=video_url,
-            cover_url=data["video"]["cover"]["url_list"][0],
-            title=data["desc"],
-            author=VideoAuthor(
-                uid=data["author"]["unique_id"],
-                name=data["author"]["nickname"],
-                avatar=data["author"]["avatar_thumb"]["url_list"][0],
-            ),
-        )
-        return video_info
+        return await DouYin().parse_video_id(video_id)
