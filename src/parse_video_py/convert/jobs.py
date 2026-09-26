@@ -11,7 +11,8 @@ from typing import Awaitable, Callable, Optional
 
 from . import config
 from .net import scrub
-from .. import stats
+# 起别名：本模块自己有个 stats() 函数，同名会把统计模块覆盖掉
+from .. import stats as usage_stats
 
 
 JobFn = Callable[["Job"], Awaitable[None]]
@@ -140,10 +141,11 @@ def start(job_type: str, fn: JobFn, source_id: str | None = None, *,
                     job.error = scrub(str(e)) or e.__class__.__name__
         finally:
             job.finished_at = time.time()
-            stats.record("job", job.owner or "", source=job.type, ok=job.status == "done",
-                         reason=(job.error or "")[:32], ms=(job.finished_at - job.created_at) * 1000)
+            # 先还配额：后面记统计哪怕出错，也不能让这个 IP 的名额一直占着
             if on_release:
                 on_release()
+            usage_stats.record("job", job.owner or "", source=job.type, ok=job.status == "done",
+                               reason=(job.error or "")[:32], ms=(job.finished_at - job.created_at) * 1000)
 
     job.task = asyncio.create_task(runner())
     return job
