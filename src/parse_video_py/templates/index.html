@@ -741,7 +741,10 @@ if (initial) { $('#url').value = initial; syncTools(); $('#paste-form').requestS
       ticking = false;
     });
   };
-  addEventListener('scroll', onScroll, { passive: true }); onScroll();
+  // 双 rAF 后再跑首帧：页面刚写完 DOM 时同步读 scrollHeight 会强迫整页重排
+  // （Lighthouse 的 forced reflow 217ms 就是它）。刷新落在页中时也能正确恢复进度条。
+  addEventListener('scroll', onScroll, { passive: true });
+  requestAnimationFrame(() => requestAnimationFrame(onScroll));
 
   const countUp = (el) => {
     const target = +el.dataset.count, t0 = performance.now(), dur = 1000;
