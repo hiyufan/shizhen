@@ -1,12 +1,14 @@
-"""把站内所有页面主动推送给百度 / 提交 sitemap 给 Bing 和 Google。
+"""把站内所有页面主动推送给百度 / 提交 IndexNow 给 Bing、Yandex 等。
 
 用法：
   PARSE_VIDEO_SITE_URL=https://your.domain BAIDU_PUSH_TOKEN=xxxx python scripts/push_urls.py
   # 百度 token 在 https://ziyuan.baidu.com → 普通收录 → API 提交 里
-  # Bing / Google 只需在各自站长平台提交一次 sitemap，这里顺便 ping 一下
+  # IndexNow 不需要账号（Bing / Yandex / Seznam / Naver 参与互通），新页面
+  # 上线后重跑一次即可；Google 不参与 IndexNow，收录要走 Search Console。
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import urllib.parse
@@ -22,9 +24,10 @@ if not site:
 urls = [site + p for p in seo.all_paths()]
 print(f"{len(urls)} 个地址")
 
+host = urllib.parse.urlparse(site).netloc
+
 token = os.environ.get("BAIDU_PUSH_TOKEN")
 if token:
-    host = urllib.parse.urlparse(site).netloc
     req = urllib.request.Request(
         f"http://data.zz.baidu.com/urls?site={host}&token={token}",
         data="\n".join(urls).encode(), headers={"Content-Type": "text/plain"},
@@ -34,12 +37,20 @@ if token:
 else:
     print("未设置 BAIDU_PUSH_TOKEN，跳过百度推送")
 
-for name, ping in (
-    ("Bing", f"https://www.bing.com/ping?sitemap={urllib.parse.quote(site + '/sitemap.xml', safe='')}"),
-    ("Google", f"https://www.google.com/ping?sitemap={urllib.parse.quote(site + '/sitemap.xml', safe='')}"),
-):
-    try:
-        with urllib.request.urlopen(ping, timeout=20) as resp:
-            print(f"{name} sitemap ping: {resp.status}")
-    except Exception as err:  # noqa: BLE001
-        print(f"{name} sitemap ping 失败: {err}")
+key = seo.INDEXNOW_KEY
+payload = json.dumps({
+    "host": host,
+    "key": key,
+    "keyLocation": f"{site}/{key}.txt",
+    "urlList": urls,
+}).encode()
+req = urllib.request.Request(
+    "https://api.indexnow.org/indexnow", data=payload,
+    headers={"Content-Type": "application/json; charset=utf-8"},
+)
+try:
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        # 200 / 202 都算收下；422 是 key 文件校验没过，429 是提交太频繁
+        print(f"IndexNow（Bing / Yandex）: HTTP {resp.status}")
+except Exception as err:  # noqa: BLE001
+    print(f"IndexNow 提交失败: {err}")
