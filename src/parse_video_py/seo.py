@@ -64,11 +64,11 @@ ALL_COMMON = list(COMMON_FAQ)
 PAGES: list[Page] = [
     Page(
         slug="",
-        title="拾帧 - 抖音小红书视频图片提取，在线转 GIF 和实况照片",
-        description="粘贴抖音、小红书、快手、YouTube、X 的分享链接，免费提取无水印视频和原图，一键做成 GIF、iPhone 实况照片或安卓动态照片。不用登录。",
-        h1="把链接变成 <em>GIF</em>、<br>实况与原图。",
+        title="拾帧 - 把视频定格成 GIF 和实况照片，抖音小红书无水印提取",
+        description="粘贴抖音、小红书、快手、YouTube、X 的分享链接，免费提取无水印视频和原图，把喜欢的瞬间定格成 GIF、iPhone 实况照片或安卓动态照片。不用登录。",
+        h1="把视频定格成 <em>GIF</em>、<br>实况与原图。",
         lead="抖音、小红书、快手、YouTube、X 里复制的整段分享文字直接贴进来就行。视频没有水印，图片是原图。",
-        keywords="视频提取,图片提取,去水印,视频转GIF,视频转实况照片,抖音,小红书,快手,YouTube,推特",
+        keywords="视频提取,图片提取,去水印,视频转GIF,视频转实况照片,视频定格,定格,抖音,小红书,快手,YouTube,推特",
         nav_label="首页",
         common=ALL_COMMON,   # 首页承载完整问答，落地页各挑最相关的 3 条
         guides=["xiaohongshu-live-photo-iphone", "video-to-gif", "video-to-live-photo"],
