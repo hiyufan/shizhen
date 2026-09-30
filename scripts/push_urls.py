@@ -32,8 +32,12 @@ if token:
         f"http://data.zz.baidu.com/urls?site={host}&token={token}",
         data="\n".join(urls).encode(), headers={"Content-Type": "text/plain"},
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        print("百度主动推送:", resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            print("百度主动推送:", resp.read().decode())
+    except urllib.error.HTTPError as err:
+        # 百度的报错明细在响应体里（token 无效 / over quota / site init fail）
+        print(f"百度主动推送失败: HTTP {err.code} {err.read().decode()}")
 else:
     print("未设置 BAIDU_PUSH_TOKEN，跳过百度推送")
 
