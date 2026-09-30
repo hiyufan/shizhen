@@ -440,6 +440,12 @@ async def indexnow_key():
     return seo.INDEXNOW_KEY
 
 
+@app.get("/baidu_verify_codeva-vdJztHZWcG.html", response_class=PlainTextResponse)
+async def baidu_site_verify():
+    # 百度站长平台的文件验证：内容就是验证码字符串，与下载的验证文件一致
+    return "codeva-vdJztHZWcG"
+
+
 @app.get("/api/parse", dependencies=_auth_dependency)
 async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
     """解析分享文本 / 链接，返回可下载的视频、图片和清晰度选项。"""
