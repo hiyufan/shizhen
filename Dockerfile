@@ -6,7 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE main.py ./
 COPY src/ src/
-RUN pip install --no-cache-dir ".[web,cli]" bgutil-ytdlp-pot-provider
+# chromium 装到固定路径并放开读权限：运行时是 app 用户（10001），浏览器只读执行
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN pip install --no-cache-dir ".[web,cli,douyin]" bgutil-ytdlp-pot-provider \
+    && playwright install --with-deps chromium \
+    && chmod -R a+rX /opt/pw-browsers
 
 ENV PARSE_VIDEO_DATA_DIR=/app/data \
     PARSE_VIDEO_TRUST_PROXY=1 \

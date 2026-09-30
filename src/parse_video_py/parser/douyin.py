@@ -1,11 +1,13 @@
+import asyncio
 import json
+import os
 import re
 import secrets
 import string
 from urllib.parse import parse_qs, urlparse
 
 from ..utils import create_async_client
-from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
+from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, _random_ua
 from .errors import ParseError
 
 
@@ -15,6 +17,89 @@ from .errors import ParseError
 # 后者留作退路：某个域名被风控或出口不通时，换一个往往就过了。
 _SLIDES_HOSTS = ("www.douyin.com", "www.iesdouyin.com")
 
+# 图文兜底浏览器：同一时刻只允许一个解析用它（一个 page 不能同时开两个页面，
+# 排队等一会儿对"一天几次解析"的量级无所谓）
+_BROWSER_SEM = asyncio.Semaphore(1)
+
+
+class _WarmBrowser:
+    """进程内常驻的无痕 Chromium。
+
+    抖音对全新浏览器环境会随机弹人机验证，同一 context 过一次后后续加载稳定
+    放行（实测连续 4 次加载全过、图集 7 张图一张不少），所以浏览器起了就不关，
+    页面反复复用。只有图文兜底解析用它，常驻内存 ~250MB。全程无账号。
+    """
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._pw = None
+        self._browser = None
+        self._context = None
+        self._page = None
+
+    async def page(self):
+        from playwright.async_api import async_playwright
+
+        async with self._lock:
+            if self._page is not None:
+                return self._page
+            self._pw = await async_playwright().start()
+            self._browser = await self._pw.chromium.launch(
+                headless=True,
+                chromium_sandbox=False,
+                args=["--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+            )
+            # UA 在 context 创建时定死：cookie 和 TLS 会话都绑着它，中途换 UA
+            # 等于自曝。playwright 的 headless 会被识破，webdriver 标志要藏掉。
+            self._context = await self._browser.new_context(
+                locale="zh-CN",
+                user_agent=_random_ua("Windows"),
+                viewport={"width": 1280, "height": 900},
+            )
+            await self._context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+            )
+            self._page = await self._context.new_page()
+            return self._page
+
+    async def reset(self) -> None:
+        """浏览器崩了 / 状态坏了就整个扔掉，下次解析重新起。"""
+        async with self._lock:
+            for closer in (self._page, self._context, self._browser):
+                if closer is not None:
+                    try:
+                        await closer.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+            self._page = self._context = self._browser = None
+            if self._pw is not None:
+                try:
+                    await self._pw.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._pw = None
+
+
+_warm_browser = _WarmBrowser()
+
+
+async def warmup_browser() -> None:
+    """启动时后台预热兜底浏览器：起进程 + 首次导航过掉人机验证，别让第一个
+    解析图文的用户垫这十几秒。playwright 没装或起不来就静默放弃。"""
+    try:
+        async with _BROWSER_SEM:
+            page = await _warm_browser.page()
+            await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
+                            timeout=30000)
+            await page.wait_for_timeout(3000)
+    except Exception:  # noqa: BLE001
+        await _warm_browser.reset()
+
+
+async def aclose_browser() -> None:
+    """进程退出时把常驻浏览器收掉。"""
+    await _warm_browser.reset()
+
 
 def _looks_like_note(url: str) -> bool:
     """地址是不是图文作品（/note/{id}、/share/note/{id}/、/share/slides/{id}/）。"""
@@ -23,6 +108,57 @@ def _looks_like_note(url: str) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return "note" in parts or "slides" in parts
+
+
+def _configured_cookie() -> str:
+    """站长配的登录 cookie（PARSE_VIDEO_DOUYIN_COOKIE），没配返回空串。"""
+    return os.getenv("PARSE_VIDEO_DOUYIN_COOKIE", "")
+
+
+# 图文兜底：从渲染好的 PC 版页面 DOM 里取图集数据。图集图是 /tos-cn-i- 开头的
+# 大图（naturalWidth >= 300），推荐流缩略图和头像都被这条滤掉；同一张图会在
+# 主图 + 封面 + 缩略条出现多次，去掉 ~tplv-... 模板后按路径查重。
+_NOTE_DOM_EXTRACT = """
+() => {
+  const seen = {};
+  for (const img of document.querySelectorAll('img')) {
+    const src = img.currentSrc || img.src || '';
+    try {
+      const u = new URL(src);
+      if (!/(^|\\.)douyinpic\\.com$/.test(u.hostname)) continue;
+      if (!u.pathname.startsWith('/tos-cn-i-')) continue;
+      if (img.naturalWidth > 0 && img.naturalWidth < 300) continue;
+      const key = u.pathname.replace(/~[^/]*$/, '');
+      if (!seen[key]) seen[key] = src;   // 浏览器实际用过的地址才有效
+    } catch {}
+  }
+  const music = [...document.querySelectorAll('video')]
+    .map(v => v.currentSrc || v.src || '')
+    .find(s => s.includes('ies-music/') || s.endsWith('.mp3')) || '';
+  const metadesc = document.querySelector('meta[name="description"]')?.content || '';
+  const desc = (document.querySelector('[data-e2e="note-desc"]')?.innerText
+      || metadesc || document.title).trim().replace(/\\s*-\\s*抖音\\s*$/, '');
+  // 作者：从头像图往上找最近的用户链接（querySelector 不含自身，链接本身是
+  // 上一层的 A 也要认）。昵称经常是空文本，再从 meta 的「XX于YYYYMMDD发布在抖音」里兜底
+  let author = '', uid = '';
+  const avatar = document.querySelector('img[src*="aweme-avatar"]');
+  if (avatar) {
+    let node = avatar.parentElement;
+    for (let i = 0; i < 5 && node && !uid; i++, node = node.parentElement) {
+      const a = (node.matches && node.matches('a[href*="/user/"]')) ? node
+          : (node.querySelector && node.querySelector('a[href*="/user/"]'));
+      if (a) uid = (a.getAttribute('href') || '').split('/').pop().split('?')[0];
+      const text = a && a.innerText && a.innerText.trim();
+      if (text && text.length <= 30) author = text;
+    }
+  }
+  if (!author) {
+    const m = metadesc.match(/([^\\s，。]{1,30})于\\d{8}发布在抖音/);
+    if (m) author = m[1];
+  }
+  return { images: Object.values(seen), music, desc, author, uid };
+}
+"""
 
 
 class DouYin(BaseParser):
@@ -55,7 +191,20 @@ class DouYin(BaseParser):
 
         # 优先通过专用接口获取视频/图集详情。该接口当前同时返回
         # aweme_details，不再依赖页面 SSR 中的 videoInfoRes 字段。
-        json_data = await self._get_slides_info(video_id)
+        try:
+            json_data = await self._get_slides_info(video_id)
+        except ParseError as err:
+            if not (self._note and err.reason in ("restricted", "login")):
+                raise
+            # 图文被平台 filter：API 的匿名通路已经全被堵死（slidesinfo 服务端
+            # filter、feed 接口拿推荐流凑数、detail 接口要 a_bogus+UIFID 签名），
+            # 用一次性无痕浏览器渲染 PC 版页面兜底，纯匿名、不碰任何登录态。
+            # 浏览器这条路也没有（没装 playwright / 页面拿不到数据）才把
+            # slidesinfo 的错误抛出去。
+            info = await self._note_via_browser(video_id)
+            if info is None:
+                raise
+            return info
 
         if not json_data:
             # 回退到旧的 HTML SSR 解析。2026-09 实测：抖音已经不在 SSR 里渲染
@@ -67,6 +216,8 @@ class DouYin(BaseParser):
                 flags=re.DOTALL,
             )
             headers = self.get_default_headers()
+            if douyin_cookie := _configured_cookie():
+                headers["Cookie"] = douyin_cookie
             async with create_async_client(follow_redirects=True) as client:
                 for _attempt in range(2):
                     response = await client.get(share_url, headers=headers)
@@ -374,13 +525,23 @@ class DouYin(BaseParser):
         # 只有两个入口都没拿到数据才算数：正常视频带 request_source=200 也会被 filter。
         filtered = None
 
+        # 2026-09 起抖音对匿名请求收紧图文（note/slides）数据：同一条图文前一晚
+        # 还能解析，第二天起 filter reason=4/8；实测 ttwid / Referer / msToken /
+        # 换主机都无效，feed 接口对被 filter 的 ID 直接返回推荐流凑数，分享页 SSR
+        # 只剩骨架。普通视频不受影响。剩下的通路只有带登录 cookie 请求本接口
+        # （PARSE_VIDEO_DOUYIN_COOKIE，和 redbook 的 XHS_COOKIE 同一个玩法）。
+        cookie = _configured_cookie()
+        headers = self.get_default_headers()
+        if cookie:
+            headers["Cookie"] = cookie
+
         async with create_async_client() as client:
             for query in queries:
                 for host in _SLIDES_HOSTS:
                     try:
                         response = await client.get(
                             f"https://{host}/web/api/v2/aweme/slidesinfo/?{query}",
-                            headers=self.get_default_headers(),
+                            headers=headers,
                         )
                         response.raise_for_status()
                         data = response.json()
@@ -396,9 +557,93 @@ class DouYin(BaseParser):
         if filtered:
             # filter_list 一般只给个 reason 码，没有 detail_msg；有就带上
             detail = filtered.get("detail_msg") or filtered.get("notice") or ""
-            raise ParseError("restricted", detail or f"抖音 filter reason={filtered.get('reason')}")
+            detail = detail or f"抖音 filter reason={filtered.get('reason')}"
+            if not cookie and self._note:
+                # 没配 cookie 时，图文被 filter 是平台不给匿名数据而不是作者限制：
+                # 报 restricted 会让用户以为链接有问题，站长也看不出配 cookie 能修。
+                raise ParseError("login", detail)
+            raise ParseError("restricted", detail)
 
         return None
+
+    async def _note_via_browser(self, video_id: str) -> VideoInfo | None:
+        """slidesinfo 被平台 filter 后的图文兜底：用常驻无痕 Chromium 渲染 PC 版
+        图文页，从渲染结果里取数据。
+
+        实测（2026-09）真浏览器匿名也能打开这些图文页，而 curl/httpx 无论带什么
+        cookie 都过不去——字节 WAF 校验 TLS 指纹，还要 JS 算出来的短时效 cookie
+        （_waftokenid 约 5 分钟一换），这些只有真浏览器能搞定。PC 版页面已是
+        React RSC 结构，数据在渲染时才补齐签名图片 URL，所以直接从 DOM 取，
+        不去解析页内载荷。全新浏览器环境会被随机弹人机验证，同一 context 过一次
+        之后稳定放行，所以浏览器常驻复用（见 _WarmBrowser），全程无账号。
+
+        playwright 没装或浏览器起不来时返回 None，上层维持 slidesinfo 的报错。
+        局限：DOM 里没有实况视频地址，这条路上图片的 live_photo_url 为空；
+        配了 PARSE_VIDEO_DOUYIN_COOKIE 的走 slidesinfo 仍有实况。
+        """
+        page_url = f"https://www.douyin.com/note/{video_id}"
+        async with _BROWSER_SEM:
+            dom = None
+            for attempt in range(2):
+                try:
+                    page = await _warm_browser.page()
+                except ImportError:
+                    return None
+                except Exception:  # noqa: BLE001
+                    return None  # 浏览器装了但起不来，兜底失败，上层报原错
+                try:
+                    await page.goto(page_url, wait_until="domcontentloaded",
+                                    timeout=30000)
+                    await page.wait_for_timeout(1000)
+                    if f"/note/{video_id}" not in page.url:
+                        # 跳去首页/推荐流说明这条作品没了
+                        raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
+                    dom = await self._extract_note_dom(page)
+                    if dom.get("images"):
+                        break
+                    # 图集一张图都没等到：多半是撞上人机验证的变体页。同一
+                    # context 再试一次通常就放行了；还不行才算失败。
+                except ParseError:
+                    raise
+                except Exception:  # noqa: BLE001
+                    # 浏览器崩了 / 页面超时：整个换新的再来一次
+                    await _warm_browser.reset()
+                    continue
+            else:
+                return None
+
+        images = [ImgInfo(url=u) for u in dom["images"]]
+        return VideoInfo(
+            video_url="",
+            cover_url="",
+            title=dom.get("desc") or "",
+            music_url=dom.get("music") or "",
+            images=images,
+            author=VideoAuthor(uid=dom.get("uid") or "", name=dom.get("author") or ""),
+            page_url=page_url,
+        )
+
+    @staticmethod
+    async def _extract_note_dom(page) -> dict:
+        """等图集图片渲染齐了从 DOM 里取数据。图片数会随懒加载逐步变多，等它
+        连续两轮不再增长再返回；推荐流的图片也在 DOM 里，但都在图集之外——
+        图集图是 /tos-cn-i- 开头的大图，推荐流缩略图很小，按 naturalWidth 滤掉。"""
+        try:
+            await page.wait_for_selector(
+                'img[src*="douyinpic"], img[srcset*="douyinpic"]',
+                state="attached", timeout=15000,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        prev = -1
+        for _ in range(10):
+            dom = await page.evaluate(_NOTE_DOM_EXTRACT)
+            n = len(dom.get("images") or [])
+            if 0 < n == prev:
+                return dom
+            prev = n
+            await page.wait_for_timeout(1500)
+        return dom
 
     def _generate_fixed_length_numeric_id(self, length: int) -> str:
         """生成固定位数的随机数字ID"""

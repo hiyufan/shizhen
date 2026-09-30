@@ -37,7 +37,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          # python + ffmpeg 并发 + 常驻的无痕 Chromium（抖音图文兜底，~500MB）
+          memory: 3g
 
   # YouTube PO Token 生成器，给 yt-dlp 用；没有它服务器 IP 很快会被 YouTube 要求"登录确认不是机器人"
   bgutil:
