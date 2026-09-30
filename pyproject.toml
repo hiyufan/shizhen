@@ -34,6 +34,10 @@ cli = [
 youtube = [
     "bgutil-ytdlp-pot-provider>=1.0",
 ]
+douyin = [
+    # 抖音图文兜底解析：无痕 Chromium 渲染 PC 版页面（见 douyin.py _note_via_browser）
+    "playwright>=1.45",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -43,7 +47,7 @@ dev = [
     "flake8>=7.0",
     "pre-commit>=3.7",
 ]
-all = ["parse-video-py[web,cli,youtube]"]
+all = ["parse-video-py[web,cli,youtube,douyin]"]
 
 [project.scripts]
 parse-video-py = "parse_video_py.cli:app"
