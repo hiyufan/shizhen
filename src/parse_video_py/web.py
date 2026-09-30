@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 import mimetypes
 import dataclasses
 import os
@@ -458,6 +459,13 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
     except Exception as err:  # noqa: BLE001
         perr = classify(err)
         result = {"code": 500, "msg": str(perr), "reason": perr.reason}
+    if result["code"] != 200:
+        # stats 里只存 reason 不存链接，容器一重建原始日志也没了——失败的
+        # 解析把链接和原因落一行，之后"看日志排查"才对得上号
+        logging.getLogger("uvicorn.error").warning(
+            "解析失败 url=%s reason=%s msg=%s",
+            share_url, result.get("reason"), str(result.get("msg", ""))[:160],
+        )
     else:
         data = dataclasses.asdict(info)
         data["share_url"] = share_url
