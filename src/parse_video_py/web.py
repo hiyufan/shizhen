@@ -200,6 +200,19 @@ def _asset_version() -> str:
 _ASSET_V = _asset_version()
 
 
+def _critical_css() -> str:
+    """fonts.css + site.css 原文，内联进 <head>：省掉首屏两个渲染阻塞请求。
+    跨境访问一次 RTT 就是几百毫秒，且 @font-face 随 HTML 到达后 woff2 才能开始
+    并行下载——之前字体被串在 fonts.css 的发现链上。文件在部署时随镜像更新，
+    进程启动读一次即可。"""
+    static = Path(__file__).parent / "static"
+    return (static / "fonts.css").read_text(encoding="utf-8") + \
+        (static / "site.css").read_text(encoding="utf-8")
+
+
+_CRITICAL_CSS = _critical_css()
+
+
 def _common_context(request: Request, *, title: str, description: str, path: str, keywords: str = "",
                     json_ld: str = "") -> dict:
     base = _base_url(request)
@@ -215,6 +228,7 @@ def _common_context(request: Request, *, title: str, description: str, path: str
         "site_verification": seo.SITE_VERIFICATION_HTML,
         "analytics": seo.ANALYTICS_HTML,
         "v": _ASSET_V,
+        "critical_css": _CRITICAL_CSS,
     }
 
 
