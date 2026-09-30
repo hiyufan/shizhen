@@ -485,13 +485,6 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
     except Exception as err:  # noqa: BLE001
         perr = classify(err)
         result = {"code": 500, "msg": str(perr), "reason": perr.reason}
-    if result["code"] != 200:
-        # stats 里只存 reason 不存链接，容器一重建原始日志也没了——失败的
-        # 解析把链接和原因落一行，之后"看日志排查"才对得上号
-        logging.getLogger("uvicorn.error").warning(
-            "解析失败 url=%s reason=%s msg=%s",
-            share_url, result.get("reason"), str(result.get("msg", ""))[:160],
-        )
     else:
         data = dataclasses.asdict(info)
         data["share_url"] = share_url
@@ -505,6 +498,13 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
             imgs = {data.get("cover_url")} | {i.get("url") for i in data["images"]}
             data["edge"] = {u: e for u in imgs if u and (e := relay.edge_img_url(u, ttl))}
         result = {"code": 200, "msg": "解析成功", "data": data}
+    if result["code"] != 200:
+        # stats 里只存 reason 不存链接，容器一重建原始日志也没了——失败的
+        # 解析把链接和原因落一行，之后"看日志排查"才对得上号
+        logging.getLogger("uvicorn.error").warning(
+            "解析失败 url=%s reason=%s msg=%s",
+            share_url, result.get("reason"), str(result.get("msg", ""))[:160],
+        )
     stats.record("parse", _ip, source=(result.get("data") or {}).get("source") or platform,
                  ok=result["code"] == 200, reason=result.get("reason", ""), ms=(time.monotonic() - t0) * 1000)
     _cache_put(share_url, result)
