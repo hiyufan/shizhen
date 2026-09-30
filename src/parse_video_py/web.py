@@ -74,6 +74,15 @@ async def _lifespan(_: FastAPI):
         tasks_.append(asyncio.create_task(stats.flusher()))
     if cconfig.YTDLP_AUTOUPDATE_DAYS > 0:
         tasks_.append(asyncio.create_task(updater.loop(cconfig.YTDLP_AUTOUPDATE_DAYS)))
+
+    async def _douyin_browser_warmup():
+        from .parser.douyin import warmup_browser
+        with contextlib.suppress(Exception):
+            await warmup_browser()
+
+    # 抖音图文兜底的常驻 Chromium 在后台起好 + 过掉首次人机验证，
+    # 第一个解析图文的用户不用垫冷启动的十几秒
+    tasks_.append(asyncio.create_task(_douyin_browser_warmup()))
     yield
     for t in tasks_:
         t.cancel()
@@ -81,6 +90,9 @@ async def _lifespan(_: FastAPI):
     with contextlib.suppress(Exception):
         await net.aclose_pool()
         await relay.aclose_shared()
+    from .parser.douyin import aclose_browser
+    with contextlib.suppress(Exception):
+        await aclose_browser()
 
 
 app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None)

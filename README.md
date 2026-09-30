@@ -188,7 +188,7 @@ PARSE_VIDEO_XHS_COOKIE="a1=...; web_session=..."
 PARSE_VIDEO_BILI_COOKIE="SESSDATA=...; buvid3=..."
 ```
 
-F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份 buvid 设备指纹，多数情况已够。
+F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份 buvid 设备指纹，多数情况已够。抖音的图文（note/slides）不用配 cookie：平台对匿名 API 收紧后，解析会自动起一个一次性无痕 Chromium 渲染 PC 版页面兜底（全程无账号）；可选再配 `PARSE_VIDEO_DOUYIN_COOKIE`，让图文走 slidesinfo 拿到全量数据（含实况视频），不配只是实况图在这条兜底路上拿不到。
 
 **4. 部署在国内**，再用 `PARSE_VIDEO_PROXY` 给 YouTube 配海外出口。
 
@@ -272,7 +272,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 | `PARSE_VIDEO_PROXY_CN_MEDIA` | `0` | 设 `1` 时视频 / 图片本体的转发也走 `PROXY_CN`（CDN 被 403 时才需要，会吃代理带宽） |
 | `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | 边缘函数中继地址与口令（`scripts/esa-relay.js`） |
 | `PARSE_VIDEO_EDGE_IMG` | `0` | 设 `1` 时国内平台的图片由浏览器直接从中继边缘节点取（需部署带 `/img` 的 `esa-relay.js`） |
-| `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` | – | 小红书 / B站 的登录 Cookie 字符串，海外服务器被拦时用 |
+| `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` / `PARSE_VIDEO_DOUYIN_COOKIE` | – | 小红书 / B站 / 抖音 的登录 Cookie 字符串，海外服务器被拦时用；抖音不配也有无痕浏览器兜底，配了图文才有实况视频 |
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | yt-dlp 用的 Netscape 格式 cookies |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | 直接从浏览器读 cookies：`firefox` / `edge` / `chrome` |
 | `PARSE_VIDEO_POT_URL` | – | YouTube PO Token 服务地址，如 `http://bgutil:4416` |
