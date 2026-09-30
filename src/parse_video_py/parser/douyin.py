@@ -102,12 +102,23 @@ async def aclose_browser() -> None:
 
 
 def _looks_like_note(url: str) -> bool:
-    """地址是不是图文作品（/note/{id}、/share/note/{id}/、/share/slides/{id}/）。"""
+    """地址是不是图文作品。
+
+    /note/{id}、/share/note/{id}/、/share/slides/{id}/ 能从路径看出来；但图集的
+    短链常被 302 成 /share/video/{id}（路径完全一样），只能靠跳转参数：
+    is_slides=1 或 schema_type=37（两条已知图集分享都是 37）。
+    """
     try:
-        parts = urlparse(url).path.split("/")
+        parsed = urlparse(url)
+        parts = parsed.path.split("/")
+        query = parse_qs(parsed.query)
     except Exception:  # noqa: BLE001
         return False
-    return "note" in parts or "slides" in parts
+    if "note" in parts or "slides" in parts:
+        return True
+    if query.get("is_slides", [""])[0] == "1":
+        return True
+    return query.get("schema_type", [""])[0] == "37"
 
 
 def _configured_cookie() -> str:
@@ -194,13 +205,15 @@ class DouYin(BaseParser):
         try:
             json_data = await self._get_slides_info(video_id)
         except ParseError as err:
-            if not (self._note and err.reason in ("restricted", "login")):
+            if err.reason not in ("restricted", "login"):
                 raise
             # 图文被平台 filter：API 的匿名通路已经全被堵死（slidesinfo 服务端
             # filter、feed 接口拿推荐流凑数、detail 接口要 a_bogus+UIFID 签名），
-            # 用一次性无痕浏览器渲染 PC 版页面兜底，纯匿名、不碰任何登录态。
-            # 浏览器这条路也没有（没装 playwright / 页面拿不到数据）才把
-            # slidesinfo 的错误抛出去。
+            # 用常驻无痕浏览器渲染 PC 版页面兜底，纯匿名、不碰任何登录态。
+            # 不看 _note 就直接试：图集短链会被 302 成 /share/video/{id}，路径
+            # 判定不可靠；真视频进来也会被浏览器里 /note/{id}→/video/{id} 的
+            # 归一跳转识别出来交回原错。浏览器这条路也没有（没装 playwright /
+            # 页面拿不到数据）才把 slidesinfo 的错误抛出去。
             info = await self._note_via_browser(video_id)
             if info is None:
                 raise
@@ -596,6 +609,10 @@ class DouYin(BaseParser):
                                     timeout=30000)
                     await page.wait_for_timeout(1000)
                     if f"/note/{video_id}" not in page.url:
+                        if f"/video/{video_id}" in page.url:
+                            # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
+                            # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
+                            return None
                         # 跳去首页/推荐流说明这条作品没了
                         raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
                     dom = await self._extract_note_dom(page)
