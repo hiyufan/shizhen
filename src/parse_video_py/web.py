@@ -434,6 +434,12 @@ async def robots(request: Request):
     )
 
 
+@app.get(f"/{seo.INDEXNOW_KEY}.txt", response_class=PlainTextResponse)
+async def indexnow_key():
+    # IndexNow 的验证文件：URL 路径含 key，响应体也必须是 key 本身
+    return seo.INDEXNOW_KEY
+
+
 @app.get("/api/parse", dependencies=_auth_dependency)
 async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
     """解析分享文本 / 链接，返回可下载的视频、图片和清晰度选项。"""
