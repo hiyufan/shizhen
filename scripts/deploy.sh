@@ -17,6 +17,9 @@
 # 只拿健康检查和首页判断成败；真实链接的解析只记日志不回滚——抖音这些平台本身
 # 时好时坏，拿它们定生死会误回滚。
 #
+# 线上跑的是哪个提交记在 .git/deployed-sha，不看 HEAD：服务器上这份代码也拿来开发，
+# 本地一 commit HEAD 就变了，但容器里还是旧镜像。
+#
 # 所有逻辑都在函数里、最后一行才调用：部署时 git merge 会改写本文件，bash 是边读
 # 边执行的，这样能保证整个文件先读完。
 set -euo pipefail
@@ -76,12 +79,14 @@ smoke() {
   done
 }
 
+# 只换回旧镜像，不动代码：工作区里可能有还没推送的提交，reset 会把它们弄丢。
+# 记录改回旧提交，下次部署同一个提交会重新构建再试。
 rollback() {
   local prev=$1
   log "回滚到 ${prev:0:7}"
-  git -C "$REPO_DIR" reset -q --hard "$prev"
   docker tag "$IMAGE:rollback-${prev:0:7}" "$IMAGE:latest"
   docker compose up -d --no-build "$SERVICE"
+  echo "$prev" > "$STATE_FILE"
   # 演练开关只管上线那次自检，回滚后的自检要真查
   if SIMULATE_FAILURE='' verify; then
     log "回滚完成，线上是 ${prev:0:7}"
@@ -112,7 +117,8 @@ main() {
   exec 9>"$LOCK_FILE"
   flock -w 900 9 || { log "等了 15 分钟上一次部署还没结束"; return 1; }
 
-  local requested=${1:-${SSH_ORIGINAL_COMMAND:-}} head target
+  local requested=${1:-${SSH_ORIGINAL_COMMAND:-}} deployed head target
+  STATE_FILE=$(git rev-parse --absolute-git-dir)/deployed-sha
   git fetch -q origin main
   if [[ -n "$requested" ]]; then
     if [[ ! "$requested" =~ ^[0-9a-f]{40}$ ]]; then
@@ -129,29 +135,40 @@ main() {
     target=$(git rev-parse origin/main)
   fi
   head=$(git rev-parse HEAD)
+  deployed=$(cat "$STATE_FILE" 2>/dev/null || echo "$head")
 
-  if [[ "$head" == "$target" && -z "${FORCE:-}" ]]; then
+  if [[ "$deployed" == "$target" && -z "${FORCE:-}" ]]; then
     log "线上已经是 ${target:0:7}，不用部署"
     return 0
   fi
-  if [[ "$head" != "$target" ]] && git merge-base --is-ancestor "$target" "$head"; then
-    log "线上的 ${head:0:7} 比 ${target:0:7} 还新，跳过"   # 先触发的部署后到了
+  if [[ "$deployed" != "$target" ]] && git merge-base --is-ancestor "$target" "$deployed"; then
+    log "线上的 ${deployed:0:7} 比 ${target:0:7} 还新，跳过"   # 先触发的部署后到了
     return 0
   fi
   if ! git diff --quiet || ! git diff --cached --quiet; then
-    log "服务器上的工作区有没提交的改动，不自动部署（服务器上别直接改代码）"
+    log "工作区有没提交的改动，不自动部署（构建用的就是工作区）"
+    return 1
+  fi
+  # 构建用的是工作区，所以它得正好是 target：落后就快进；本地已经提交到 target 就直接用
+  if [[ "$head" != "$target" ]] && ! git merge-base --is-ancestor "$head" "$target"; then
+    if git merge-base --is-ancestor "$head" origin/main; then
+      log "工作区已经在 ${head:0:7}，比 ${target:0:7} 新，等它自己的那次部署"
+      return 0
+    fi
+    log "工作区的 ${head:0:7} 有没推送到 GitHub 的提交，不自动部署"
     return 1
   fi
 
-  log "部署 ${head:0:7} → ${target:0:7}：$(git log -1 --format=%s "$target")"
+  log "部署 ${deployed:0:7} → ${target:0:7}：$(git log -1 --format=%s "$target")"
   wait_idle
-  docker tag "$IMAGE:latest" "$IMAGE:rollback-${head:0:7}"
+  docker tag "$IMAGE:latest" "$IMAGE:rollback-${deployed:0:7}"
   git merge -q --ff-only "$target"
   if ! docker compose up -d --build "$SERVICE" || ! verify; then
     log "上线失败"
-    rollback "$head"
+    rollback "$deployed"
     return 1
   fi
+  echo "$target" > "$STATE_FILE"
   log "上线成功 ${target:0:7}"
   smoke
   prune_images
