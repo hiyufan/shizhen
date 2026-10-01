@@ -62,6 +62,16 @@ class _WarmBrowser:
             self._page = await self._context.new_page()
             return self._page
 
+    async def park(self) -> None:
+        """用完切到空白页。停在抖音页面上，自动播放的推荐流 / 实况 / 背景音乐会让
+        渲染进程和软件合成的 GPU 进程一直转：实测停在首页 83%、实况图文 106%
+        CPU，about:blank 是 0。cookie 留在 context 里，下次照样免验证。"""
+        if self._page is not None:
+            try:
+                await self._page.goto("about:blank", timeout=5000)
+            except Exception:  # noqa: BLE001
+                pass
+
     async def reset(self) -> None:
         """浏览器崩了 / 状态坏了就整个扔掉，下次解析重新起。"""
         async with self._lock:
@@ -92,6 +102,7 @@ async def warmup_browser() -> None:
             await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
                             timeout=30000)
             await page.wait_for_timeout(3000)
+            await _warm_browser.park()
     except Exception:  # noqa: BLE001
         await _warm_browser.reset()
 
@@ -646,38 +657,41 @@ class DouYin(BaseParser):
         """
         page_url = f"https://www.douyin.com/note/{video_id}"
         async with _BROWSER_SEM:
-            dom = None
-            for attempt in range(2):
-                try:
-                    page = await _warm_browser.page()
-                except ImportError:
+            try:
+                dom = None
+                for attempt in range(2):
+                    try:
+                        page = await _warm_browser.page()
+                    except ImportError:
+                        return None
+                    except Exception:  # noqa: BLE001
+                        return None  # 浏览器装了但起不来，兜底失败，上层报原错
+                    try:
+                        await page.goto(page_url, wait_until="domcontentloaded",
+                                        timeout=30000)
+                        await page.wait_for_timeout(1000)
+                        if f"/note/{video_id}" not in page.url:
+                            if f"/video/{video_id}" in page.url:
+                                # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
+                                # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
+                                return None
+                            # 跳去首页/推荐流说明这条作品没了
+                            raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
+                        dom = await self._extract_note_dom(page)
+                        if dom.get("images"):
+                            break
+                        # 图集一张图都没等到：多半是撞上人机验证的变体页。同一
+                        # context 再试一次通常就放行了；还不行才算失败。
+                    except ParseError:
+                        raise
+                    except Exception:  # noqa: BLE001
+                        # 浏览器崩了 / 页面超时：整个换新的再来一次
+                        await _warm_browser.reset()
+                        continue
+                else:
                     return None
-                except Exception:  # noqa: BLE001
-                    return None  # 浏览器装了但起不来，兜底失败，上层报原错
-                try:
-                    await page.goto(page_url, wait_until="domcontentloaded",
-                                    timeout=30000)
-                    await page.wait_for_timeout(1000)
-                    if f"/note/{video_id}" not in page.url:
-                        if f"/video/{video_id}" in page.url:
-                            # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
-                            # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
-                            return None
-                        # 跳去首页/推荐流说明这条作品没了
-                        raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
-                    dom = await self._extract_note_dom(page)
-                    if dom.get("images"):
-                        break
-                    # 图集一张图都没等到：多半是撞上人机验证的变体页。同一
-                    # context 再试一次通常就放行了；还不行才算失败。
-                except ParseError:
-                    raise
-                except Exception:  # noqa: BLE001
-                    # 浏览器崩了 / 页面超时：整个换新的再来一次
-                    await _warm_browser.reset()
-                    continue
-            else:
-                return None
+            finally:
+                await _warm_browser.park()
 
         images = _note_images(dom)
         return VideoInfo(
