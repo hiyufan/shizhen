@@ -307,6 +307,8 @@ $('#paste-form').addEventListener('submit', async (e) => {
   const btn = $('#parse-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
   notice('');
+  // 上一条的结果和转换器先收起来：新链接解析要几秒，期间旧结果的按钮还能点，容易点到上一条的「转 GIF」
+  $('#result').hidden = true;
   $('#converter').hidden = true;
   // 抖音图文要在服务端开浏览器渲染，6–10 秒；只有个转圈的话用户以为卡了会反复点或者直接走
   // 实况图的分享文案只写「# live实况」「#livephoto」，没有「图文作品」
