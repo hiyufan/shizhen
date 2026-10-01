@@ -51,14 +51,23 @@ def edge_origin() -> str:
     return f"{u.scheme}://{u.netloc.decode()}"
 
 
-def cn_image_cdn(url: str) -> str:
-    """国内平台图片 CDN 的主域名（白名单同 _EDGE_IMG_HOSTS），不是返回空串。"""
+# 实况打包时服务器自己拉的国内媒体 CDN：上面的图片 CDN，加上抖音实况视频的几家
+_RELAY_MEDIA_HOSTS = _EDGE_IMG_HOSTS + ("douyinvod.com", "zjcdn.com", "365yg.com")
+
+
+def _cdn_of(url: str, hosts: tuple[str, ...]) -> str:
     host = (httpx.URL(url).host or "").lower()
-    return next((s for s in _EDGE_IMG_HOSTS if host == s or host.endswith("." + s)), "")
+    return next((s for s in hosts if host == s or host.endswith("." + s)), "")
 
 
 def is_cn_image(url: str) -> bool:
-    return bool(cn_image_cdn(url))
+    """国内平台的图片 CDN（白名单同 _EDGE_IMG_HOSTS）。"""
+    return bool(_cdn_of(url, _EDGE_IMG_HOSTS))
+
+
+def cn_media_cdn(url: str) -> str:
+    """能走中继兜底的国内媒体 CDN 主域名，不是返回空串。"""
+    return _cdn_of(url, _RELAY_MEDIA_HOSTS)
 
 
 def edge_img_url(url: str, ttl: int) -> str | None:
