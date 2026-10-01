@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import math
 import time
 import zipfile
 from pathlib import Path
@@ -161,9 +162,37 @@ def _clamp_range(src: store.Source, start: float, end: Optional[float], max_len:
     return start, end - start
 
 
+GIF_FIT_ATTEMPTS = 5
+# 压体积时依次尝试的降级，前面的伤画质少：(哪个参数, 降到多少)。宽度那步按需要算，降到的是下限。
+# 实测（抖音 / B 站片段，有序抖动）：颜色 256→128 约 -19%、→64 约 -35%；帧率 12→10 约 -16%、→8 约 -31%；
+# 体积大致和宽度的 1.7 次方成正比。颜色减半在抖动下几乎看不出来，所以最先降
+_GIF_LADDER = (("colors", 128), ("fps", 10), ("width", 200), ("colors", 64), ("fps", 8), ("width", 160))
+_COLOR_FACTOR = {128: 0.81, 64: 0.65}
+
+
+def _shrink_gif(width: int, fps: int, colors: int, ratio: float) -> tuple[int, int, int]:
+    """GIF 超了目标体积（ratio = 目标 / 实际）时，按 _GIF_LADDER 的顺序估出下一组参数，
+    尽量一次压进去。只往下降：用户自己设得比下限还低的不会被抬高。"""
+    need = ratio * 0.92   # 估算有误差，留点余量，免得刚好卡在线上又多跑一轮
+    for knob, floor in _GIF_LADDER:
+        if need >= 1:
+            break
+        if knob == "colors" and colors > floor:
+            need /= _COLOR_FACTOR[floor] / _COLOR_FACTOR.get(colors, 1.0)
+            colors = floor
+        elif knob == "fps" and fps > floor:
+            need /= (floor / fps) ** 0.9
+            fps = floor
+        elif knob == "width" and width > floor:
+            new = max(floor, min(width, int(width * need ** (1 / 1.7) / 8) * 8))
+            need /= (new / width) ** 1.7
+            width = new
+    return width, fps, colors
+
+
 async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, end: Optional[float] = None,
                   fps: int = 12, width: int = 480, dither: str = "bayer", speed: float = 1.0,
-                  key_time: Optional[float] = None) -> None:
+                  key_time: Optional[float] = None, max_bytes: Optional[int] = None) -> None:
     config.ensure_dirs()
     out_dir = config.OUTPUTS_DIR
     stem = safe_filename(src.title, "", "clip")[:40]
@@ -177,8 +206,28 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
         width = max(120, min(960, int(width)))
         out = out_dir / f"{job.id}.gif"
         job.set(progress=0.05, message="正在生成 GIF")
-        await ffmpeg.make_gif(src.path, str(out), start=start, duration=dur, fps=fps, width=width,
-                              dither=dither, speed=speed, on_progress=progress)
+        # 给了 max_bytes（比如微信表情要 1MB 以内才自动播放）时，帧率和宽度只是上限：
+        # 做出来超了就按超出的比例降参数重做，最多 GIF_FIT_ATTEMPTS 次，压不进去就交最小的那份
+        colors, attempt = 256, 0
+        while True:
+            base = min(0.8, 0.05 + 0.2 * attempt)
+
+            async def step(frac: float, base: float = base) -> None:
+                job.set(progress=base + frac * (0.95 - base))
+
+            await ffmpeg.make_gif(src.path, str(out), start=start, duration=dur, fps=fps, width=width,
+                                  dither=dither, speed=speed, colors=colors, on_progress=step)
+            size = out.stat().st_size
+            if not max_bytes or size <= max_bytes:
+                break
+            nxt = _shrink_gif(width, fps, colors, max_bytes / size)
+            attempt += 1
+            if nxt == (width, fps, colors) or attempt >= GIF_FIT_ATTEMPTS:
+                break
+            width, fps, colors = nxt
+            job.set(message=f"{size / 1e6:.1f} MB 超了，压小一点重做：宽 {width} px、{fps} fps")
+        job.extra = {"width": width, "fps": fps, "colors": colors, "max_bytes": max_bytes,
+                     "fits": None if not max_bytes else size <= max_bytes}
         job.result_path = str(out)
         job.filename = f"{stem}.gif"
         job.preview = f"/api/jobs/{job.id}/file?inline=1"
