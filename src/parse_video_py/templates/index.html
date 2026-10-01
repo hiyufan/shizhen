@@ -17,7 +17,7 @@
       <button class="btn dark" id="parse-btn" type="submit">解析</button>
     </form>
     <p class="supports" data-reveal style="--i:4"><b>支持</b> 抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。</p>
-    <div id="notice" class="notice" hidden></div>
+    <div id="notice" class="notice" aria-live="polite" hidden></div>
     <div id="result" hidden></div>
     <div id="converter" hidden></div>
     {% if page.body %}
@@ -305,16 +305,26 @@ $('#paste-form').addEventListener('submit', async (e) => {
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
   notice('');
   $('#converter').hidden = true;
+  // 抖音图文要在服务端开浏览器渲染，6–10 秒；只有个转圈的话用户以为卡了会反复点或者直接走
+  // 实况图的分享文案只写「# live实况」「#livephoto」，没有「图文作品」
+  const isNote = /douyin\.com\/(note|share\/(note|slides))\//.test(text)
+    || (/douyin\.com/.test(text) && /图文作品|实况|live/i.test(text));
+  const waits = [
+    setTimeout(() => notice(isNote ? '抖音图文要打开页面一张张取图，大约 10 秒，别关页面。' : '还在解析，这个平台响应慢一点，稍等一下。', 'info'), 2500),
+    setTimeout(() => notice('比平时慢，平台那边响应不太快，再等一会儿。', 'info'), 15000),
+  ];
   try {
     const r = await api('/api/parse?url=' + encodeURIComponent(text));
     if (r.code !== 200) { const e = new Error(r.msg || '解析失败'); e.reason = r.reason; throw e; }
     current = r.data;
     sigs = r.data.sig || {};
     edges = r.data.edge || {};
+    notice('');
     renderResult(current);
   } catch (err) {
     notice(err.message.replace(/[。.]$/, '') + '。' + (REASON_TIPS[err.reason] || ''));
   } finally {
+    waits.forEach(clearTimeout);
     btn.disabled = false; btn.textContent = '解析';
   }
 });
