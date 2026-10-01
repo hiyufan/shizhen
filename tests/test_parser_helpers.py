@@ -52,12 +52,24 @@ def test_douyin_note_urls():
     assert not _looks_like_note("https://www.iesdouyin.com/share/video/7424432820954598707/")
 
 
-def test_douyin_browser_note_live_only_for_single_image():
+def test_douyin_browser_note_lives_from_aweme_info():
+    a = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/oAD7QVQrR~tplv-dy-aweme-images:q75.jpeg?x-expires=1"
+    b = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/ocG9IGDnA~tplv-dy-aweme-images:q75.jpeg?x-expires=1"
+    c = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/ooRQAr9Df~tplv-dy-aweme-images:q75.jpeg?x-expires=1"
+    lives = {"ocG9IGDnA": "https://v/b.mp4", "oAD7QVQrR": "https://v/a.mp4"}   # c 没有实况
+    imgs = _note_images({"images": [a, b, c], "lives": lives, "live": "https://v/dom.mp4"})
+    assert [i.live_photo_url for i in imgs] == ["https://v/a.mp4", "https://v/b.mp4", ""]
+    # awemeInfo 说这张没实况就是没有，不拿 DOM 里的视频去凑
+    (img,) = _note_images({"images": [c], "lives": {}, "live": "https://v/dom.mp4"})
+    assert img.live_photo_url == ""
+
+
+def test_douyin_browser_note_dom_fallback_only_for_single_image():
     live = "https://v5-hl-zenl-ov.zjcdn.com/x/6abdc803/video/tos/cn/tos-cn-ve-15/abc/"
-    (img,) = _note_images({"images": ["https://p3-pc-sign.douyinpic.com/a"], "live": live})
+    (img,) = _note_images({"images": ["https://p3-pc-sign.douyinpic.com/a"], "lives": None, "live": live})
     assert img.live_photo_url == live
     # 多张时 DOM 里只有前后几页的视频，配不准就不配
-    imgs = _note_images({"images": ["https://p3/a", "https://p3/b"], "live": live})
+    imgs = _note_images({"images": ["https://p3/a", "https://p3/b"], "lives": None, "live": live})
     assert [i.live_photo_url for i in imgs] == ["", ""]
     (img,) = _note_images({"images": ["https://p3/a"], "live": ""})
     assert img.live_photo_url == ""
