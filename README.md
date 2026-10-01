@@ -145,6 +145,27 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 排查问题：`docker compose exec app python -m parse_video_py.diag "<分享链接>"`，会打印出口 IP、解析结果和平台返回的原始状态。
 
 <details>
+<summary><b>自动部署（CI/CD）</b> — push 到 main，测试通过就自动上线</summary>
+
+<br>
+
+`.github/workflows/ci.yml`：每次 push / PR 跑单元测试（不碰外网）、语法检查和部署脚本的 shellcheck，改到 `Dockerfile` / 依赖时再构建一遍镜像；push 到 main 且都通过，就 SSH 到服务器跑 `scripts/deploy.sh`：等进行中的转换任务做完 → 打回滚标签 → 构建上线 → 自检（容器健康、首页、`/api/health`、公网首页），不过就自动退回上一个镜像。回滚镜像留最近 3 个，日志在 Actions 里和服务器的 `/var/log/shizhen-deploy.log`。
+
+部署密钥在服务器上被锁死成只能跑部署脚本，开不了 shell、转发不了端口；SSH 带过去的只被当成要部署的提交 SHA，且必须是 GitHub 上 main 里的提交：
+
+```bash
+ssh-keygen -t ed25519 -N "" -C shizhen-actions-deploy -f deploy_key
+echo "restrict,command=\"$PWD/scripts/deploy.sh\" $(cat deploy_key.pub)" >> ~/.ssh/authorized_keys
+gh secret set DEPLOY_SSH_KEY < deploy_key                  # 私钥传上去后在服务器上删掉
+gh secret set DEPLOY_HOST --body "<服务器 IP>"
+for f in /etc/ssh/ssh_host_*_key.pub; do echo "<服务器 IP> $(cut -d' ' -f1,2 "$f")"; done | gh secret set DEPLOY_KNOWN_HOSTS
+```
+
+`SITE_URL` 默认 `https://ynvan.com`，自检会访问它，部署别的域名记得改。手动部署：`scripts/deploy.sh`（GitHub 上 main 的最新提交）、`FORCE=1 scripts/deploy.sh`（重新构建一遍）。
+
+</details>
+
+<details>
 <summary><b>海外服务器必看</b> — 小红书 / B站 会拒绝海外和机房 IP</summary>
 
 <br>

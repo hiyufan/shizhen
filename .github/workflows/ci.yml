@@ -1,0 +1,92 @@
+# 每次 push / PR 跑测试；push 到 main 且测试通过就 SSH 到服务器部署（scripts/deploy.sh）。
+# 需要的 Secrets：DEPLOY_HOST、DEPLOY_SSH_KEY（只能跑部署脚本的专用密钥）、DEPLOY_KNOWN_HOSTS
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # 只取消 PR 上的旧任务；main 上的不取消，免得把正在进行的部署掐断
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # 和 Dockerfile 一致
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: 安装依赖
+        run: pip install -e ".[web,dev]"
+      - name: 语法错误 / 未定义的名字
+        # 完整风格检查现在有几十处历史遗留，先只拦会让程序跑不起来的
+        run: python -m flake8 src tests --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: 单元测试
+        # 测试不碰外网：平台解析器换成假的，数据目录指到临时目录（见 tests/conftest.py）
+        run: python -m pytest -q
+      - name: 部署脚本检查
+        run: shellcheck scripts/deploy.sh
+
+  docker:
+    # 只有镜像相关文件变了才构建一遍（装 Chromium 要几分钟），不推送
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: 镜像相关文件有没有变
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            git fetch -q --depth=1 origin "$base" || true
+          fi
+          if git diff --quiet "$base" HEAD -- Dockerfile pyproject.toml requirements.txt 2>/dev/null; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 构建镜像
+        if: steps.changed.outputs.build == 'true'
+        run: docker build -t shizhen-ci .
+
+  deploy:
+    needs: [test, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # 部署一个接一个排队，从不取消
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: SSH 到服务器部署
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 服务器公钥写死在 Secret 里，不信任首次连接，防中间人
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # 服务器那边这把钥匙只能跑 scripts/deploy.sh，这里传过去的只是要部署的提交
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o ServerAliveInterval=30 -o ConnectTimeout=20 \
+              "root@$DEPLOY_HOST" "$GITHUB_SHA"
