@@ -82,7 +82,8 @@ rollback() {
   git -C "$REPO_DIR" reset -q --hard "$prev"
   docker tag "$IMAGE:rollback-${prev:0:7}" "$IMAGE:latest"
   docker compose up -d --no-build "$SERVICE"
-  if verify; then
+  # 演练开关只管上线那次自检，回滚后的自检要真查
+  if SIMULATE_FAILURE='' verify; then
     log "回滚完成，线上是 ${prev:0:7}"
   else
     log "回滚后自检仍然不过，需要人工处理"
