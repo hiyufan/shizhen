@@ -67,17 +67,24 @@ h1 em, h2 em { font-family: 'Playfair Display', var(--serif); font-style: italic
 .btn:disabled { opacity: .45; cursor: default; }
 .btn:active { transform: translateY(1px); }
 
-/* ---------- section 骨架 */
-.sec { position: relative; overflow: hidden; padding: 96px 0; }
+/* ---------- section 骨架
+   冷暖交替但不一刀切：冷色就是页面底色，暖色画在 ::before 上、上下两头渐隐成冷色；
+   色团（.shape）也不再被区块裁成直边，可以晕到隔壁区块里。
+   叠放：暖色底 (-2) < 色团 (-1) < 内容，都落在根层叠上下文里，所以 .sec 及其祖先别建层叠上下文
+   （别给它们加 z-index / transform / filter / opacity < 1）。 */
+html { overflow-x: clip; }
+body { overflow-x: hidden; overflow-x: clip; }   /* 色团伸出页面左右不出横向滚动；老浏览器不认 clip 就用 hidden */
+.sec { position: relative; padding: 96px 0; --fade: min(200px, 30%); }
 .sec.full { min-height: 100vh; display: flex; align-items: center; }
-.sec.warm { background: var(--warm); }
-.sec.cold { background: var(--cold); }
-@media (max-width: 860px) { .sec { padding: 64px 0; } .sec.full { min-height: auto; } }
+.sec.warm::before { content: ""; position: absolute; inset: 0; z-index: -2; background: var(--warm); pointer-events: none;
+  -webkit-mask-image: linear-gradient(transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+  mask-image: linear-gradient(transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent); }
+@media (max-width: 860px) { .sec { padding: 64px 0; --fade: min(120px, 25%); } .sec.full { min-height: auto; } }
 .eyebrow { display: inline-block; margin-bottom: 16px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
 .sec h2 { font-size: clamp(2.5rem, 5vw, 4.2rem); font-weight: 700; line-height: 1.15; max-width: 16em; }
 .sec .sub { margin: 18px 0 0; font-size: 17px; line-height: 1.7; color: var(--ink-2); max-width: 36em; }
 .sec-head { margin-bottom: 48px; }
-.shape { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .25; pointer-events: none; will-change: transform; }
+.shape { position: absolute; z-index: -1; border-radius: 50%; filter: blur(90px); opacity: .25; pointer-events: none; will-change: transform; }
 .shape.sky { background: var(--sky); } .shape.mint { background: var(--mint); } .shape.orange { background: var(--orange); } .shape.beige { background: var(--beige); }
 
 /* ---------- 卡片 */
