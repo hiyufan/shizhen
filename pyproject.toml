@@ -46,6 +46,7 @@ dev = [
     "isort>=5.13",
     "flake8>=7.0",
     "pre-commit>=3.7",
+    "fonttools[woff]>=4.50",   # 衬线字体子集：scripts/subset_fonts.py 和 tests/test_fonts.py
 ]
 all = ["parse-video-py[web,cli,youtube,douyin]"]
 

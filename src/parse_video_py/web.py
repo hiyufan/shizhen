@@ -3,6 +3,7 @@ import contextlib
 import logging
 import mimetypes
 import dataclasses
+import functools
 import os
 import re
 import secrets
@@ -200,14 +201,28 @@ def _asset_version() -> str:
 _ASSET_V = _asset_version()
 
 
+@functools.lru_cache(maxsize=None)
+def _static_url(name: str) -> str:
+    """/static/<name>?v=<这个文件的内容哈希>。/static/ 在 nginx 缓存 30 天、浏览器按 immutable
+    缓存一年，换了内容（比如重裁字体子集）URL 不变的话，老访客和 nginx 会一直发旧文件。
+    按单个文件算，改 site.css 不会让所有字体跟着失效重下。"""
+    import hashlib
+
+    data = (Path(__file__).parent / "static" / name).read_bytes()
+    return f"/static/{name}?v={hashlib.sha1(data).hexdigest()[:8]}"
+
+
+templates.env.globals["static_url"] = _static_url
+
+
 def _critical_css() -> str:
     """fonts.css + site.css 原文，内联进 <head>：省掉首屏两个渲染阻塞请求。
     跨境访问一次 RTT 就是几百毫秒，且 @font-face 随 HTML 到达后 woff2 才能开始
     并行下载——之前字体被串在 fonts.css 的发现链上。文件在部署时随镜像更新，
-    进程启动读一次即可。"""
+    进程启动读一次即可。字体 URL 换成带版本的，和 base.html 的 preload 一致。"""
     static = Path(__file__).parent / "static"
-    return (static / "fonts.css").read_text(encoding="utf-8") + \
-        (static / "site.css").read_text(encoding="utf-8")
+    css = (static / "fonts.css").read_text(encoding="utf-8") + (static / "site.css").read_text(encoding="utf-8")
+    return re.sub(r"url\(/static/([^)?]+)\)", lambda m: f"url({_static_url(m.group(1))})", css)
 
 
 _CRITICAL_CSS = _critical_css()
