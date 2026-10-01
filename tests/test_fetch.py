@@ -1,4 +1,4 @@
-"""实况打包拉原图：国内图片 CDN 直连握不上就走中继，失败过的 CDN 一段时间内直接走中继。"""
+"""实况打包拉原图和实况视频：国内媒体 CDN 直连握不上就走中继，失败过的 CDN 一段时间内直接走中继。"""
 
 import asyncio
 
@@ -42,8 +42,16 @@ def test_cn_image_falls_back_to_relay_then_goes_relay_first(calls, tmp_path):
     assert calls == [("relay", None)], "同一个 CDN 刚失败过，不该再白等一轮直连超时"
 
 
-def test_video_and_other_hosts_never_use_relay(calls, tmp_path):
-    for url in (VIDEO, "https://pbs.twimg.com/media/a.jpg"):
+def test_live_video_cdn_also_falls_back(calls, tmp_path):
+    # 线上实测 365yg / zjcdn 的实况视频一样会握不上；图片 CDN 失败不连带视频 CDN
+    _fetch(DOUYIN_IMG, tmp_path / "1")
+    calls.clear()
+    _fetch(VIDEO, tmp_path / "v")
+    assert calls == [("direct", 10), ("relay", None)]
+
+
+def test_other_hosts_never_use_relay(calls, tmp_path):
+    for url in ("https://pbs.twimg.com/media/a.jpg", "https://rr1---sn-abc.googlevideo.com/videoplayback"):
         with pytest.raises(httpx.ConnectTimeout):
             _fetch(url, tmp_path / "v")
     assert calls == [("direct", 30), ("direct", 30)]

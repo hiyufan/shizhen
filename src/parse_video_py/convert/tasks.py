@@ -238,17 +238,18 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
     raise ValueError(f"不支持的格式: {fmt}")
 
 
-# 海外服务器到国内图片 CDN 的 TLS 握手经常整段超时（2026-10 实测 douyinpic 大多握不上，
-# 同一 IP 的 TCP 是通的），浏览器看图走边缘 /img 碰不到，实况打包要服务器自己拉原图就挂了。
-# 这些图片直连失败就改走中继；失败过的 CDN 10 分钟内直接走中继，免得一次打包每张图
-# 都先白等一轮超时。按 CDN 主域名记：同一条作品的图分在 p5-ex-… / p95-zjwztc-… 等
-# 不同子域名上，坏的是整条跨境链路。视频不走中继：365yg / douyinvod 直连正常，体积也大
+# 海外服务器到国内媒体 CDN 的 TLS 握手经常整段超时（2026-10 实测 douyinpic 的图、
+# 365yg / zjcdn 的实况视频都会握不上，同一 IP 的 TCP 是通的）。浏览器看图走边缘 /img
+# 碰不到，实况打包要服务器自己拉原图和实况视频就挂了。这些直连失败就改走中继（实况
+# 视频几百 KB，中继扛得住）；失败过的 CDN 10 分钟内直接走中继，免得每个文件都先白等
+# 一轮超时。按 CDN 主域名记：同一条作品的图分在 p5-ex-… / p95-zjwztc-… 不同子域名上，
+# 坏的是整条跨境链路
 _RELAY_FIRST: dict[str, float] = {}
 _RELAY_FIRST_SECONDS = 600
 
 
 async def _fetch_bytes(url: str, dest: Path, headers: dict[str, str] | None = None, limit: int = 100 << 20) -> None:
-    cdn = relay.cn_image_cdn(url) if relay.enabled() else ""
+    cdn = relay.cn_media_cdn(url) if relay.enabled() else ""
     if not cdn:
         await _fetch_once(url, dest, headers, limit)
         return
