@@ -101,6 +101,15 @@ async def aclose_browser() -> None:
     await _warm_browser.reset()
 
 
+def _note_images(dom: dict) -> list[ImgInfo]:
+    """浏览器兜底取到的图配上实况。只有一张图时 DOM 里那段视频必定是它的；
+    多张时页面只留前后几页的 <video>，硬配会张冠李戴，宁可不给。"""
+    images = [ImgInfo(url=u) for u in dom.get("images") or []]
+    if len(images) == 1 and dom.get("live"):
+        images[0].live_photo_url = dom["live"]
+    return images
+
+
 def _looks_like_note(url: str) -> bool:
     """地址是不是图文作品。
 
@@ -131,8 +140,13 @@ def _configured_cookie() -> str:
 # 主图 + 封面 + 缩略条出现多次，去掉 ~tplv-... 模板后按路径查重。
 _NOTE_DOM_EXTRACT = """
 () => {
+  // 只在播放器里找：右侧相关推荐的缩略图原图也有 330~1440 宽，混进来会在图集末尾
+  // 多出一张（第一项就是本条「播放中」，表现为重复图）。推荐列表有时也挂在
+  // note-detail 底下，所以要收窄到 player-container，轮播的每一页都在它里面
+  const detail = document.querySelector('[data-e2e="note-detail"]');
+  const root = (detail || document).querySelector('[data-e2e="player-container"]') || detail || document;
   const seen = {};
-  for (const img of document.querySelectorAll('img')) {
+  for (const img of root.querySelectorAll('img')) {
     const src = img.currentSrc || img.src || '';
     try {
       const u = new URL(src);
@@ -146,6 +160,16 @@ _NOTE_DOM_EXTRACT = """
   const music = [...document.querySelectorAll('video')]
     .map(v => v.currentSrc || v.src || '')
     .find(s => s.includes('ies-music/') || s.endsWith('.mp3')) || '';
+  // 实况：单张实况的图文页直接用播放器放那段 2~5 秒的视频，地址是 .../video/tos/...
+  // 或 /aweme/v1/play/?file_id=（备用 <source>）。背景音乐（ies-music、/obj/tos-cn-ve-）
+  // 和 H.265 探测片 uuu_265.mp4 都不是这个路径。多张实况是轮播，只留前后三页的
+  // <video>，正在放的那个才是当前这页的
+  const lives = [...root.querySelectorAll('video')].map(v => {
+    const src = [v.currentSrc || v.src, ...[...v.querySelectorAll('source')].map(s => s.src)]
+      .find(s => /\\/video\\/tos\\/|\\/aweme\\/v1\\/play\\//.test(s || ''));
+    return src ? { src, playing: !v.paused } : null;
+  }).filter(Boolean);
+  const live = ((lives.find(l => l.playing) || lives[0]) || {}).src || '';
   const metadesc = document.querySelector('meta[name="description"]')?.content || '';
   const desc = (document.querySelector('[data-e2e="note-desc"]')?.innerText
       || metadesc || document.title).trim().replace(/\\s*-\\s*抖音\\s*$/, '');
@@ -167,7 +191,7 @@ _NOTE_DOM_EXTRACT = """
     const m = metadesc.match(/([^\\s，。]{1,30})于\\d{8}发布在抖音/);
     if (m) author = m[1];
   }
-  return { images: Object.values(seen), music, desc, author, uid };
+  return { images: Object.values(seen), music, live, desc, author, uid };
 }
 """
 
@@ -591,8 +615,9 @@ class DouYin(BaseParser):
         之后稳定放行，所以浏览器常驻复用（见 _WarmBrowser），全程无账号。
 
         playwright 没装或浏览器起不来时返回 None，上层维持 slidesinfo 的报错。
-        局限：DOM 里没有实况视频地址，这条路上图片的 live_photo_url 为空；
-        配了 PARSE_VIDEO_DOUYIN_COOKIE 的走 slidesinfo 仍有实况。
+        实况：单张实况页的 <video> 就是那段实况，能配上；多张实况是轮播，DOM 里
+        只有前后几页的 <video>，配不全，这种图集的 live_photo_url 留空。配了
+        PARSE_VIDEO_DOUYIN_COOKIE 的走 slidesinfo，实况是全的。
         """
         page_url = f"https://www.douyin.com/note/{video_id}"
         async with _BROWSER_SEM:
@@ -629,7 +654,7 @@ class DouYin(BaseParser):
             else:
                 return None
 
-        images = [ImgInfo(url=u) for u in dom["images"]]
+        images = _note_images(dom)
         return VideoInfo(
             video_url="",
             cover_url="",
