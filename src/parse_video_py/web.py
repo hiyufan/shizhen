@@ -370,6 +370,7 @@ class ConvertRequest(BaseModel):
     dither: str = Field(default="bayer", pattern="^(bayer|sierra2_4a|none)$")
     speed: float = 1.0
     key_time: Optional[float] = None
+    max_bytes: Optional[int] = Field(default=None, ge=100_000, le=50_000_000)   # GIF 目标体积，超了自动降参数
 
 
 class DownloadRequest(BaseModel):
@@ -680,7 +681,8 @@ async def api_convert(req: ConvertRequest, ip: str = Depends(limits.job_limit)):
 
     async def fn(job: jobs.Job) -> None:
         await tasks.convert(job, src=src, fmt=req.format, start=req.start, end=req.end, fps=req.fps,
-                            width=req.width, dither=req.dither, speed=req.speed, key_time=req.key_time)
+                            width=req.width, dither=req.dither, speed=req.speed, key_time=req.key_time,
+                            max_bytes=req.max_bytes)
 
     job = _start_job(req.format, fn, ip, src.id)
     return job.view()

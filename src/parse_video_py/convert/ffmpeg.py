@@ -144,7 +144,7 @@ def _even_scale(width: int | None, max_height: int | None = None) -> str:
 
 
 async def make_gif(src: str, dst: str, *, start: float, duration: float, fps: int, width: int,
-                   dither: str = "bayer", speed: float = 1.0,
+                   dither: str = "bayer", speed: float = 1.0, colors: int = 256,
                    on_progress: ProgressCb | None = None) -> None:
     dither_opt = {
         "bayer": "dither=bayer:bayer_scale=4",
@@ -155,7 +155,7 @@ async def make_gif(src: str, dst: str, *, start: float, duration: float, fps: in
     pts = "" if abs(speed - 1.0) < 1e-3 else f"setpts=PTS/{speed},"
     vf = (
         f"[0:v]{pts}fps={fps},{_even_scale(width)},split[a][b];"
-        f"[a]palettegen=max_colors=256:stats_mode=diff[p];"
+        f"[a]palettegen=max_colors={colors}:stats_mode=diff[p];"
         f"[b][p]paletteuse={dither_opt}:diff_mode=rectangle"
     )
     out_dur = duration / speed

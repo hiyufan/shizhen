@@ -182,6 +182,7 @@ const PLATFORMS = {
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
 };
 const LIMITS = { gif: 30, livephoto: 10, motionphoto: 10 };
+const GIF_TARGET = 1000000;   // 微信：GIF 不超过 1MB 才自动播放，超过 5MB 发不出去
 const REASON_TIPS = {
   deleted: '确认一下原内容还在，或者重新复制一次分享链接（小红书的链接会过期）。',
   login: '站长可以在服务器上配置 cookies 解决；换个平台的链接不受影响。',
@@ -194,6 +195,8 @@ const REASON_TIPS = {
   parse: '平台可能刚改版，可以过两天再试。',
 };
 const FORMAT_NAMES = { gif: 'GIF', livephoto: '实况照片', motionphoto: '动态照片' };
+const SWITCH_LABELS = { gif: '改做 GIF', livephoto: '改做实况照片（iPhone）', motionphoto: '改做动态照片（安卓）' };
+const spaced = (name) => /^[A-Za-z]/.test(name) ? ' ' + name : name;   // 「生成 GIF」「生成实况照片」
 
 const fmtTime = (s) => {
   s = Math.max(0, s || 0);
@@ -525,7 +528,7 @@ async function openConverter(req, format) {
   const status = el('div', {}, el('p', { class: 'hint' }, el('span', { class: 'spin' }), ' 正在准备原视频，视频越长等得越久…'));
   const jobsBox = el('div', { class: 'jobs', style: 'margin-top:10px;max-width:420px' });
   status.append(jobsBox);
-  conv.append(el('div', { class: 'conv-head' }, el('h2', {}, '转换')), status);
+  conv.append(el('div', { class: 'conv-head' }, el('h2', {}, FORMAT_NAMES[format])), status);
   box.append(conv);
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -551,15 +554,16 @@ async function openConverter(req, format) {
 }
 
 function buildConverter(conv, src, format) {
-  const state = { format, start: 0, end: Math.min(src.duration, LIMITS[format]), fps: 12, width: 480, speed: 1, keyTime: null, dither: 'bayer' };
+  // 默认宽度按长边 480 算：竖屏视频按宽 480 出图，高度就有 850 多，GIF 动辄七八兆
+  const defaultWidth = src.height > src.width ? Math.max(160, Math.round(480 * src.width / src.height / 40) * 40) : 480;
+  // fit：压到 GIF_TARGET 以内，帧率和宽度变成上限，超了服务端自动往下降
+  const state = { format, start: 0, end: Math.min(src.duration, LIMITS[format]), fps: 12, width: defaultWidth, speed: 1, keyTime: null, dither: 'bayer', fit: true };
 
-  const tabs = el('div', { class: 'tabs', role: 'tablist' });
-  const tabDefs = [['gif', 'GIF'], ['livephoto', '实况照片 iPhone'], ['motionphoto', '动态照片 安卓']];
-  for (const [key, label] of tabDefs) {
-    tabs.append(el('button', { type: 'button', role: 'tab', 'data-key': key, 'aria-selected': String(key === state.format), onclick: () => setFormat(key) }, label));
-  }
+  // 格式在结果页点「转 GIF / 做成实况照片」时已经选过了，这里不再摆一排标签让人再选一遍，
+  // 只留个小链接给偶尔想换的人
   const heading = el('h2', {}, '');
-  conv.append(el('div', { class: 'conv-head' }, heading, tabs));
+  const switcher = el('div', { class: 'conv-switch' });
+  conv.append(el('div', { class: 'conv-head' }, heading, switcher));
 
   // 左：预览 + 修剪条
   const portrait = src.height > src.width;
@@ -587,13 +591,15 @@ function buildConverter(conv, src, format) {
   // 右：参数
   const right = el('div', {});
   const optGif = el('div', {});
-  const fpsOut = el('output', {}, '12 fps'), widthOut = el('output', {}, '480 px'), speedOut = el('output', {}, '1×');
+  const fpsOut = el('output', {}, '12 fps'), widthOut = el('output', {}, state.width + ' px'), speedOut = el('output', {}, '1×');
   optGif.append(
     el('div', { class: 'field' }, el('label', {}, '帧率', fpsOut), el('input', { type: 'range', min: 5, max: 30, step: 1, value: 12, oninput: (e) => { state.fps = +e.target.value; fpsOut.textContent = state.fps + ' fps'; } })),
-    el('div', { class: 'field' }, el('label', {}, '宽度', widthOut), el('input', { type: 'range', min: 160, max: 960, step: 40, value: 480, oninput: (e) => { state.width = +e.target.value; widthOut.textContent = state.width + ' px'; } })),
+    el('div', { class: 'field' }, el('label', {}, '宽度', widthOut), el('input', { type: 'range', min: 160, max: 960, step: 40, value: state.width, oninput: (e) => { state.width = +e.target.value; widthOut.textContent = state.width + ' px'; } })),
     el('div', { class: 'field' }, el('label', {}, '速度', speedOut), el('input', { type: 'range', min: 0.5, max: 3, step: 0.25, value: 1, oninput: (e) => { state.speed = +e.target.value; speedOut.textContent = state.speed + '×'; } })),
     el('div', { class: 'field' }, el('label', {}, '抖动'), el('select', { onchange: (e) => { state.dither = e.target.value; } },
       el('option', { value: 'bayer' }, '有序抖动，文件小'), el('option', { value: 'sierra2_4a' }, '误差扩散，更细腻'), el('option', { value: 'none' }, '不抖动，色块风'))),
+    el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: true, onchange: (e) => { state.fit = e.target.checked; } }),
+      el('span', {}, '压到 1 MB 以内', el('small', {}, '微信里超过 1 MB 的 GIF 不会自动播放。勾着时帧率和宽度是上限，超了会自动往下降。'))),
     el('p', { class: 'hint' }, 'GIF 最长 30 秒。想要文件小：降帧率、缩宽度、缩短时长。'),
   );
   const keyOut = el('output', {}, '中间');
@@ -607,12 +613,17 @@ function buildConverter(conv, src, format) {
     el('div', { class: 'field' }, el('button', { class: 'btn sm', type: 'button', style: 'justify-self:start', onclick: () => { state.keyTime = video.currentTime; keyOut.textContent = fmtTime(video.currentTime); keyRange.value = Math.round((video.currentTime - state.start) / Math.max(state.end - state.start, .01) * 1000); } }, '用当前画面做封面')),
     liveHint,
   );
-  const goBtn = el('button', { class: 'btn dark block', type: 'button', onclick: run }, '开始转换');
-  const jobsBox = el('div', { class: 'jobs', style: 'margin-top:10px' });
-  right.append(optGif, optLive, el('div', { style: 'margin-top:16px' }, goBtn), jobsBox);
+  const goBtn = el('button', { class: 'btn dark block', type: 'button', onclick: () => run() }, '开始转换');
+  right.append(optGif, optLive, el('div', { style: 'margin-top:16px' }, goBtn));
 
+  // 视频不超过这个格式的时长上限就直接按默认参数生成，剪片段和调参数收起来，要改再展开；
+  // 超过上限必须先选一段，就默认展开。进度和结果放在编辑区下面，收起时紧跟着标题
+  const summary = el('summary', {});
+  const adjust = el('details', { class: 'adjust' }, summary, el('div', { class: 'conv-grid' }, left, right));
+  const jobsBox = el('div', { class: 'jobs', style: 'margin-top:14px' });
   const resultBox = el('div', {});
-  conv.append(el('div', { class: 'conv-grid' }, left, right), resultBox);
+  conv.append(adjust, jobsBox, resultBox);
+  const fits = (f) => src.duration > 0 && src.duration <= LIMITS[f] + 0.05;
 
   // ---- 修剪逻辑
   const W = () => strip.getBoundingClientRect().width;
@@ -675,34 +686,52 @@ function buildConverter(conv, src, format) {
   });
   video.addEventListener('loadedmetadata', () => { video.currentTime = state.start; });
   window.addEventListener('resize', layout);
+  adjust.addEventListener('toggle', layout);   // 收起时修剪条宽度是 0，展开后重新排
 
   function setFormat(key) {
     state.format = key;
-    for (const b of tabs.children) b.setAttribute('aria-selected', String(b.dataset.key === key));
+    switcher.replaceChildren(...Object.keys(FORMAT_NAMES).filter(k => k !== key).map(k =>
+      el('button', { class: 'btn sm quiet', type: 'button', onclick: () => setFormat(k) }, SWITCH_LABELS[k])));
     optGif.hidden = key !== 'gif';
     optLive.hidden = key === 'gif';
     liveHint.innerHTML = key === 'livephoto'
       ? '会得到一个 zip，里面是配对好的 JPG + MOV（最长 10 秒）。传到 iPhone 后用支持合成实况的 App 或快捷指令导入相册。'
       : '会得到一张内嵌视频的 JPG（最长 10 秒）。保存到安卓相册就会显示为动态照片。';
     setRange(state.start, Math.min(state.end, state.start + LIMITS[key]), 'start');
-    goBtn.textContent = '生成' + FORMAT_NAMES[key];
-    heading.textContent = (src.title ? src.title.slice(0, 24) + ' → ' : '') + FORMAT_NAMES[key];
+    heading.textContent = FORMAT_NAMES[key] + (src.title ? ' · ' + src.title.slice(0, 24) : '');   // 窄屏会截断，格式放前面
+    resultBox.innerHTML = '';
+    if (fits(key)) {
+      adjust.open = false;
+      summary.textContent = '剪片段、调参数';
+      goBtn.textContent = '重新生成' + spaced(FORMAT_NAMES[key]);
+      run();
+    } else {
+      adjust.open = true;
+      summary.textContent = '先选一段：' + FORMAT_NAMES[key] + (/^[A-Za-z]/.test(FORMAT_NAMES[key]) ? ' ' : '') + '最长 ' + LIMITS[key] + ' 秒';
+      goBtn.textContent = '生成' + spaced(FORMAT_NAMES[key]);
+    }
   }
-  setFormat(format);
-  layout();
 
+  // 换格式时上一个格式的任务可能还在跑：只认最后一次，旧的做完了也不往结果区放
+  let seq = 0;
   async function run() {
+    const mine = ++seq, fmt = state.format;
     goBtn.disabled = true;
-    const card = jobCard(jobsBox, FORMAT_NAMES[state.format]);
+    const card = jobCard(jobsBox, FORMAT_NAMES[fmt]);
     try {
-      const body = { source_id: src.id, format: state.format, start: state.start, end: state.end, fps: state.fps, width: state.width, dither: state.dither, speed: state.speed, key_time: state.keyTime };
+      const body = { source_id: src.id, format: fmt, start: state.start, end: state.end, fps: state.fps, width: state.width, dither: state.dither, speed: state.speed, key_time: state.keyTime,
+        max_bytes: fmt === 'gif' && state.fit ? GIF_TARGET : null };
       const job = await api('/api/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const done = await watchJob(job, card.update);
       card.card.remove();
-      showResult(resultBox, done, state.format);
-    } catch (e) { card.fail(e.message); }
-    finally { goBtn.disabled = false; }
+      if (mine === seq) showResult(resultBox, done, fmt);
+    } catch (e) {
+      if (mine === seq) card.fail(e.message); else card.card.remove();
+    } finally { if (mine === seq) goBtn.disabled = false; }
   }
+
+  setFormat(format);
+  layout();
 }
 
 function showResult(box, job, format) {
@@ -720,7 +749,15 @@ function showResult(box, job, format) {
     note = '解压后把 JPG 和 MOV 一起导入，就会配对成一张实况。';
   } else {
     prev.append(el('img', { src: fileUrl + '?inline=1', alt: '转换结果' }));
-    note = format === 'gif' ? '长按或右键就能保存，也可以点按钮。' : '保存到安卓相册后会显示为动态照片；在电脑上它就是一张普通 JPG。';
+    // iPhone 上点按钮下载会进「文件」App，长按图片才能直接存进相册
+    if (format === 'gif' && matchMedia('(pointer: coarse)').matches) prev.append(el('span', { class: 'tip' }, '长按图片存到相册'));
+    note = format === 'gif' ? '手机上长按图片就能存进相册；电脑上右键另存或点按钮。' : '保存到安卓相册后会显示为动态照片；在电脑上它就是一张普通 JPG。';
+    const x = job.extra || {};
+    if (format === 'gif' && x.fits != null) {
+      note = (x.fits
+        ? '已压到 1 MB 以内（宽 ' + x.width + ' px、' + x.fps + ' fps' + (x.colors < 256 ? '、' + x.colors + ' 色' : '') + '），微信里能自动播放。'
+        : '压到最小还有 ' + fmtSize(job.filesize) + '，微信里要点一下才播放。把片段剪短一点就能压进 1 MB。') + note;
+    }
   }
   const ext = (job.filename || '').split('.').pop().toUpperCase();
   box.append(el('div', { class: 'result' }, prev,
