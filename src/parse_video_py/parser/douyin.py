@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -17,32 +18,39 @@ from .errors import ParseError
 # 后者留作退路：某个域名被风控或出口不通时，换一个往往就过了。
 _SLIDES_HOSTS = ("www.douyin.com", "www.iesdouyin.com")
 
-# 图文兜底浏览器：同一时刻只允许一个解析用它（一个 page 不能同时开两个页面，
-# 排队等一会儿对"一天几次解析"的量级无所谓）
-_BROWSER_SEM = asyncio.Semaphore(1)
+# 图文兜底浏览器同时开几个页面：几个人同时贴图文时不用排队（每个 3~4 秒）。
+# 页面共用一个 context，cookie 和过掉的人机验证都是共享的
+_BROWSER_PAGES = max(1, int(os.environ.get("PARSE_VIDEO_DOUYIN_PAGES", "2") or 2))
 
 
 class _WarmBrowser:
     """进程内常驻的无痕 Chromium。
 
     抖音对全新浏览器环境会随机弹人机验证，同一 context 过一次后后续加载稳定
-    放行（实测连续 4 次加载全过、图集 7 张图一张不少），所以浏览器起了就不关，
-    页面反复复用。只有图文兜底解析用它，常驻内存 ~250MB。全程无账号。
+    放行（实测连续 4 次加载全过、图集 7 张图一张不少），所以浏览器和 context
+    起了就不关。只有图文兜底解析用它。全程无账号。
+
+    页面每次现开、用完就关：停在抖音页面上自动播放的推荐流 / 实况会让渲染进程
+    和软件合成的 GPU 进程一直转（实测停首页 83%、实况图文 106% CPU）；切到
+    about:blank 虽然不转了，渲染进程攒下的内存却不还（7 次解析后单页 1GB）。
+    关掉页面两样都还干净，cookie 在 context 里不受影响，新开页面只多几十毫秒。
+    某个页面出错只影响它自己；浏览器进程断了才整个重起。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, size: int) -> None:
+        self._sem = asyncio.Semaphore(size)
         self._lock = asyncio.Lock()
         self._pw = None
         self._browser = None
         self._context = None
-        self._page = None
 
-    async def page(self):
+    async def _ensure_context(self):
         from playwright.async_api import async_playwright
 
         async with self._lock:
-            if self._page is not None:
-                return self._page
+            if self._browser is not None and self._browser.is_connected():
+                return self._context
+            await self._close_all()
             self._pw = await async_playwright().start()
             self._browser = await self._pw.chromium.launch(
                 headless=True,
@@ -59,52 +67,48 @@ class _WarmBrowser:
             await self._context.add_init_script(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
             )
-            self._page = await self._context.new_page()
-            return self._page
+            return self._context
 
-    async def park(self) -> None:
-        """用完切到空白页。停在抖音页面上，自动播放的推荐流 / 实况 / 背景音乐会让
-        渲染进程和软件合成的 GPU 进程一直转：实测停在首页 83%、实况图文 106%
-        CPU，about:blank 是 0。cookie 留在 context 里，下次照样免验证。"""
-        if self._page is not None:
+    @contextlib.asynccontextmanager
+    async def page(self):
+        """开一个页面用，同时最多 size 个，用完（不管成败）关掉。"""
+        async with self._sem:
+            context = await self._ensure_context()
+            page = await context.new_page()
             try:
-                await self._page.goto("about:blank", timeout=5000)
-            except Exception:  # noqa: BLE001
-                pass
+                yield page
+            finally:
+                with contextlib.suppress(Exception):
+                    await page.close()
+
+    async def _close_all(self) -> None:
+        for closer in (self._context, self._browser):
+            if closer is not None:
+                with contextlib.suppress(Exception):
+                    await closer.close()
+        self._context = self._browser = None
+        if self._pw is not None:
+            with contextlib.suppress(Exception):
+                await self._pw.stop()
+            self._pw = None
 
     async def reset(self) -> None:
-        """浏览器崩了 / 状态坏了就整个扔掉，下次解析重新起。"""
+        """进程退出时整个收掉。"""
         async with self._lock:
-            for closer in (self._page, self._context, self._browser):
-                if closer is not None:
-                    try:
-                        await closer.close()
-                    except Exception:  # noqa: BLE001
-                        pass
-            self._page = self._context = self._browser = None
-            if self._pw is not None:
-                try:
-                    await self._pw.stop()
-                except Exception:  # noqa: BLE001
-                    pass
-                self._pw = None
+            await self._close_all()
 
 
-_warm_browser = _WarmBrowser()
+_warm_browser = _WarmBrowser(_BROWSER_PAGES)
 
 
 async def warmup_browser() -> None:
     """启动时后台预热兜底浏览器：起进程 + 首次导航过掉人机验证，别让第一个
     解析图文的用户垫这十几秒。playwright 没装或起不来就静默放弃。"""
-    try:
-        async with _BROWSER_SEM:
-            page = await _warm_browser.page()
+    with contextlib.suppress(Exception):
+        async with _warm_browser.page() as page:
             await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
                             timeout=30000)
             await page.wait_for_timeout(3000)
-            await _warm_browser.park()
-    except Exception:  # noqa: BLE001
-        await _warm_browser.reset()
 
 
 async def aclose_browser() -> None:
@@ -182,13 +186,15 @@ _NOTE_DOM_EXTRACT = """
   // 实况：播放器的 React 组件 props 里有整条作品的数据（往上第 4 层左右的 awemeInfo），
   // images[i].video.playAddr 就是每张图的实况，按图片 uri 末段和 DOM 里的图对上。
   // 多张实况的轮播 DOM 只留前后三页的 <video>，靠 DOM 配不全，只能走这里
-  let lives = null;   // null = 没找到 awemeInfo；{} = 找到了但没有实况
+  // total 是 awemeInfo 里的总张数，轮询时据此判断图齐了没有（见 _extract_note_dom）
+  let lives = null, total = null;   // null = 没找到 awemeInfo；{} = 找到了但没有实况
   try {
     const fk = Object.keys(root).find(k => k.startsWith('__reactFiber$'));
     for (let f = fk && root[fk], up = 0; f && up < 30; f = f.return, up++) {
       const imgs = f.memoizedProps && f.memoizedProps.awemeInfo && f.memoizedProps.awemeInfo.images;
       if (!Array.isArray(imgs)) continue;
       lives = {};
+      total = imgs.length;
       for (const im of imgs) {
         let src = (((im && im.video && im.video.playAddr) || [])[0] || {}).src || '';
         if (src.startsWith('//')) src = 'https:' + src;
@@ -228,7 +234,7 @@ _NOTE_DOM_EXTRACT = """
     const m = metadesc.match(/([^\\s，。]{1,30})于\\d{8}发布在抖音/);
     if (m) author = m[1];
   }
-  return { images: Object.values(seen), music, lives, live, desc, author, uid };
+  return { images: Object.values(seen), music, lives, live, total, detail: !!detail, desc, author, uid };
 }
 """
 
@@ -656,42 +662,38 @@ class DouYin(BaseParser):
         也能逐张配上；拿不到 awemeInfo 时只给单张图配播放器里那段 <video>。
         """
         page_url = f"https://www.douyin.com/note/{video_id}"
-        async with _BROWSER_SEM:
+        dom = None
+        for attempt in range(2):
             try:
-                dom = None
-                for attempt in range(2):
-                    try:
-                        page = await _warm_browser.page()
-                    except ImportError:
-                        return None
-                    except Exception:  # noqa: BLE001
-                        return None  # 浏览器装了但起不来，兜底失败，上层报原错
-                    try:
-                        await page.goto(page_url, wait_until="domcontentloaded",
-                                        timeout=30000)
-                        await page.wait_for_timeout(1000)
-                        if f"/note/{video_id}" not in page.url:
-                            if f"/video/{video_id}" in page.url:
-                                # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
-                                # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
-                                return None
-                            # 跳去首页/推荐流说明这条作品没了
-                            raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
-                        dom = await self._extract_note_dom(page)
-                        if dom.get("images"):
-                            break
-                        # 图集一张图都没等到：多半是撞上人机验证的变体页。同一
-                        # context 再试一次通常就放行了；还不行才算失败。
-                    except ParseError:
-                        raise
-                    except Exception:  # noqa: BLE001
-                        # 浏览器崩了 / 页面超时：整个换新的再来一次
-                        await _warm_browser.reset()
-                        continue
-                else:
-                    return None
-            finally:
-                await _warm_browser.park()
+                async with _warm_browser.page() as page:
+                    # 第一次 12 秒还没到 DOMContentLoaded 多半是跨境连接卡死了（正常
+                    # 1~1.5 秒，统计里有 25~40 秒的长尾），换个页面重来比干等划算；第二次
+                    # 放宽到 25 秒，网络只是慢的时候别两次都掐掉
+                    await page.goto(page_url, wait_until="domcontentloaded",
+                                    timeout=12000 if attempt == 0 else 25000)
+                    if f"/note/{video_id}" not in page.url:
+                        if f"/video/{video_id}" in page.url:
+                            # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
+                            # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
+                            return None
+                        # 跳去首页/推荐流说明这条作品没了
+                        raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
+                    dom = await self._extract_note_dom(page)
+            except ImportError:
+                return None
+            except ParseError:
+                raise
+            except Exception:  # noqa: BLE001
+                # 页面超时 / 崩了 / 浏览器起不来：出错的页面已经关掉，换一个再来
+                continue
+            if dom.get("images"):
+                break
+            if dom.get("total") == 0:
+                return None   # awemeInfo 里没有图：不是图文，交回上层报原错
+            # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
+            # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
+        else:
+            return None
 
         images = _note_images(dom)
         return VideoInfo(
@@ -706,25 +708,43 @@ class DouYin(BaseParser):
 
     @staticmethod
     async def _extract_note_dom(page) -> dict:
-        """等图集图片渲染齐了从 DOM 里取数据。图片数会随懒加载逐步变多，等它
-        连续两轮不再增长再返回；推荐流的图片也在 DOM 里，但都在图集之外——
-        图集图是 /tos-cn-i- 开头的大图，推荐流缩略图很小，按 naturalWidth 滤掉。"""
-        try:
-            await page.wait_for_selector(
-                'img[src*="douyinpic"], img[srcset*="douyinpic"]',
-                state="attached", timeout=15000,
-            )
-        except Exception:  # noqa: BLE001
-            pass
-        prev = -1
-        for _ in range(10):
-            dom = await page.evaluate(_NOTE_DOM_EXTRACT)
-            n = len(dom.get("images") or [])
-            if 0 < n == prev:
+        """轮询到图集齐了就返回。
+
+        awemeInfo 里有总张数（打开后 ~1.5 秒可读），DOM 里的图一够数就返回，实测
+        打开后 1.6~2.0 秒；以前固定等 1 秒再等图数连续两轮（隔 1.5 秒）不变，要
+        4~5 秒。读不到 awemeInfo（页面改版）时退回老规则：图数 1.5 秒不再变。
+        推荐流 / 合集的图不在 player-container 里，见 _NOTE_DOM_EXTRACT。
+
+        页面中途自己重载（视频走 /note/ 地址、WAF 验证后刷新）会让 evaluate 抛
+        「Execution context was destroyed」，接着轮询就行——以前这会被当成浏览器
+        坏了，整个重起。一直没有图文区块（视频页 / 验证页）6 秒就放弃。
+        """
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        dom: dict = {"images": []}
+        prev, changed_at = -1, start
+        while True:
+            now = loop.time()
+            if now - start >= 15:
                 return dom
-            prev = n
-            await page.wait_for_timeout(1500)
-        return dom
+            try:
+                dom = await page.evaluate(_NOTE_DOM_EXTRACT)
+            except Exception as err:  # noqa: BLE001
+                if "context was destroyed" not in str(err) and "navigat" not in str(err):
+                    raise
+                await page.wait_for_timeout(200)
+                continue
+            n = len(dom.get("images") or [])
+            total = dom.get("total")
+            if total == 0 or (total and n >= total):
+                return dom
+            if n != prev:
+                prev, changed_at = n, now
+            elif n and now - changed_at >= (3 if total else 1.5):
+                return dom   # 知道总数却一直凑不齐（轮播没全渲染）就别等满 15 秒了
+            if not dom.get("detail") and now - start >= 6:
+                return dom
+            await page.wait_for_timeout(200)
 
     def _generate_fixed_length_numeric_id(self, length: int) -> str:
         """生成固定位数的随机数字ID"""
