@@ -102,10 +102,18 @@ async def aclose_browser() -> None:
 
 
 def _note_images(dom: dict) -> list[ImgInfo]:
-    """浏览器兜底取到的图配上实况。只有一张图时 DOM 里那段视频必定是它的；
-    多张时页面只留前后几页的 <video>，硬配会张冠李戴，宁可不给。"""
-    images = [ImgInfo(url=u) for u in dom.get("images") or []]
-    if len(images) == 1 and dom.get("live"):
+    """浏览器兜底取到的图配上实况。
+
+    lives 是页面 awemeInfo 里 {图片 uri 末段: 实况地址}，按 id 出现在图片地址里来配；
+    awemeInfo 说没有实况就是没有。lives 为 None（没找到 awemeInfo）时退回 DOM：只有一张图时播放器里那段视频必定是它的；多张时页面只留
+    前后几页的 <video>，硬配会张冠李戴，宁可不给。"""
+    lives = dom.get("lives")
+    images = []
+    for u in dom.get("images") or []:
+        path = u.split("?")[0]
+        live = next((src for img_id, src in (lives or {}).items() if img_id in path), "")
+        images.append(ImgInfo(url=u, live_photo_url=live))
+    if lives is None and len(images) == 1 and dom.get("live"):
         images[0].live_photo_url = dom["live"]
     return images
 
@@ -160,16 +168,34 @@ _NOTE_DOM_EXTRACT = """
   const music = [...document.querySelectorAll('video')]
     .map(v => v.currentSrc || v.src || '')
     .find(s => s.includes('ies-music/') || s.endsWith('.mp3')) || '';
-  // 实况：单张实况的图文页直接用播放器放那段 2~5 秒的视频，地址是 .../video/tos/...
-  // 或 /aweme/v1/play/?file_id=（备用 <source>）。背景音乐（ies-music、/obj/tos-cn-ve-）
-  // 和 H.265 探测片 uuu_265.mp4 都不是这个路径。多张实况是轮播，只留前后三页的
-  // <video>，正在放的那个才是当前这页的
-  const lives = [...root.querySelectorAll('video')].map(v => {
+  // 实况：播放器的 React 组件 props 里有整条作品的数据（往上第 4 层左右的 awemeInfo），
+  // images[i].video.playAddr 就是每张图的实况，按图片 uri 末段和 DOM 里的图对上。
+  // 多张实况的轮播 DOM 只留前后三页的 <video>，靠 DOM 配不全，只能走这里
+  let lives = null;   // null = 没找到 awemeInfo；{} = 找到了但没有实况
+  try {
+    const fk = Object.keys(root).find(k => k.startsWith('__reactFiber$'));
+    for (let f = fk && root[fk], up = 0; f && up < 30; f = f.return, up++) {
+      const imgs = f.memoizedProps && f.memoizedProps.awemeInfo && f.memoizedProps.awemeInfo.images;
+      if (!Array.isArray(imgs)) continue;
+      lives = {};
+      for (const im of imgs) {
+        let src = (((im && im.video && im.video.playAddr) || [])[0] || {}).src || '';
+        if (src.startsWith('//')) src = 'https:' + src;
+        const id = ((im && im.uri) || '').split('/').pop();
+        if (src && id) lives[id] = src;
+      }
+      break;
+    }
+  } catch {}
+  // 拿不到 awemeInfo（页面改版）时的退路：单张实况的页面直接用播放器放那段 2~5 秒的
+  // 视频，地址是 .../video/tos/... 或 /aweme/v1/play/?file_id=（备用 <source>）。
+  // 背景音乐（ies-music、/obj/tos-cn-ve-）和 H.265 探测片 uuu_265.mp4 不是这个路径
+  const players = [...root.querySelectorAll('video')].map(v => {
     const src = [v.currentSrc || v.src, ...[...v.querySelectorAll('source')].map(s => s.src)]
       .find(s => /\\/video\\/tos\\/|\\/aweme\\/v1\\/play\\//.test(s || ''));
     return src ? { src, playing: !v.paused } : null;
   }).filter(Boolean);
-  const live = ((lives.find(l => l.playing) || lives[0]) || {}).src || '';
+  const live = ((players.find(l => l.playing) || players[0]) || {}).src || '';
   const metadesc = document.querySelector('meta[name="description"]')?.content || '';
   const desc = (document.querySelector('[data-e2e="note-desc"]')?.innerText
       || metadesc || document.title).trim().replace(/\\s*-\\s*抖音\\s*$/, '');
@@ -191,7 +217,7 @@ _NOTE_DOM_EXTRACT = """
     const m = metadesc.match(/([^\\s，。]{1,30})于\\d{8}发布在抖音/);
     if (m) author = m[1];
   }
-  return { images: Object.values(seen), music, live, desc, author, uid };
+  return { images: Object.values(seen), music, lives, live, desc, author, uid };
 }
 """
 
@@ -615,9 +641,8 @@ class DouYin(BaseParser):
         之后稳定放行，所以浏览器常驻复用（见 _WarmBrowser），全程无账号。
 
         playwright 没装或浏览器起不来时返回 None，上层维持 slidesinfo 的报错。
-        实况：单张实况页的 <video> 就是那段实况，能配上；多张实况是轮播，DOM 里
-        只有前后几页的 <video>，配不全，这种图集的 live_photo_url 留空。配了
-        PARSE_VIDEO_DOUYIN_COOKIE 的走 slidesinfo，实况是全的。
+        实况：从播放器 React 组件的 awemeInfo.images[].video.playAddr 取，多张实况
+        也能逐张配上；拿不到 awemeInfo 时只给单张图配播放器里那段 <video>。
         """
         page_url = f"https://www.douyin.com/note/{video_id}"
         async with _BROWSER_SEM:
