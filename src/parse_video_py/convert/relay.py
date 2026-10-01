@@ -51,10 +51,19 @@ def edge_origin() -> str:
     return f"{u.scheme}://{u.netloc.decode()}"
 
 
+def cn_image_cdn(url: str) -> str:
+    """国内平台图片 CDN 的主域名（白名单同 _EDGE_IMG_HOSTS），不是返回空串。"""
+    host = (httpx.URL(url).host or "").lower()
+    return next((s for s in _EDGE_IMG_HOSTS if host == s or host.endswith("." + s)), "")
+
+
+def is_cn_image(url: str) -> bool:
+    return bool(cn_image_cdn(url))
+
+
 def edge_img_url(url: str, ttl: int) -> str | None:
     """白名单里的图片 CDN 才给边缘地址, 签名带过期时间, 过期后边缘节点拒绝。"""
-    host = (httpx.URL(url).host or "").lower()
-    if not any(host == s or host.endswith("." + s) for s in _EDGE_IMG_HOSTS):
+    if not is_cn_image(url):
         return None
     exp = int(time.time()) + ttl
     sig = hmac.new(RELAY_TOKEN.encode(), f"img\n{exp}\n{url}".encode(), hashlib.sha256).hexdigest()[:32]

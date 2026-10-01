@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import time
 import zipfile
 from pathlib import Path
 from typing import Optional
 
 import httpx
 
-from . import config, ffmpeg, livephoto, store
+from . import config, ffmpeg, livephoto, relay, store
 from .jobs import Job
 from .net import headers_for, safe_client, safe_filename
 from ..utils import CN_SOURCES, proxy_for
@@ -237,8 +238,35 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
     raise ValueError(f"不支持的格式: {fmt}")
 
 
+# 海外服务器到国内图片 CDN 的 TLS 握手经常整段超时（2026-10 实测 douyinpic 大多握不上，
+# 同一 IP 的 TCP 是通的），浏览器看图走边缘 /img 碰不到，实况打包要服务器自己拉原图就挂了。
+# 这些图片直连失败就改走中继；失败过的 CDN 10 分钟内直接走中继，免得一次打包每张图
+# 都先白等一轮超时。按 CDN 主域名记：同一条作品的图分在 p5-ex-… / p95-zjwztc-… 等
+# 不同子域名上，坏的是整条跨境链路。视频不走中继：365yg / douyinvod 直连正常，体积也大
+_RELAY_FIRST: dict[str, float] = {}
+_RELAY_FIRST_SECONDS = 600
+
+
 async def _fetch_bytes(url: str, dest: Path, headers: dict[str, str] | None = None, limit: int = 100 << 20) -> None:
-    async with safe_client(for_url=url, follow_redirects=True, timeout=httpx.Timeout(30, read=120)) as client:
+    cdn = relay.cn_image_cdn(url) if relay.enabled() else ""
+    if not cdn:
+        await _fetch_once(url, dest, headers, limit)
+        return
+    if _RELAY_FIRST.get(cdn, 0) > time.time():
+        await _fetch_once(url, dest, headers, limit, via_relay=True)
+        return
+    try:
+        await _fetch_once(url, dest, headers, limit, connect_timeout=10)
+    except httpx.TransportError:
+        _RELAY_FIRST[cdn] = time.time() + _RELAY_FIRST_SECONDS
+        await _fetch_once(url, dest, headers, limit, via_relay=True)
+
+
+async def _fetch_once(url: str, dest: Path, headers: dict[str, str] | None, limit: int, *,
+                      via_relay: bool = False, connect_timeout: float = 30) -> None:
+    route = {"transport": relay.shared_transport()} if via_relay else {"for_url": url}
+    timeout = httpx.Timeout(30, connect=connect_timeout, read=120)
+    async with safe_client(follow_redirects=True, timeout=timeout, **route) as client:
         async with client.stream("GET", url, headers=headers_for(url, headers)) as resp:
             resp.raise_for_status()
             done = 0
