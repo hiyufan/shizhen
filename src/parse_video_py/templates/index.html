@@ -260,9 +260,10 @@ function notice(msg, kind = '') {
 // ---------- 存到相册（iPhone）
 // iPhone 上网页点下载存进的是「文件」App，要进相册还得自己去那儿再存一遍。Safari 支持带文件的
 // 系统分享（iOS 15+），面板里点「存储图像 / 存储视频 / 存储 N 项」就直接进照片 App。
-// 实况：配好对的 JPG + MOV 一起交给面板，照片 App 按 content identifier 合成一张实况。
+// 实况不走这条路：真机上分享面板会把配好对的 JPG + MOV 存成一张图加一段视频，合不成实况。
 // 只在 iPhone / iPad 上换成这条路：电脑和安卓点下载本来就顺。
 const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const ANDROID = /Android/i.test(navigator.userAgent);
 const PHOTOS = IOS && (() => {
   try { return !!navigator.canShare && navigator.canShare({ files: [new File([new Uint8Array(1)], 'a.jpg', { type: 'image/jpeg' })] }); }
   catch (_) { return false; }
@@ -309,30 +310,6 @@ async function fetchFiles(items, onBytes) {
   };
   await Promise.all([worker(), worker(), worker()]);
   return out;
-}
-
-// 实况包是不压缩的 zip（服务端 ZIP_STORED），按中央目录把 JPG / MOV 原样切出来
-function unzipStored(buf) {
-  const v = new DataView(buf), u8 = new Uint8Array(buf), out = [];
-  let end = buf.byteLength - 22;
-  while (end >= 0 && v.getUint32(end, true) !== 0x06054b50) end--;
-  if (end < 0) throw new Error('实况包不完整');
-  let p = v.getUint32(end + 16, true);
-  for (let i = 0, n = v.getUint16(end + 10, true); i < n; i++) {
-    if (v.getUint16(p + 10, true) !== 0) throw new Error('实况包格式不对');
-    const size = v.getUint32(p + 20, true), nameLen = v.getUint16(p + 28, true), local = v.getUint32(p + 42, true);
-    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
-    const at = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
-    out.push({ name, data: u8.slice(at, at + size) });
-    p += 46 + nameLen + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
-  }
-  return out;
-}
-
-async function liveFiles(zipUrl, onBytes) {
-  const zip = await fetchFile(zipUrl, 'live', onBytes, 'application/zip');
-  return unzipStored(await zip.arrayBuffer()).map(({ name, data }) =>
-    new File([data], name, { type: /\.mov$/i.test(name) ? 'video/quicktime' : 'image/jpeg' }));
 }
 
 // 「存到相册」按钮：第一次点先把文件拉到手机上（显示进度），拉完立刻弹分享面板。
@@ -536,18 +513,30 @@ function renderResult(d) {
   if (images.length) {
     const lives = images.filter(i => i.live_photo_url);
     const head = el('div', { class: 'sheet-title' }, el('span', {}, images.length + ' 张图片' + (lives.length ? '，其中 ' + lives.length + ' 张是实况' : '')));
-    if (PHOTOS) head.append(photosButton(images.length > 1 ? '全部存到相册（' + images.length + ' 张）' : '存到相册',
-      (p) => fetchFiles(images.map((im, i) => ({ url: proxy(im.url), name: baseName + '_' + (i + 1) })), p), 'btn sm dark'));
-    else if (images.length > 1) head.append(el('button', { class: 'btn sm', type: 'button', onclick: (e) => downloadAll(images, baseName, e.currentTarget) }, '逐张下载全部'));
+    // 只存静态图：iPhone 走分享面板一次存进相册，其它设备逐张下载
+    const stills = (label, cls) => PHOTOS
+      ? photosButton(label, (p) => fetchFiles(images.map((im, i) => ({ url: proxy(im.url), name: baseName + '_' + (i + 1) })), p), cls)
+      : images.length > 1 ? el('button', { class: cls, type: 'button', onclick: (e) => downloadAll(images, baseName, e.currentTarget) }, label) : null;
+    if (!lives.length) head.append(stills(PHOTOS ? (images.length > 1 ? '全部存到相册（' + images.length + ' 张）' : '存到相册') : '逐张下载全部', PHOTOS ? 'btn sm dark' : 'btn sm'));
     res.append(head);
     const liveJobs = el('div', { class: 'jobs', style: 'margin-bottom:12px' });
     if (lives.length) {
-      // 平台自带的实况：原图 + 短视频，直接配对打包，不用裁剪
+      // 平台自带的实况：原图 + 短视频，直接配对打包，不用裁剪。
+      // 按钮都写成动作（以前「iPhone 实况 / 安卓动态照片」并排，像在选平台），按设备排主次：
+      // 本机能用的那种放最前、实心；会存成不动的静态图要写明，免得被当成「存实况」点了
       const pack = (fmt, btn) => startLive(lives, fmt, baseName, liveJobs, btn);
-      res.append(el('div', { class: 'live-actions' },
-        el('span', { class: 'label' }, '实况原样打包'),
-        el('button', { class: 'btn sm dark', type: 'button', onclick: (e) => pack('livephoto', e.currentTarget) }, 'iPhone 实况' + (lives.length > 1 ? '（' + lives.length + ' 张）' : '')),
-        el('button', { class: 'btn sm', type: 'button', onclick: (e) => pack('motionphoto', e.currentTarget) }, '安卓动态照片' + (lives.length > 1 ? '（' + lives.length + ' 张）' : ''))));
+      const n = lives.length > 1 ? '（' + lives.length + ' 张）' : '';
+      const iphone = (cls) => el('button', { class: cls, type: 'button', onclick: (e) => pack('livephoto', e.currentTarget) }, '下载 iPhone 实况包' + n);
+      const android = (cls) => el('button', { class: cls, type: 'button', onclick: (e) => pack('motionphoto', e.currentTarget) }, '下载安卓动态照片' + n);
+      const still = (cls) => stills((PHOTOS ? '只存静态图' : '只下载静态图') + '（' + images.length + ' 张，不会动）', cls);
+      const buttons = IOS ? [iphone('btn sm dark'), still('btn sm'), android('btn sm quiet')]
+        : ANDROID ? [android('btn sm dark'), still('btn sm'), iphone('btn sm quiet')]
+        : [iphone('btn sm dark'), android('btn sm'), still('btn sm quiet')];
+      res.append(el('div', { class: 'live-actions' }, el('span', { class: 'label' }, '保存实况'), ...buttons));
+      res.append(el('p', { class: 'hint', style: 'margin:-4px 0 12px' }, IOS
+        ? 'iPhone 上网页存不了会动的实况：实况包是 zip，里面是配好对的 JPG + MOV，解压后用支持合成实况的 App 导入相册。'
+        : ANDROID ? '动态照片存到相册就会动，Google 相册、三星、小米、OPPO、vivo 都认。'
+        : 'iPhone 实况包是 zip（配好对的 JPG + MOV，传到手机用 App 导入）；安卓动态照片是一张内嵌视频的 JPG，存相册就会动。'));
       res.append(liveJobs);
     }
     const grid = el('div', { class: 'grid' });
@@ -609,9 +598,7 @@ async function startLive(lives, fmt, baseName, jobsBox, btn) {
     const job = await api('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: lives.map(i => ({ image_url: i.url, video_url: i.live_photo_url, image_sig: sigOf(i.url), video_sig: sigOf(i.live_photo_url) })), format: fmt, title: baseName }) });
     const done = await watchJob(job, card.update);
-    const file = '/api/jobs/' + done.id + '/file';
-    const photos = PHOTOS && fmt === 'livephoto' ? photosButton('存到相册', (p) => liveFiles(file + '?inline=1', p), 'btn sm dark') : null;
-    card.done((photos ? '下载 ' : '保存 ') + (done.filename || '').split('.').pop().toUpperCase() + (done.filesize ? '，' + fmtSize(done.filesize) : ''), file, done.filename, photos);
+    card.done('保存 ' + (done.filename || '').split('.').pop().toUpperCase() + (done.filesize ? '，' + fmtSize(done.filesize) : ''), '/api/jobs/' + done.id + '/file', done.filename);
   } catch (e) { card.fail(e.message); }
   finally { btn.disabled = false; }
 }
@@ -868,8 +855,7 @@ function showResult(box, job, format) {
     const play = () => { prev.classList.add('playing'); mov.play().catch(() => {}); };
     const stop = () => { prev.classList.remove('playing'); mov.pause(); mov.currentTime = 0; };
     prev.addEventListener('pointerdown', play); prev.addEventListener('pointerup', stop); prev.addEventListener('pointerleave', stop);
-    note = PHOTOS ? '点「存到相册」，在分享面板里选「存储 2 项」。如果相册里成了一张图加一段视频，没合成实况，就改用下载 ZIP，再用支持合成实况的 App 导入。'
-      : '解压后把 JPG 和 MOV 一起导入，就会配对成一张实况。';
+    note = '解压后用支持合成实况的 App 把 JPG 和 MOV 一起导入，就会配对成一张实况。';
   } else {
     prev.append(el('img', { src: fileUrl + '?inline=1', alt: '转换结果' }));
     // iPhone 上点按钮下载会进「文件」App，长按图片才能直接存进相册
@@ -883,10 +869,11 @@ function showResult(box, job, format) {
     }
   }
   const ext = (job.filename || '').split('.').pop().toUpperCase();
-  // iPhone：GIF 和实况的主按钮换成「存到相册」，下载留着当备用（动态照片是安卓用的，照旧下载）
-  const photos = !PHOTOS ? null
-    : format === 'gif' ? photosButton('存到相册', (p) => fetchFile(fileUrl + '?inline=1', (job.filename || 'clip').replace(/\.gif$/i, ''), p, 'image/gif').then(f => [f]), 'btn dark block')
-    : format === 'livephoto' ? photosButton('存到相册（实况）', (p) => liveFiles(fileUrl + '?inline=1', p), 'btn dark block') : null;
+  // iPhone：GIF 的主按钮换成「存到相册」，下载留着当备用。实况不行：分享面板会把 JPG 和 MOV
+  // 存成一张图加一段视频，合不成实况（真机试过），只能下载 zip 用 App 导入
+  const photos = PHOTOS && format === 'gif'
+    ? photosButton('存到相册', (p) => fetchFile(fileUrl + '?inline=1', (job.filename || 'clip').replace(/\.gif$/i, ''), p, 'image/gif').then(f => [f]), 'btn dark block')
+    : null;
   box.append(el('div', { class: 'result' }, prev,
     el('div', { class: 'side' },
       photos,
