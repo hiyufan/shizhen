@@ -257,6 +257,115 @@ function notice(msg, kind = '') {
   n.hidden = false;
 }
 
+// ---------- 存到相册（iPhone）
+// iPhone 上网页点下载存进的是「文件」App，要进相册还得自己去那儿再存一遍。Safari 支持带文件的
+// 系统分享（iOS 15+），面板里点「存储图像 / 存储视频 / 存储 N 项」就直接进照片 App。
+// 实况：配好对的 JPG + MOV 一起交给面板，照片 App 按 content identifier 合成一张实况。
+// 只在 iPhone / iPad 上换成这条路：电脑和安卓点下载本来就顺。
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const PHOTOS = IOS && (() => {
+  try { return !!navigator.canShare && navigator.canShare({ files: [new File([new Uint8Array(1)], 'a.jpg', { type: 'image/jpeg' })] }); }
+  catch (_) { return false; }
+})();
+const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov' };
+
+// 拉一个文件（同源地址），边下边报进度。跨境转发偶尔卡在半路：20 秒没收到数据就算卡住，
+// 换个地址（&retry=n，和 proxyImg 一样避开缓存里那份残缺的）再试，最多三次
+async function fetchFile(url, name, onBytes, type) {
+  for (let attempt = 0; ; attempt++) {
+    const ctl = new AbortController();
+    let timer = setTimeout(() => ctl.abort(), 20000);
+    try {
+      const res = await fetch(attempt ? url + (url.includes('?') ? '&' : '?') + 'retry=' + attempt : url, { signal: ctl.signal });
+      if (!res.ok) throw new Error('下载失败（' + res.status + '）');
+      const t = type || (res.headers.get('content-type') || '').split(';')[0] || 'application/octet-stream';
+      const total = +res.headers.get('content-length') || 0;
+      const reader = res.body.getReader(), chunks = [];
+      let got = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        clearTimeout(timer); timer = setTimeout(() => ctl.abort(), 20000);
+        chunks.push(value); got += value.length;
+        onBytes && onBytes(got, total);
+      }
+      return new File(chunks, name + (MIME_EXT[t] ? '.' + MIME_EXT[t] : ''), { type: t });
+    } catch (e) {
+      if (attempt >= 2) throw new Error(e.name === 'AbortError' ? '网络太慢，下载卡住了' : e.message);
+      onBytes && onBytes(0, 0);
+    } finally { clearTimeout(timer); }
+  }
+}
+
+// 几个文件一起拉（同时最多 3 个），进度按字节合计
+async function fetchFiles(items, onBytes) {
+  const got = new Array(items.length).fill(0), out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fetchFile(items[i].url, items[i].name, (g) => { got[i] = g; onBytes && onBytes(got.reduce((a, b) => a + b, 0), 0); }, items[i].type);
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  return out;
+}
+
+// 实况包是不压缩的 zip（服务端 ZIP_STORED），按中央目录把 JPG / MOV 原样切出来
+function unzipStored(buf) {
+  const v = new DataView(buf), u8 = new Uint8Array(buf), out = [];
+  let end = buf.byteLength - 22;
+  while (end >= 0 && v.getUint32(end, true) !== 0x06054b50) end--;
+  if (end < 0) throw new Error('实况包不完整');
+  let p = v.getUint32(end + 16, true);
+  for (let i = 0, n = v.getUint16(end + 10, true); i < n; i++) {
+    if (v.getUint16(p + 10, true) !== 0) throw new Error('实况包格式不对');
+    const size = v.getUint32(p + 20, true), nameLen = v.getUint16(p + 28, true), local = v.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
+    const at = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+    out.push({ name, data: u8.slice(at, at + size) });
+    p += 46 + nameLen + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+  }
+  return out;
+}
+
+async function liveFiles(zipUrl, onBytes) {
+  const zip = await fetchFile(zipUrl, 'live', onBytes, 'application/zip');
+  return unzipStored(await zip.arrayBuffer()).map(({ name, data }) =>
+    new File([data], name, { type: /\.mov$/i.test(name) ? 'video/quicktime' : 'image/jpeg' }));
+}
+
+// 「存到相册」按钮：第一次点先把文件拉到手机上（显示进度），拉完立刻弹分享面板。
+// Safari 要求弹面板离点击不能太久，大文件拉完它会拒绝（NotAllowedError）：这时按钮变成
+// 「点这里存到相册」，再点一下，文件已经在手里，直接弹
+function photosButton(label, load, cls = 'btn dark') {
+  let files = null, busy = false;
+  const btn = el('button', { class: cls, type: 'button' }, label);
+  const share = async () => {
+    try { await navigator.share({ files }); btn.textContent = label; }
+    catch (e) {
+      if (e.name === 'NotAllowedError') btn.textContent = '准备好了，点这里存到相册';
+      else if (e.name === 'AbortError') btn.textContent = label;   // 用户自己关掉了面板
+      else btn.textContent = '没打开分享面板，点了重试';
+    }
+  };
+  btn.addEventListener('click', async () => {
+    if (busy) return;
+    if (files) return share();
+    busy = true; btn.disabled = true; btn.textContent = '准备中…';
+    try {
+      files = await load((got, total) => { btn.textContent = '准备中 ' + (total ? Math.round(got / total * 100) + '%' : fmtSize(got)); });
+      if (!navigator.canShare({ files })) throw new Error('Safari 不支持把这种文件存相册');
+    } catch (e) {
+      files = null; btn.textContent = '没成功，点了重试';
+      notice(e.message + '。也可以点旁边的下载。');
+      return;
+    } finally { busy = false; btn.disabled = false; }
+    await share();
+  });
+  return btn;
+}
+
 // ---------- 任务轮询
 function watchJob(job, onUpdate) {
   return new Promise((resolve, reject) => {
@@ -289,9 +398,10 @@ function jobCard(container, title) {
       bar.style.width = Math.round((j.progress || 0) * 100) + '%';
       small.textContent = (j.message || (j.status === 'queued' ? '排队中' : '处理中')) + ' ' + Math.round((j.progress || 0) * 100) + '%';
     },
-    done(text, href, filename) {
+    done(text, href, filename, photos) {
       bar.style.width = '100%';
-      small.replaceWith(el('a', { class: 'btn sm dark', href, download: filename || '' }, text));
+      const a = el('a', { class: 'btn sm' + (photos ? '' : ' dark'), href, download: filename || '' }, text);
+      small.replaceWith(photos ? el('div', { class: 'group' }, photos, a) : a);
     },
     fail(msg) { card.classList.add('err'); small.textContent = msg; },
   };
@@ -391,7 +501,8 @@ function renderResult(d) {
 
     const dl = el('div', { class: 'group' });
     if (d.video_url) {
-      dl.append(el('a', { class: 'btn dark', href: proxy(d.video_url, baseName + '.mp4', true), download: baseName + '.mp4' },
+      if (PHOTOS) dl.append(photosButton('存到相册', (p) => fetchFile(proxy(d.video_url), baseName, p, 'video/mp4').then(f => [f])));
+      dl.append(el('a', { class: 'btn' + (PHOTOS ? '' : ' dark'), href: proxy(d.video_url, baseName + '.mp4', true), download: baseName + '.mp4' },
         '下载视频' + (d.height ? ' ' + d.height + 'p' : '')));
     }
     if (d.formats && d.formats.length) {
@@ -425,7 +536,9 @@ function renderResult(d) {
   if (images.length) {
     const lives = images.filter(i => i.live_photo_url);
     const head = el('div', { class: 'sheet-title' }, el('span', {}, images.length + ' 张图片' + (lives.length ? '，其中 ' + lives.length + ' 张是实况' : '')));
-    if (images.length > 1) head.append(el('button', { class: 'btn sm', type: 'button', onclick: (e) => downloadAll(images, baseName, e.currentTarget) }, '逐张下载全部'));
+    if (PHOTOS) head.append(photosButton(images.length > 1 ? '全部存到相册（' + images.length + ' 张）' : '存到相册',
+      (p) => fetchFiles(images.map((im, i) => ({ url: proxy(im.url), name: baseName + '_' + (i + 1) })), p), 'btn sm dark'));
+    else if (images.length > 1) head.append(el('button', { class: 'btn sm', type: 'button', onclick: (e) => downloadAll(images, baseName, e.currentTarget) }, '逐张下载全部'));
     res.append(head);
     const liveJobs = el('div', { class: 'jobs', style: 'margin-bottom:12px' });
     if (lives.length) {
@@ -444,7 +557,9 @@ function renderResult(d) {
       if (img.live_photo_url) tile.append(el('span', { class: 'live' }, '实况'));
       tile.append(el('div', { class: 'bar' }, el('span', {}, i + 1),
         el('div', {},
-          el('a', { class: 'btn sm quiet', href: proxy(img.url, name + '.jpg', true), download: name + '.jpg' }, img.live_photo_url ? '原图' : '下载'),
+          PHOTOS
+            ? photosButton(img.live_photo_url ? '原图' : '存相册', (p) => fetchFile(proxy(img.url), name, p).then(f => [f]), 'btn sm quiet')
+            : el('a', { class: 'btn sm quiet', href: proxy(img.url, name + '.jpg', true), download: name + '.jpg' }, img.live_photo_url ? '原图' : '下载'),
           img.live_photo_url ? el('a', { class: 'btn sm quiet', href: proxy(img.live_photo_url, name + '_live.mp4', true), download: name + '_live.mp4' }, '视频') : null,
           img.live_photo_url ? el('button', { class: 'btn sm quiet', type: 'button', title: '用这段实况视频做 GIF',
             onclick: () => openConverter({ url: img.live_photo_url, title: name, sig: sigOf(img.live_photo_url) }, 'gif') }, 'GIF') : null)));
@@ -479,7 +594,10 @@ async function startDownload(f, d, baseName, jobsBox) {
     const job = await api('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ page_url: d.page_url || d.share_url, format_spec: f.format_spec, title: baseName, ext: f.ext, sig: sigOf(d.page_url || d.share_url) }) });
     const done = await watchJob(job, card.update);
-    card.done('保存 ' + (done.filesize ? fmtSize(done.filesize) : ''), '/api/jobs/' + done.id + '/file', done.filename);
+    const file = '/api/jobs/' + done.id + '/file';
+    // 照片 App 只认 mp4 / mov；webm、音频还是走下载
+    const photos = PHOTOS && /\.mp4$/i.test(done.filename || '') ? photosButton('存到相册', (p) => fetchFile(file + '?inline=1', baseName + '_' + f.label.replace(/\s+/g, ''), p, 'video/mp4').then(x => [x]), 'btn sm dark') : null;
+    card.done((photos ? '下载 ' : '保存 ') + (done.filesize ? fmtSize(done.filesize) : ''), file, done.filename, photos);
   } catch (e) { card.fail(e.message); }
 }
 
@@ -491,7 +609,9 @@ async function startLive(lives, fmt, baseName, jobsBox, btn) {
     const job = await api('/api/live', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: lives.map(i => ({ image_url: i.url, video_url: i.live_photo_url, image_sig: sigOf(i.url), video_sig: sigOf(i.live_photo_url) })), format: fmt, title: baseName }) });
     const done = await watchJob(job, card.update);
-    card.done('保存 ' + (done.filename || '').split('.').pop().toUpperCase() + (done.filesize ? '，' + fmtSize(done.filesize) : ''), '/api/jobs/' + done.id + '/file', done.filename);
+    const file = '/api/jobs/' + done.id + '/file';
+    const photos = PHOTOS && fmt === 'livephoto' ? photosButton('存到相册', (p) => liveFiles(file + '?inline=1', p), 'btn sm dark') : null;
+    card.done((photos ? '下载 ' : '保存 ') + (done.filename || '').split('.').pop().toUpperCase() + (done.filesize ? '，' + fmtSize(done.filesize) : ''), file, done.filename, photos);
   } catch (e) { card.fail(e.message); }
   finally { btn.disabled = false; }
 }
@@ -748,7 +868,8 @@ function showResult(box, job, format) {
     const play = () => { prev.classList.add('playing'); mov.play().catch(() => {}); };
     const stop = () => { prev.classList.remove('playing'); mov.pause(); mov.currentTime = 0; };
     prev.addEventListener('pointerdown', play); prev.addEventListener('pointerup', stop); prev.addEventListener('pointerleave', stop);
-    note = '解压后把 JPG 和 MOV 一起导入，就会配对成一张实况。';
+    note = PHOTOS ? '点「存到相册」，在分享面板里选「存储 2 项」。如果相册里成了一张图加一段视频，没合成实况，就改用下载 ZIP，再用支持合成实况的 App 导入。'
+      : '解压后把 JPG 和 MOV 一起导入，就会配对成一张实况。';
   } else {
     prev.append(el('img', { src: fileUrl + '?inline=1', alt: '转换结果' }));
     // iPhone 上点按钮下载会进「文件」App，长按图片才能直接存进相册
@@ -762,9 +883,15 @@ function showResult(box, job, format) {
     }
   }
   const ext = (job.filename || '').split('.').pop().toUpperCase();
+  // iPhone：GIF 和实况的主按钮换成「存到相册」，下载留着当备用（动态照片是安卓用的，照旧下载）
+  const photos = !PHOTOS ? null
+    : format === 'gif' ? photosButton('存到相册', (p) => fetchFile(fileUrl + '?inline=1', (job.filename || 'clip').replace(/\.gif$/i, ''), p, 'image/gif').then(f => [f]), 'btn dark block')
+    : format === 'livephoto' ? photosButton('存到相册（实况）', (p) => liveFiles(fileUrl + '?inline=1', p), 'btn dark block') : null;
   box.append(el('div', { class: 'result' }, prev,
     el('div', { class: 'side' },
-      el('a', { class: 'btn dark block', href: fileUrl, download: job.filename || '' }, '保存 ' + ext + (job.filesize ? '，' + fmtSize(job.filesize) : '')),
+      photos,
+      el('a', { class: 'btn block' + (photos ? '' : ' dark'), href: fileUrl, download: job.filename || '', style: photos ? 'margin-top:10px' : null },
+        (photos ? '下载 ' : '保存 ') + ext + (job.filesize ? '，' + fmtSize(job.filesize) : '')),
       el('div', { class: 'size' }, job.filename || ''),
       el('p', { class: 'hint' }, note))));
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
