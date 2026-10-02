@@ -380,3 +380,17 @@ img.failed { opacity: .35; cursor: pointer; }
 .test-form input:focus { outline: none; border-color: var(--sky); box-shadow: 0 0 0 4px rgba(107,175,223,.18); }
 .test-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 .test-note { margin-top: 32px; font-size: 13px; color: var(--ink-3); }
+
+/* ---------- 解析失败的反馈 */
+.fb { margin-top: 12px; }
+.fb .btn.sm:not(.dark) { background: #fff; }
+.fb-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.fb-row input { flex: 1 1 200px; min-width: 0; height: 40px; padding: 0 16px; border: 1px solid var(--line-2); border-radius: 999px; background: #fff; font-size: 14px; color: var(--ink); }
+.fb-row input:focus { outline: none; border-color: var(--sky); box-shadow: 0 0 0 3px rgba(107,175,223,.18); }
+.fb-row .btn { height: 40px; }
+.fb-err { margin: 8px 0 0; font-size: 13px; }
+.fb-more { margin-top: 8px; font-size: 12px; color: var(--ink-3); }
+.fb-more summary { cursor: pointer; list-style: none; width: fit-content; }
+.fb-more summary::-webkit-details-marker { display: none; }
+.fb-more p { margin: 6px 0 0; line-height: 1.65; color: var(--ink-2); }
+.fb-done { margin: 0; font-weight: 600; }

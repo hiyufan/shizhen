@@ -257,6 +257,36 @@ function notice(msg, kind = '') {
   n.hidden = false;
 }
 
+// ---------- 解析失败的反馈
+// 服务器只给「修得好」的失败发凭证（解析出错 / 拿到空的 / 不支持 / 超时）；删了、平台限制这些没有反馈按钮。
+// 提交后在私有仓库建 issue，修好了服务器先复测再发邮件，邮箱加密存储、发完即删
+function feedbackBox(ticket) {
+  const box = el('div', { class: 'fb' });
+  const email = el('input', { type: 'email', placeholder: '邮箱（选填）', autocomplete: 'email', maxlength: '254', 'aria-label': '邮箱（选填）' });
+  const send = el('button', { class: 'btn sm dark', type: 'submit' }, '提交反馈');
+  const err = el('p', { class: 'fb-err', hidden: true });
+  const form = el('form', { class: 'fb-form', hidden: true },
+    el('div', { class: 'fb-row' }, email, send), err,
+    el('details', { class: 'fb-more' },
+      el('summary', {}, '🔒 加密存储 · 仅用于本次修复通知 · 发送即销毁'),
+      el('p', {}, '邮箱经 HTTPS 传输，服务器以 AES-256 加密保存，只用来告诉你这个问题修好了；邮件发出后立即销毁，最长保留 90 天，不会出现在任何公开位置。')));
+  const open = el('button', { class: 'btn sm', type: 'button', onclick: () => { open.hidden = true; form.hidden = false; email.focus(); } }, '反馈这个问题');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    send.disabled = true; err.hidden = true;
+    try {
+      const r = await api('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket, email: email.value.trim() }) });
+      box.replaceChildren(el('p', { class: 'fb-done' },
+        (r.duplicate ? '这个问题已经有人反馈过，正在修' : '收到了，谢谢') + (r.email ? '，修好后会发邮件告诉你。' : '。')));
+    } catch (ex) {
+      err.textContent = ex.message; err.hidden = false; send.disabled = false;
+    }
+  });
+  box.append(open, form);
+  return box;
+}
+
 // ---------- 存到相册（iPhone）
 // iPhone 上网页点下载存进的是「文件」App，要进相册还得自己去那儿再存一遍。Safari 支持带文件的
 // 系统分享（iOS 15+），面板里点「存储图像 / 存储视频 / 存储 N 项」就直接进照片 App。
@@ -414,7 +444,7 @@ $('#paste-form').addEventListener('submit', async (e) => {
   ];
   try {
     const r = await api('/api/parse?url=' + encodeURIComponent(text));
-    if (r.code !== 200) { const e = new Error(r.msg || '解析失败'); e.reason = r.reason; throw e; }
+    if (r.code !== 200) { const e = new Error(r.msg || '解析失败'); e.reason = r.reason; e.feedback = r.feedback; throw e; }
     current = r.data;
     sigs = r.data.sig || {};
     edges = r.data.edge || {};
@@ -422,6 +452,7 @@ $('#paste-form').addEventListener('submit', async (e) => {
     renderResult(current);
   } catch (err) {
     notice(err.message.replace(/[。.]$/, '') + '。' + (REASON_TIPS[err.reason] || ''));
+    if (err.feedback) $('#notice').append(feedbackBox(err.feedback));
   } finally {
     waits.forEach(clearTimeout);
     btn.disabled = false; btn.textContent = '解析';
