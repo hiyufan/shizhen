@@ -484,9 +484,12 @@ function renderResult(d) {
     }
 
     const dl = el('div', { class: 'group' });
+    // iPhone 上「存到相册」是主按钮，下载视频 / 其他清晰度 / 音频都收成下面一行小字，免得三个大按钮竖着排
+    const compact = PHOTOS && !!d.video_url;
+    const sec = compact ? el('div', { class: 'more-acts' }) : dl;
     if (d.video_url) {
       if (PHOTOS) dl.append(photosButton('存到相册', (p) => fetchFile(proxy(d.video_url), baseName, p, 'video/mp4').then(f => [f])));
-      dl.append(el('a', { class: 'btn' + (PHOTOS ? '' : ' dark'), href: proxy(d.video_url, baseName + '.mp4', true), download: baseName + '.mp4' },
+      sec.append(el('a', { class: compact ? 'btn sm quiet' : 'btn dark', href: proxy(d.video_url, baseName + '.mp4', true), download: baseName + '.mp4' },
         '下载视频' + (d.height ? ' ' + d.height + 'p' : '')));
     }
     if (d.formats && d.formats.length) {
@@ -499,12 +502,14 @@ function renderResult(d) {
       const list = el('div', { class: 'menu-list' }, ...d.formats.map(item));
       list.hidden = true;
       const hasH265 = d.formats.some(f => f.codec);
-      menu.append(el('button', { class: 'btn' + (d.video_url ? '' : ' dark'), type: 'button', onclick: () => { list.hidden = !list.hidden; } }, d.video_url ? '其他清晰度 ▾' : '下载视频 ▾'), list);
+      menu.append(el('button', { class: compact ? 'btn sm quiet' : 'btn' + (d.video_url ? '' : ' dark'), type: 'button', onclick: () => { list.hidden = !list.hidden; } }, d.video_url ? '其他清晰度 ▾' : '下载视频 ▾'), list);
       if (hasH265) list.append(el('p', { class: 'hint', style: 'padding:6px 10px 4px' }, 'H.265 体积更小、更清晰，手机都能播；老电脑可能需要装解码器。'));
       document.addEventListener('click', (e) => { if (!menu.contains(e.target)) list.hidden = true; });
-      dl.append(menu);
+      sec.append(menu);
     }
-    if (d.music_url) dl.append(el('a', { class: 'btn', href: proxy(d.music_url, baseName + '.mp3', true), download: baseName + '.mp3' }, '下载音频'));
+    // 音频用得少，不和下载视频抢位置
+    if (d.music_url) sec.append(el('a', { class: compact ? 'btn sm quiet' : 'btn quiet', href: proxy(d.music_url, baseName + '.mp3', true), download: baseName + '.mp3' }, '下载音频'));
+    if (compact) dl.append(sec);
     side.append(dl);
     side.append(el('div', { class: 'rule' }), el('p', { class: 'label' }, '拿这段视频继续做'));
     side.append(el('div', { class: 'group' },
@@ -513,42 +518,44 @@ function renderResult(d) {
     side.append(jobsBox);
     body.append(side);
     res.append(body);
-  } else if (d.music_url) {
+  } else if (d.music_url && !images.length) {
     res.append(el('div', { class: 'side' }, el('div', { class: 'group' }, el('a', { class: 'btn', href: proxy(d.music_url, baseName + '.mp3', true), download: baseName + '.mp3' }, '下载音频')), jobsBox));
   }
 
   if (images.length) {
     const lives = images.filter(i => i.live_photo_url);
     const head = el('div', { class: 'sheet-title' }, el('span', {}, images.length + ' 张图片' + (lives.length ? '，其中 ' + lives.length + ' 张是实况' : '')));
+    const headActs = el('div', { class: 'head-acts' });
+    // 图集的背景音乐用得少：放在标题行右边，小字，不占一整行
+    if (d.music_url && !hasVideo) headActs.append(el('a', { class: 'btn sm quiet', href: proxy(d.music_url, baseName + '.mp3', true), download: baseName + '.mp3' }, '下载背景音乐'));
     // 只存静态图：iPhone 走分享面板一次存进相册，其它设备逐张下载
     const stills = (label, cls) => PHOTOS
       ? photosButton(label, (p) => fetchFiles(images.map((im, i) => ({ url: proxy(im.url), name: baseName + '_' + (i + 1) })), p), cls)
       : images.length > 1 ? el('button', { class: cls, type: 'button', onclick: (e) => downloadAll(images, baseName, e.currentTarget) }, label) : null;
-    if (!lives.length) head.append(stills(PHOTOS ? (images.length > 1 ? '全部存到相册（' + images.length + ' 张）' : '存到相册') : '逐张下载全部', PHOTOS ? 'btn sm dark' : 'btn sm'));
+    if (!lives.length) headActs.append(stills(PHOTOS ? (images.length > 1 ? '全部存到相册（' + images.length + ' 张）' : '存到相册') : '逐张下载全部', PHOTOS ? 'btn sm dark' : 'btn sm'));
+    if (headActs.childNodes.length) head.append(headActs);
     res.append(head);
     const liveJobs = el('div', { class: 'jobs', style: 'margin-bottom:12px' });
     if (lives.length) {
       // 平台自带的实况：原图 + 短视频，直接配对打包，不用裁剪。
-      // 按钮都写成动作（以前「iPhone 实况 / 安卓动态照片」并排，像在选平台），按设备排主次：
-      // 本机能用的那种放最前、实心；会存成不动的静态图要写明，免得被当成「存实况」点了
+      // 只有一个实心主按钮（本机用得上的那种），另外两个是同一行的小字按钮：以前三个大按钮在手机上竖着排，
+      // 太占地方；并排的「iPhone 实况 / 安卓动态照片」还被当成过平台切换。张数标题行已经写了，按钮上不重复
       const pack = (fmt, btn) => startLive(lives, fmt, baseName, liveJobs, btn);
-      const n = lives.length > 1 ? '（' + lives.length + ' 张）' : '';
-      const iphone = (cls, label) => el('button', { class: cls, type: 'button', onclick: (e) => pack('livephoto', e.currentTarget) }, (label || '下载 iPhone 实况包') + n);
-      const android = (cls) => el('button', { class: cls, type: 'button', onclick: (e) => pack('motionphoto', e.currentTarget) }, '下载安卓动态照片' + n);
-      const still = (cls) => stills((PHOTOS ? '只存静态图' : '只下载静态图') + '（' + images.length + ' 张，不会动）', cls);
+      const iphone = (cls, label) => el('button', { class: cls, type: 'button', onclick: (e) => pack('livephoto', e.currentTarget) }, label);
+      const android = (cls, label) => el('button', { class: cls, type: 'button', onclick: (e) => pack('motionphoto', e.currentTarget) }, label);
       // iPhone 上网页怎么都存不成实况（分享面板、zip、小程序都试过 / 查过，只有原生 App 能写）：
       // 先把实况的视频存进相册，再用视频转实况的 App 转。zip 只有拖进 Mac 的「照片」才会合成
-      const videos = (cls) => photosButton('存实况视频到相册' + (lives.length > 1 ? '（' + lives.length + ' 段）' : ''),
+      const videos = (cls) => photosButton('存实况视频到相册',
         (p) => fetchFiles(lives.map((im) => ({ url: proxy(im.live_photo_url), name: baseName + '_' + (images.indexOf(im) + 1) + '_live', type: 'video/mp4' })), p), cls);
-      const buttons = PHOTOS ? [videos('btn sm dark'), still('btn sm'), iphone('btn sm quiet', '下载 Mac 用实况包')]
-        : IOS ? [iphone('btn sm dark'), still('btn sm')]
-        : ANDROID ? [android('btn sm dark'), still('btn sm'), iphone('btn sm quiet')]
-        : [iphone('btn sm dark'), android('btn sm'), still('btn sm quiet')];
-      res.append(el('div', { class: 'live-actions' }, el('span', { class: 'label' }, '保存实况'), ...buttons));
-      res.append(PHOTOS ? IPHONE_LIVE_HINT('存实况视频到相册')
-        : el('div', { class: 'fine' }, ...(ANDROID ? [el('p', {}, '动态照片存到相册就会动，Google 相册、三星、小米、OPPO、vivo 都认。')]
+      const [main, ...more] = PHOTOS ? [videos('btn sm dark'), stills('只存静态图', 'btn sm quiet'), iphone('btn sm quiet', 'Mac 用实况包')]
+        : IOS ? [iphone('btn sm dark', '下载实况包'), stills('只下载静态图', 'btn sm quiet')]
+        : ANDROID ? [android('btn sm dark', '下载动态照片'), stills('只下载静态图', 'btn sm quiet'), iphone('btn sm quiet', 'iPhone 实况包')]
+        : [iphone('btn sm dark', '下载 iPhone 实况包'), android('btn sm quiet', '下载安卓动态照片'), stills('只下载静态图', 'btn sm quiet')];
+      res.append(el('div', { class: 'live-actions' }, main, el('div', { class: 'more-acts' }, ...more.filter(Boolean))));
+      res.append(PHOTOS ? IPHONE_LIVE_HINT('存实况视频到相册', '「Mac 用实况包」')
+        : el('div', { class: 'fine' }, ...(ANDROID ? [el('p', {}, '动态照片存到相册就会动，Google 相册、三星、小米、OPPO、vivo 都认。静态图不会动。')]
           : [el('p', {}, el('b', {}, '受 iOS 限制，iPhone 上存不成实况'), '：实况包要在 Mac 上用，解压后把 JPG 和 MOV 一起拖进「照片」App，开了 iCloud 照片会同步到 iPhone。'),
-             el('p', {}, '安卓动态照片是一张内嵌视频的 JPG，存到相册就会动。')])));
+             el('p', {}, '安卓动态照片是一张内嵌视频的 JPG，存到相册就会动。静态图不会动。')])));
       res.append(liveJobs);
     }
     const grid = el('div', { class: 'grid' });
