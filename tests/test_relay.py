@@ -2,6 +2,8 @@
 
 import base64
 import gzip
+import hashlib
+import hmac
 import json
 import time
 
@@ -74,3 +76,24 @@ def test_edge_image_url_is_stable_within_the_hour(monkeypatch):
     assert relay.edge_img_url(img, 600) == first, "同一小时里地址要一样，浏览器缓存才用得上"
     # 不管落在一小时里的哪一秒，至少还能用 ttl 秒
     assert int(httpx.URL(first).params["e"]) >= hour + 3500 + 600
+
+
+def test_edge_media_urls_only_for_whitelisted_video_cdns(monkeypatch):
+    monkeypatch.setattr(relay, "RELAY_URL", "https://edge.example.com/relay")
+    monkeypatch.setattr(relay, "RELAY_TOKEN", "tok")
+    video = "https://v95-se-zjwztc-default.365yg.com/x/video/tos/cn/a.mp4"
+    url = httpx.URL(relay.edge_media_url(video, 3600))
+    assert str(url.copy_with(query=None)) == "https://edge.example.com/media"
+    exp = int(url.params["e"])
+    want = hmac.new(b"tok", f"media\n{exp}\n{video}".encode(), hashlib.sha256).hexdigest()[:32]
+    assert url.params["s"] == want and url.params["url"] == video
+    # 图片的签名和视频的不通用：同一个地址两种签名不一样
+    assert relay.edge_img_url("https://p3.douyinpic.com/a.jpeg", 3600) is not None
+    assert relay.edge_media_url("https://p3.douyinpic.com/a.jpeg", 3600) is None
+    assert relay.edge_media_url("https://evil.example.com/a.mp4", 3600) is None
+    assert relay.edge_media_url("https://cn-hbyc-ct-01-01.bilivideo.com/upgcxcode/a.mp4", 3600)
+
+
+def test_relay_client_speaks_http2():
+    # 并发请求共用一条连接：HTTP/1.1 时第二个请求要另开冷连接，B站 解析多 1~2 秒
+    assert relay.RelayTransport("https://edge.example.com/relay", "tok")._client._transport._pool._http2

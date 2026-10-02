@@ -1,6 +1,6 @@
 // 解析结果：视频（预览、下载、其他清晰度、转换入口）、图集（逐张保存、实况打包）
 
-import { postJSON, proxy, proxyImg, sigOf, watchJob } from './api.js';
+import { mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob } from './api.js';
 import { openConverter } from './converter.js';
 import { $, el, fmtClock, fmtSize, safeName, sleep } from './dom.js';
 import { ANDROID, IOS, PHOTOS, fetchFiles, iphoneLiveHint, oneFile, photosButton } from './save.js';
@@ -15,8 +15,9 @@ const PLATFORMS = {
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
 };
 
+/** 视频 / 音频的下载按钮：有国内边缘地址就从边缘下（国内直达），否则服务器转发 */
 const download = (url, filename, label, cls) =>
-  el('a', { class: cls, href: proxy(url, filename, true), download: filename }, label);
+  el('a', { class: cls, href: mediaDownload(url, filename), download: filename, onclick: () => trackDownload(url) }, label);
 
 export function renderResult(d) {
   const title = d.title || '未命名';
@@ -59,9 +60,8 @@ function resultBody(d, baseName) {
 function videoSection(d, baseName, jobsBox) {
   const preview = d.video_url
     ? el('div', { class: 'media' + (isPortrait(d) ? ' portrait' : '') },
-      el('video', {
-        controls: true, playsinline: true, preload: 'metadata',
-        src: proxy(d.video_url), poster: d.cover_url ? proxy(d.cover_url) : null,
+      mediaVideo(d.video_url, {
+        controls: true, playsinline: true, preload: 'metadata', poster: d.cover_url ? proxy(d.cover_url) : null,
       }))
     : el('div', { class: 'media portrait' }, d.cover_url ? proxyImg(d.cover_url, { alt: '' }) : null);
   const convert = (format) => () => openConverter(sourceRequest(d, baseName), format);
@@ -82,7 +82,7 @@ const isPortrait = (d) => (d.width && d.height ? d.height > d.width : true);
 function saveActions(d, baseName, jobsBox) {
   if (PHOTOS && d.video_url) {
     const more = el('div', { class: 'more-acts' }, ...secondaryDownloads(d, baseName, jobsBox, true));
-    return el('div', { class: 'group' }, photosButton('存到相册', oneFile(proxy(d.video_url), baseName, 'video/mp4')), more);
+    return el('div', { class: 'group' }, photosButton('存到相册', oneFile(sourcesOf(d.video_url), baseName, 'video/mp4')), more);
   }
   return el('div', { class: 'group' }, ...secondaryDownloads(d, baseName, jobsBox, false));
 }
@@ -107,7 +107,7 @@ function formatMenu(d, baseName, jobsBox, compact) {
     const meta = [el('span', {}, f.label), el('small', {}, f.filesize ? fmtSize(f.filesize) : f.ext)];
     const filename = baseName + '_' + f.label.replace(/\s+/g, '') + '.' + (f.ext || 'mp4');
     list.append(f.url
-      ? el('a', { href: proxy(f.url, filename, true), download: '', onclick: close }, ...meta)
+      ? el('a', { href: mediaDownload(f.url, filename), download: '', onclick: () => { close(); trackDownload(f.url); } }, ...meta)
       : el('button', { type: 'button', onclick: () => { close(); startDownload(f, d, baseName, jobsBox); } }, ...meta));
   }
   if (d.formats.some((f) => f.codec)) {
@@ -181,7 +181,7 @@ function headActions(d, images, baseName, hasVideo, hasLives) {
 /** 只存静态图：iPhone 走分享面板一次存进相册，其它设备逐张下载（只有一张就不用这个按钮） */
 function stillsButton(images, baseName, label, cls) {
   if (PHOTOS) {
-    const items = images.map((im, i) => ({ url: proxy(im.url), name: baseName + '_' + (i + 1) }));
+    const items = images.map((im, i) => ({ url: sourcesOf(im.url), name: baseName + '_' + (i + 1) }));
     return photosButton(label, (onBytes) => fetchFiles(items, onBytes), cls);
   }
   if (images.length < 2) return null;
@@ -216,7 +216,7 @@ function liveBlock(images, lives, baseName) {
   // 先把实况的视频存进相册，再用视频转实况的 App 转。zip 只有拖进 Mac 的「照片」才会合成
   const videos = () => {
     const items = lives.map((im) => ({
-      url: proxy(im.live_photo_url), name: baseName + '_' + (images.indexOf(im) + 1) + '_live', type: 'video/mp4',
+      url: sourcesOf(im.live_photo_url), name: baseName + '_' + (images.indexOf(im) + 1) + '_live', type: 'video/mp4',
     }));
     return photosButton('存实况视频到相册', (onBytes) => fetchFiles(items, onBytes), 'btn sm dark');
   };
@@ -267,9 +267,13 @@ async function startLive(lives, fmt, baseName, jobsBox, btn) {
 function imageTile(img, n, baseName) {
   const name = baseName + '_' + n;
   const live = img.live_photo_url;
+  // 图片下载留在服务器转发（同源的 <a download> 才认文件名）；视频走边缘的下载头
+  const link = (url, file, label) => (/\.mp4$/.test(file)
+    ? download(url, file, label, 'btn sm quiet')
+    : el('a', { class: 'btn sm quiet', href: proxy(url, file, true), download: file }, label));
   const save = (url, file, ext, label, type) => (PHOTOS
-    ? photosButton(label, oneFile(proxy(url), file, type), 'btn sm quiet')
-    : el('a', { class: 'btn sm quiet', href: proxy(url, file + '.' + ext, true), download: file + '.' + ext }, label));
+    ? photosButton(label, oneFile(sourcesOf(url), file, type), 'btn sm quiet')
+    : link(url, file + '.' + ext, label));
   const actions = [save(img.url, name, 'jpg', live ? '原图' : PHOTOS ? '存相册' : '下载')];
   if (live) {
     actions.push(

@@ -238,3 +238,22 @@ def test_upload_keeps_only_video_extensions(client, monkeypatch, tmp_path, filen
     monkeypatch.setattr(limits.upload_limit, "_buckets", {})
     r = client.post("/api/upload", files={"file": (filename, b"#EXTM3U\n/app/data/secret.mp4\n", "video/mp4")})
     assert r.status_code == 200 and seen == [saved_as]
+
+
+def test_edge_media_and_csp_when_enabled(client, calls, recorded, monkeypatch):
+    monkeypatch.setattr(relay, "RELAY_URL", "https://edge.example.com/relay")
+    monkeypatch.setattr(relay, "RELAY_TOKEN", "tok")
+    monkeypatch.setattr(relay, "EDGE_MEDIA", True)
+    data = client.get("/api/parse", params={"url": SHARE}).json()["data"]
+    info = _info()
+    media = {info.video_url, info.music_url, info.formats[0].url, info.images[0].live_photo_url}
+    # 视频 / 音频给边缘地址（douyinvod.com、douyinstatic.com 都在白名单里）；图片没开 EDGE_IMG 就不给
+    assert set(data["edge"]) == media
+    assert all(httpx.URL(u).path == "/media" for u in data["edge"].values())
+
+
+def test_download_hit_counts_only_signed_urls(client, recorded):
+    url = "https://v3-web.douyinvod.com/play/1.mp4"
+    client.post("/api/download-hit", json={"url": url, "sig": "bad"})
+    client.post("/api/download-hit", json={"url": url, "sig": net.sign(url)})
+    assert recorded == [("download", {"source": "douyinvod.com"})]

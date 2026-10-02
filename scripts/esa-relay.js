@@ -8,6 +8,7 @@
  *                                  不能是下面那个同时管中继和图片签名的 TOKEN
  *   /relay?url=<目标地址>          中继：拾帧把国内平台的解析请求发到这里，由边缘节点代为访问
  *   /img?url=&e=&s=                图片：浏览器直接从国内边缘节点取国内平台的图（拾帧设 PARSE_VIDEO_EDGE_IMG=1 才会用）
+ *   /media?url=&e=&s=[&dl=1&name=] 视频 / 音频：同上，支持拖进度条（Range）；dl=1 时带下载头（拾帧设 PARSE_VIDEO_EDGE_MEDIA=1 才会用）
  *
  * 部署（边缘函数）：ESA 控制台 → 边缘函数 → 新建 → 把本文件贴进去 → 改 TOKEN（要探测再填 PROBE_TOKEN）→
  *     部署后在「版本管理」里发布到生产环境（只点部署只到测试环境，绑定的域名还是旧版本）→ 绑定域名。
@@ -18,7 +19,7 @@
  *     PARSE_VIDEO_RELAY_CN=https://你的函数域名/relay
  *     PARSE_VIDEO_RELAY_TOKEN=和下面 TOKEN 一样的字符串
  *
- * 中继只用于解析请求（网页 / API，几十到一两百 KB），视频本体仍由服务器直连 CDN。
+ * 中继只用于解析请求（网页 / API，几十到一两百 KB）；视频本体给浏览器的那一路可以走 /media，服务器自己做转换要的原视频仍直连 CDN。
  * Cloudflare Workers 也能原样跑这份代码（同样是 export default { fetch }），但它的出口在海外，B站 会 412，别用。
  */
 
@@ -41,6 +42,7 @@ async function handle(request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith("/relay")) return relay(request, url);
   if (url.pathname.endsWith("/img")) return img(url);
+  if (url.pathname.endsWith("/media")) return media(request, url);
   // 探测要带口令。以前任何路径都当探测：爬虫扫一次就让出口 IP 去打一次 B站 API（B站 风控的正是这个 IP），
   // 出口 IP 也公开了，?xhs= 还能让边缘节点替任何人抓任意网址
   // 口令不对和别的路径一样回 404，不让人知道这里有个探测
@@ -133,26 +135,38 @@ function sameString(a, b) {
   return diff === 0;
 }
 
-async function img(url) {
+// 服务器签的地址：签名对、没过期、在白名单里才放行。不放行返回 Response，放行返回 { target, ref }
+async function checkSigned(url, kind, refererOf) {
   const target = url.searchParams.get("url") || "";
   const exp = Number(url.searchParams.get("e") || 0);
   const sig = url.searchParams.get("s") || "";
   if (!(exp > Date.now() / 1000)) return new Response("expired", { status: 403 });
-  if (!sameString((await hmacHex(`img\n${exp}\n${target}`)).slice(0, 32), sig)) return new Response("forbidden", { status: 403 });
+  if (!sameString((await hmacHex(`${kind}\n${exp}\n${target}`)).slice(0, 32), sig)) return new Response("forbidden", { status: 403 });
   let ref;
-  try { ref = imgReferer(new URL(target).hostname); } catch (e) {}
+  try { ref = refererOf(new URL(target).hostname); } catch (e) {}
   if (!ref || !/^https?:\/\//i.test(target)) return new Response("bad url", { status: 400 });
+  return { target, ref };
+}
 
+async function img(url) {
+  const ok = await checkSigned(url, "img", imgReferer);
+  if (ok instanceof Response) return ok;
+  const upstream = { "User-Agent": UA, Referer: ok.ref, Accept: "image/avif,image/webp,image/*,*/*;q=0.8" };
   let resp;
   try {
-    resp = await fetchImage(target, ref);
+    resp = await fetchFollowing(ok.target, upstream, imgReferer);
   } catch (e) {
     return new Response("fetch failed", { status: 502 });
   }
   if (!resp) return new Response("redirect not allowed", { status: 502 });
   const ctype = resp.headers.get("content-type") || "";
   if (!resp.ok || !ctype.startsWith("image/")) return new Response("upstream " + resp.status, { status: 502 });
-  const headers = { "content-type": ctype, "cache-control": "public, max-age=86400", "x-content-type-options": "nosniff" };
+  const headers = {
+    "content-type": ctype,
+    "cache-control": "public, max-age=86400",
+    "x-content-type-options": "nosniff",
+    "access-control-allow-origin": "*", // iPhone 存相册用 fetch 读图（跨域）
+  };
   // fetch 会自动解压：上游带了 content-encoding 时它的长度是压缩后的，和正文对不上，浏览器会截断或一直等
   const len = resp.headers.get("content-length");
   if (len && !resp.headers.get("content-encoding")) headers["content-length"] = len;
@@ -160,20 +174,70 @@ async function img(url) {
 }
 
 // 跳转自己跟：每一跳先查白名单再请求。以前让 fetch 自动跟、拿到结果再查，名单外的地址已经被请求过了。
-// 跳出白名单或跳太多次返回 null
-async function fetchImage(target, ref) {
+// 跳出白名单或跳太多次返回 null。allow(host) 返回真值才算在白名单里
+async function fetchFollowing(target, headers, allow) {
   let current = target;
   for (let hop = 0; hop < 4; hop++) {
-    const resp = await fetch(current, {
-      headers: { "User-Agent": UA, Referer: ref, Accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
-      redirect: "manual",
-    });
+    const resp = await fetch(current, { headers, redirect: "manual" });
     const location = resp.status >= 300 && resp.status < 400 && resp.headers.get("location");
     if (!location) return resp;
     current = new URL(location, current).href;
-    if (!/^https?:/i.test(current) || !imgReferer(new URL(current).hostname)) return null;
+    if (!/^https?:/i.test(current) || !allow(new URL(current).hostname)) return null;
   }
   return null;
+}
+
+// /media?url=&e=&s=[&dl=1&name=]  浏览器直接从这里看 / 下载国内平台的视频和音频：以前要「国内 CDN → 海外服务器 →
+// 国内用户」跨两次太平洋，视频是全站流量的六成。只接受签过名的地址、只转白名单里的音视频 CDN、只回音视频，
+// 透传 Range（拖进度条）。白名单和服务器端 convert/relay.py 的 _EDGE_MEDIA_HOSTS 保持一致
+const DOUYIN = "https://www.douyin.com/";
+const XHS = "https://www.xiaohongshu.com/";
+const KUAISHOU = "https://www.kuaishou.com/";
+const BILIBILI = "https://www.bilibili.com/";
+const MEDIA_REFERERS = [
+  ["douyinvod.com", DOUYIN], ["365yg.com", DOUYIN], ["zjcdn.com", DOUYIN], ["douyinstatic.com", DOUYIN],
+  ["xhscdn.com", XHS], ["xiaohongshu.com", XHS],
+  ["kwimgs.com", KUAISHOU], ["kwaicdn.com", KUAISHOU], ["ndcimgs.com", KUAISHOU], ["yximgs.com", KUAISHOU],
+  ["bilivideo.com", BILIBILI], ["bilivideo.cn", BILIBILI],
+  ["weibocdn.com", "https://weibo.com/"],
+];
+const mediaReferer = (host) => (MEDIA_REFERERS.find(([s]) => host === s || host.endsWith("." + s)) || [])[1];
+const MEDIA_TYPES = /^(video\/|audio\/|application\/octet-stream|binary\/octet-stream)/i;
+const PASS_HEADERS = ["content-type", "content-range", "accept-ranges", "last-modified", "etag"];
+
+async function media(request, url) {
+  const ok = await checkSigned(url, "media", mediaReferer);
+  if (ok instanceof Response) return ok;
+  const headers = { "User-Agent": UA, Referer: ok.ref, Accept: "*/*" };
+  const range = request.headers.get("range");
+  if (range) headers.Range = range;
+  let resp;
+  try {
+    resp = await fetchFollowing(ok.target, headers, mediaReferer);
+  } catch (e) {
+    return new Response("fetch failed", { status: 502 });
+  }
+  if (!resp) return new Response("redirect not allowed", { status: 502 });
+  if (![200, 206].includes(resp.status) || !MEDIA_TYPES.test(resp.headers.get("content-type") || "")) {
+    return new Response("upstream " + resp.status, { status: 502 });
+  }
+  const out = {
+    "cache-control": "public, max-age=86400",
+    "x-content-type-options": "nosniff",
+    // iPhone 存相册要用 fetch 把整个文件读进来（跨域），进度条要读 content-length
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "content-length, content-range, content-type",
+  };
+  for (const k of PASS_HEADERS) if (resp.headers.get(k)) out[k] = resp.headers.get(k);
+  out["accept-ranges"] ||= "bytes";
+  const len = resp.headers.get("content-length");
+  if (len && !resp.headers.get("content-encoding")) out["content-length"] = len;
+  // 跨域的 <a download> 浏览器不认，要下载就得边缘这边给下载头。文件名只是展示用，这里清洗一遍
+  if (url.searchParams.get("dl") === "1") {
+    const name = (url.searchParams.get("name") || "video.mp4").replace(/[\x00-\x1f"\\/:*?<>|]+/g, " ").trim().slice(0, 100) || "video.mp4";
+    out["content-disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
+  }
+  return new Response(resp.body, { status: resp.status, headers: out });
 }
 
 async function probe(url) {

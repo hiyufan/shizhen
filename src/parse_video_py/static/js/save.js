@@ -58,19 +58,32 @@ function stallGuard() {
   };
 }
 
-export async function fetchFile(url, name, onBytes, type) {
+async function fetchWithRetry(url, name, onBytes, type, attempts) {
   for (let attempt = 0; ; attempt++) {
     const guard = stallGuard();
     const target = attempt ? url + (url.includes('?') ? '&' : '?') + 'retry=' + attempt : url;
     try {
       return await download(target, name, onBytes, type, guard);
     } catch (e) {
-      if (attempt >= ATTEMPTS - 1) throw new Error(e.name === 'AbortError' ? '网络太慢，下载卡住了' : e.message);
+      if (attempt >= attempts - 1) throw new Error(e.name === 'AbortError' ? '网络太慢，下载卡住了' : e.message);
       if (onBytes) onBytes(0, 0);
     } finally {
       guard.done();
     }
   }
+}
+
+/** sources：一个地址，或者按顺序试的几个地址（边缘、服务器转发）。前面的只试一次，失败就换下一个 */
+export async function fetchFile(sources, name, onBytes, type) {
+  const list = [].concat(sources);
+  for (let i = 0; i < list.length - 1; i++) {
+    try {
+      return await fetchWithRetry(list[i], name, onBytes, type, 1);
+    } catch (_) {
+      if (onBytes) onBytes(0, 0);
+    }
+  }
+  return fetchWithRetry(list[list.length - 1], name, onBytes, type, ATTEMPTS);
 }
 
 /** 几个文件一起拉（同时最多 3 个），进度按字节合计 */
@@ -89,8 +102,8 @@ export async function fetchFiles(items, onBytes) {
   return out;
 }
 
-/** photosButton 的 load：只拉一个文件 */
-export const oneFile = (url, name, type) => async (onBytes) => [await fetchFile(url, name, onBytes, type)];
+/** photosButton 的 load：只拉一个文件（sources 同 fetchFile） */
+export const oneFile = (sources, name, type) => async (onBytes) => [await fetchFile(sources, name, onBytes, type)];
 
 // 「存到相册」按钮：第一次点先把文件拉到手机上（显示进度），拉完立刻弹分享面板。
 // Safari 要求弹面板离点击不能太久，大文件拉完它会拒绝（NotAllowedError）：这时按钮变成

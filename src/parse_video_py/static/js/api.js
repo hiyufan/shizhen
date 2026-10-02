@@ -55,6 +55,33 @@ export function proxy(url, name, download) {
     + (name ? '&filename=' + encodeURIComponent(name) : '') + (download ? '&download=1' : '');
 }
 
+/** 一个文件可以从哪儿拿：有国内边缘地址就先边缘（国内直达），再服务器转发（跨两次太平洋，兜底） */
+export const sourcesOf = (url) => [edges[url], proxy(url)].filter(Boolean);
+
+/** 视频 / 音频的下载链接。边缘地址是跨域的，<a download> 浏览器不认，靠边缘回的下载头 */
+export function mediaDownload(url, name) {
+  return edges[url] ? edges[url] + '&dl=1&name=' + encodeURIComponent(name) : proxy(url, name, true);
+}
+
+/** 走边缘的下载不经过服务器，单独报一声给使用统计（走服务器转发的那边自己会记） */
+export function trackDownload(url) {
+  if (!edges[url]) return;
+  fetch('/api/download-hit', {
+    method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, sig: sigOf(url) }),
+  }).catch(() => {});
+}
+
+/** <video>：边缘地址播不了（节点出错、被平台拒）就退回服务器转发，只退一次 */
+export function mediaVideo(url, attrs) {
+  const [first, ...rest] = sourcesOf(url);
+  const video = el('video', { ...attrs, src: first });
+  video.addEventListener('error', () => {
+    if (rest.length) video.src = rest.shift();
+  });
+  return video;
+}
+
 // 国内平台的图先从国内边缘节点直接拿（edges 里有地址的话），不绕海外服务器；
 // 边缘拿不到就走服务器转发。转发是跨境的，偶尔断在半路：再自动重试两次，还不行就让用户点一下再试。
 // 加 &retry=n 换个地址，浏览器不会拿缓存里那份残缺的

@@ -79,12 +79,19 @@ def _media_urls(data: dict) -> set[str]:
     return {u for u in urls if u}
 
 
-def _edge_images(data: dict) -> dict[str, str]:
-    """国内图片 CDN 的图让浏览器直接从国内边缘节点拿，不绕海外服务器。"""
+def _edge_urls(data: dict) -> dict[str, str]:
+    """国内平台的图片 / 视频 / 音频让浏览器直接从国内边缘节点拿，不绕海外服务器（跨两次太平洋）。"""
     # 结果会被缓存 PARSE_CACHE_SECONDS，边缘签名要比缓存活得久
     ttl = config.PARSE_CACHE_SECONDS + 3600
-    images = {data.get("cover_url")} | {img.get("url") for img in data["images"]}
-    return {u: edge for u in images if u and (edge := relay.edge_img_url(u, ttl))}
+    edges = {}
+    if relay.edge_img_enabled():
+        images = {data.get("cover_url")} | {img.get("url") for img in data["images"]}
+        edges |= {u: edge for u in images if u and (edge := relay.edge_img_url(u, ttl))}
+    if relay.edge_media_enabled():
+        media = {data.get("video_url"), data.get("music_url")} | {f.get("url") for f in data["formats"]}
+        media |= {img.get("live_photo_url") for img in data["images"]}
+        edges |= {u: edge for u in media if u and (edge := relay.edge_media_url(u, ttl))}
+    return edges
 
 
 def _client_data(info: VideoInfo, share_url: str) -> dict:
@@ -92,8 +99,8 @@ def _client_data(info: VideoInfo, share_url: str) -> dict:
     data["share_url"] = share_url
     # 代理和转换只认这里签过名的地址，不做开放代理
     data["sig"] = {u: net.sign(u) for u in _media_urls(data)}
-    if relay.edge_img_enabled():
-        data["edge"] = _edge_images(data)
+    if relay.edge_img_enabled() or relay.edge_media_enabled():
+        data["edge"] = _edge_urls(data)
     return data
 
 
