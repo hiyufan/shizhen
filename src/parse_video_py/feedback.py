@@ -214,7 +214,8 @@ class GitHub:
 
 
 def _when(ts: float) -> str:
-    return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
+    # 容器里没设时区（UTC），issue 和评论里统一写北京时间
+    return time.strftime("%Y-%m-%d %H:%M", time.gmtime(ts + 8 * 3600)) + "（北京时间）"
 
 
 def public_link(url: str) -> str:
