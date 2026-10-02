@@ -6,7 +6,7 @@
   <div class="wrap">
     <nav class="crumbs" aria-label="位置"><a href="/">拾帧</a><span>/</span><span>使用统计</span></nav>
     <h1>谁在什么时候用</h1>
-    <p class="intro">按小时 / 按天数人头。只记事件不记内容：链接不存，IP 只留哈希。</p>
+    <p class="intro">按小时 / 按天数人头。IP 只留哈希；成功的解析不记链接，失败的链接留 7 天方便排查。</p>
 
     <div class="dash-bar">
       <div class="tabs" role="tablist" id="ranges">
@@ -41,6 +41,12 @@
       <summary>查看每段的数字</summary>
       <div class="tbl-wrap"><table id="tbl-series"><thead><tr><th>时间</th><th>人数</th><th>解析</th><th>成功</th><th>失败</th><th>任务</th><th>下载</th><th>浏览</th></tr></thead><tbody></tbody></table></div>
     </details>
+
+    <div class="card dash-failures">
+      <h3>最近解析失败的链接</h3>
+      <p class="dash-note">只留 7 天，同一条链接只列一次。点链接用它重新解析一遍；鼠标停在原因上看报错原文。</p>
+      <div class="tbl-wrap"><table id="tbl-failures"><thead><tr><th>时间</th><th>平台</th><th>原因</th><th>次数</th><th>链接</th></tr></thead><tbody></tbody></table></div>
+    </div>
 
     <div class="grid2 dash-grid">
       <div class="card">

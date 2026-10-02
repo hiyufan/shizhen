@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
-from .. import feedback, stats
+from .. import failures, feedback, stats
 from ..convert import config, jobs, net, relay, store, updater
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
@@ -22,12 +22,13 @@ SWEEP_INTERVAL = 300
 
 
 def _cleanup() -> None:
-    """过期任务 / 原视频、没登记在册的孤儿文件、磁盘配额；统计只留最近几个月。"""
+    """过期任务 / 原视频、没登记在册的孤儿文件、磁盘配额；统计只留最近几个月，失败链接只留 7 天。"""
     jobs.sweep()
     store.sweep()
     known = jobs.known_paths() | store.known_paths()
     store.sweep_orphans(known)
     store.enforce_quota(known)
+    failures.prune()
     if stats.enabled():
         stats.prune()
 

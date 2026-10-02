@@ -132,6 +132,19 @@ function chart(svg, series, step, { keys, colors, rows }) {
 
 // ---------- 数字和表格
 
+function shortTime(ts) {
+  const d = new Date(ts * 1000);
+  return d.getMonth() + 1 + '/' + d.getDate() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+
+/** 失败链接：点了在新标签页里用它重新解析（?url= 会自动提交） */
+function failureRow(f) {
+  const link = el('a', { href: '/?url=' + encodeURIComponent(f.link), target: '_blank', rel: 'noopener', class: 'mono' },
+    f.link.length > 70 ? f.link.slice(0, 70) + '…' : f.link);
+  const reason = el('span', { title: f.msg }, REASONS[f.reason] || f.reason);
+  return [shortTime(f.ts), PLATFORMS[f.platform] || f.platform, reason, fmt(f.n), link];
+}
+
 function fillTable(tbody, rows) {
   if (!rows.length) {
     tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8, class: 'muted' }, '暂无')));
@@ -177,6 +190,7 @@ function render(d) {
   fillTable($('#tbl-sources tbody'), d.sources.map((s) => [PLATFORMS[s.source] || s.source, fmt(s.n), pct(s.ok, s.n), fmt(s.users), ms(s.ms)]));
   fillTable($('#tbl-reasons tbody'), d.reasons.map((r) => [REASONS[r.reason] || r.reason, fmt(r.n)]));
   fillTable($('#tbl-jobs tbody'), d.jobs.map((j) => [JOBS[j.type] || j.type, fmt(j.n), pct(j.ok, j.n), ms(j.ms)]));
+  fillTable($('#tbl-failures tbody'), (d.failures || []).map(failureRow));
 
   const now = new Date();
   const since = d.first ? ' · 记录始于 ' + new Date(d.first * 1000).toLocaleDateString('zh-CN') : '';

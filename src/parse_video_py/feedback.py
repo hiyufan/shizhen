@@ -26,13 +26,14 @@ import re
 import smtplib
 import sqlite3
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable
 from email.message import EmailMessage
 from email.utils import formataddr
 from urllib.parse import quote
 
 import httpx
 
+from . import db
 from .convert import config, net
 
 log = logging.getLogger("uvicorn.error")
@@ -157,18 +158,8 @@ _SCHEMA = (
 )
 
 
-@contextlib.contextmanager
-def _db() -> Iterator[sqlite3.Connection]:
-    """一次事务：成功提交、出错回滚，用完关掉连接。"""
-    config.ensure_dirs()
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.row_factory = sqlite3.Row
-    try:
-        conn.executescript(_SCHEMA)
-        with conn:
-            yield conn
-    finally:
-        conn.close()
+def _db():
+    return db.transaction(DB_PATH, _SCHEMA, rows=True)
 
 
 def link_key(url: str) -> str:

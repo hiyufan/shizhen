@@ -10,7 +10,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import feedback, stats
+from .. import failures, feedback, stats
 from ..convert import config, net, relay
 from ..convert.net import is_safe_url_async
 from ..parser import detect_source, parse_video_share_url
@@ -108,13 +108,14 @@ async def _parse(share_url: str) -> dict:
     return {"code": 200, "msg": "解析成功", "data": _client_data(info, share_url)}
 
 
-def _handle_failure(result: dict, share_url: str, platform: str) -> None:
+async def _handle_failure(result: dict, share_url: str, platform: str, ip: str) -> None:
     # 修得好的失败才有反馈凭证：页面据此显示「反馈这个问题」
     if ticket := feedback.make_ticket(share_url, result["reason"], platform, result["msg"]):
         result["feedback"] = ticket
-    # stats 里只存 reason 不存链接，容器一重建原始日志也没了——失败的
-    # 解析把链接和原因落一行，之后"看日志排查"才对得上号
     log.warning("解析失败 url=%s reason=%s msg=%s", share_url, result["reason"], result["msg"][:160])
+    # 统计里只有原因没有链接，容器日志一部署就没了：真实用户的失败链接另存 7 天，/stats 上看
+    if stats.counted(ip):
+        await asyncio.to_thread(failures.record, share_url, platform, result["reason"], result["msg"])
 
 
 def _result_source(result: dict, platform: str) -> str:
@@ -144,7 +145,7 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
     result = await _parse(share_url)
     ok = result["code"] == 200
     if not ok:
-        _handle_failure(result, share_url, platform)
+        await _handle_failure(result, share_url, platform, ip)
     stats.record(
         "parse",
         ip,

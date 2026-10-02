@@ -361,8 +361,13 @@ img.failed { opacity: .35; cursor: pointer; }
 .dash-table summary::before { content: "+ "; font-family: var(--mono); color: var(--ink-3); }
 .dash-table[open] summary::before { content: "– "; }
 .dash-grid { margin-top: 20px; }
-.dash-grid .card { padding: 24px; background: #fff; }
-.dash-grid .card h3 { font-family: var(--sans); font-size: 15px; font-weight: 600; letter-spacing: 0; margin-bottom: 6px; }
+.dash-grid .card, .dash-failures { padding: 24px; background: #fff; }
+.dash-failures { margin-top: 20px; }
+.dash-failures .dash-note { display: block; margin-bottom: 10px; }
+.dash-failures .tbl-wrap th, .dash-failures .tbl-wrap td { text-align: left; }
+.dash-failures .tbl-wrap th:nth-child(4), .dash-failures .tbl-wrap td:nth-child(4) { text-align: right; }
+.dash-failures .tbl-wrap td:last-child { white-space: normal; word-break: break-all; font-size: 12px; padding-left: 12px; }
+.dash-grid .card h3, .dash-failures h3 { font-family: var(--sans); font-size: 15px; font-weight: 600; letter-spacing: 0; margin-bottom: 6px; }
 .tbl-wrap { overflow-x: auto; }
 .tbl-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl-wrap th, .tbl-wrap td { padding: 8px 10px 8px 0; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }

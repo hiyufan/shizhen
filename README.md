@@ -342,7 +342,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 | `PARSE_VIDEO_SMTP_USER` / `_PASS` / `_HOST` / `_PORT` | – / – / `smtp.qq.com` / `465` | 反馈修好后发通知邮件的发件邮箱和 SMTP 授权码 |
 | `PARSE_VIDEO_STATS_DAYS` | `90` | 明细保留天数 |
 
-数据在 `data/stats.db`（SQLite）。只记事件不记内容：链接不存，IP 经密钥 HMAC 后只留 12 位，能数出人数还原不出是谁。`/api/stats?range=7d&token=…` 直接拿 JSON。
+数据在 `data/stats.db`（SQLite）。只记事件：成功的解析不记链接，IP 经密钥 HMAC 后只留 12 位，能数出人数还原不出是谁。解析失败的链接另存在 `data/failures.db`，只留 7 天，统计页上列出来方便排查（站长测试设备和服务器自己的请求不记）。`/api/stats?range=7d&token=…` 直接拿 JSON。
 
 </details>
 
