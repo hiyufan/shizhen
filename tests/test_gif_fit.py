@@ -1,6 +1,7 @@
 """GIF 压到目标体积：按降级顺序估参数，超了重做，压不进去交最小的那份。不跑真 ffmpeg。"""
 
 import asyncio
+import contextlib
 from pathlib import Path
 
 from parse_video_py.convert import ffmpeg, jobs, store, tasks
@@ -60,3 +61,33 @@ def test_no_target_means_one_pass_with_user_settings(monkeypatch, tmp_path):
     _fake_gif(monkeypatch, tmp_path, calls)
     job, _ = _run(5, fps=12, width=480)
     assert calls == [(480, 12, 256)] and job.extra["fits"] is None
+
+
+def test_every_ffmpeg_input_is_local_file_only(monkeypatch):
+    # 不可信媒体里引用的网络地址不让 ffmpeg 去连：每个 -i 前面都要有 -protocol_whitelist file
+    seen = []
+
+    class _Stop(Exception):
+        pass
+
+    async def fake_exec(*cmd, **_):
+        seen.append(list(cmd))
+        raise _Stop
+
+    monkeypatch.setattr(ffmpeg, "ffmpeg_path", lambda: "ffmpeg")
+    monkeypatch.setattr(ffmpeg.asyncio, "create_subprocess_exec", fake_exec)
+    calls = (
+        ffmpeg.probe("a.mp4"),
+        ffmpeg.make_gif("a.mp4", "o.gif", start=0, duration=1, fps=10, width=320),
+        ffmpeg.encode_segment("a.mp4", "o.mov", start=0, duration=1),
+        ffmpeg.remux_live("a.mp4", "o.mov", identifier="X"),
+        ffmpeg.extract_frame("a.mp4", "o.jpg", at=0),
+        ffmpeg.filmstrip("a.mp4", "o.jpg", duration=1),
+    )
+    for coro in calls:
+        with contextlib.suppress(_Stop):
+            asyncio.run(coro)
+    assert len(seen) == len(calls)
+    for cmd in seen:
+        idx = [i for i, arg in enumerate(cmd) if arg == "-i"]
+        assert idx and all(cmd[i - 2 : i] == ["-protocol_whitelist", "file"] for i in idx), cmd
