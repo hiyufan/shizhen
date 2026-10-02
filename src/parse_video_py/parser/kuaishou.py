@@ -1,5 +1,6 @@
 import json
 import re
+from urllib.parse import urljoin, urlparse
 
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
@@ -9,6 +10,10 @@ _TITLE = re.compile(r"<title>(.*?)</title>", re.S)
 # 网页版 / 落地页链接里的作品 ID：www.kuaishou.com/short-video/<id>、live.kuaishou.com/u/<用户>/<id>、
 # c.kuaishou.com 或 v.m.chenzhongtech.com 的 /fw/photo/<id>、/fw/long-video/<id>
 _PHOTO_ID = re.compile(r"/(?:short-video|fw/photo|fw/long-video|u/[^/?#]+|profile/[^/?#]+)/([0-9A-Za-z]{10,})")
+# 网页版分享的短链 www.kuaishou.com/f/<码>：最多跟几跳；跳到首页 / 推荐页说明链接失效了
+_WEB_SHORT_LINK = re.compile(r"kuaishou\.com/f/[\w-]+")
+_MAX_HOPS = 4
+_HOME_PATHS = ("", "new-reco", "brilliant")
 _BLOCK_MARKERS = ("验证", "captcha", "滑块", "安全", "访问频繁")
 # 只替换处在"值"位置上的 undefined（冒号 / 逗号 / 左方括号之后），不碰字符串里的同名文字
 _UNDEFINED = re.compile(r"(?<=[:,\[])\s*undefined(?=\s*[,\]}])")
@@ -62,11 +67,8 @@ class KuaiShou(BaseParser):
 
         if "v.kuaishou.com" not in share_url:
             # 网页版 / 落地页的作品链接：直接拿作品 ID 请求手机落地页，不带分享参数和 cookie 也能拿到
-            # （www.kuaishou.com 从海外服务器连不上，所以不去请求原链接）
-            m = _PHOTO_ID.search(share_url)
-            if not m:
-                raise ParseError("unsupported", "快手链接里没有作品 ID，请用 App 里「分享 → 复制链接」的链接")
-            return await self._landing(f"https://c.kuaishou.com/fw/photo/{m.group(1)}", headers, None)
+            photo_id = await self._photo_id(share_url, headers)
+            return await self._landing(f"https://c.kuaishou.com/fw/photo/{photo_id}", headers, None)
 
         # 短链不跟跳转：要拿 Location 和快手种下的第一份 cookie
         async with create_async_client(follow_redirects=False) as client:
@@ -79,6 +81,30 @@ class KuaiShou(BaseParser):
         # /fw/long-video/ 返回结果不一样, 统一替换为 /fw/photo/ 请求
         location_url = location_url.replace("/fw/long-video/", "/fw/photo/")
         return await self._landing(location_url, headers, share_response.cookies)
+
+    async def _photo_id(self, url: str, headers: dict) -> str:
+        """链接里直接有作品 ID 就用；网页版分享出来的 www.kuaishou.com/f/... 短链跟着跳转找。
+
+        2026-10 统计里一天有 4 个人贴了取不出 ID 的快手链接，以前一律报「不支持」。跳转经国内中继
+        （www.kuaishou.com 海外直连不上，走中继能通）。跳回首页的是失效 / 不存在的短链。
+        主页之类本来就不是作品的链接不跟，直接说不支持。
+        """
+        if m := _PHOTO_ID.search(url):
+            return m.group(1)
+        if not _WEB_SHORT_LINK.search(url):
+            raise ParseError("unsupported", "快手链接里没有作品 ID，请用 App 里「分享 → 复制链接」的链接")
+        for _ in range(_MAX_HOPS):
+            async with create_async_client(follow_redirects=False) as client:
+                response = await client.get(url, headers=headers)
+            location = response.headers.get("location", "")
+            if not location:
+                break
+            url = urljoin(url, location)
+            if m := _PHOTO_ID.search(url):
+                return m.group(1)
+            if urlparse(url).path.strip("/") in _HOME_PATHS:
+                raise ParseError("deleted", "快手短链已失效，跳回了首页")
+        raise ParseError("parse", f"快手短链没有跳到作品页（停在 {url[:80]}）")
 
     async def _landing(self, location_url: str, headers: dict, cookies) -> VideoInfo:
         # 同一个 UA、带上 Referer 和那份 cookie 去请求落地页——快手拿 cookie 认会话，
