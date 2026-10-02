@@ -231,6 +231,13 @@ img.failed { opacity: .35; cursor: pointer; }
 .field select { width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 12px; background: #fff; font-size: 14px; }
 .hint { font-size: 13px; color: var(--ink-3); line-height: 1.6; margin: 0; }
 .hint b { color: var(--ink-2); font-weight: 600; }
+/* 按钮下面的小字说明：一句一行，比 .hint 再小一号 */
+.fine { margin: -4px 0 14px; font-size: 12px; line-height: 1.65; color: var(--ink-3); }
+.fine p { margin: 0; }
+.fine p + p { margin-top: 2px; }
+.fine b { color: var(--ink-2); font-weight: 600; }
+.fine a { color: var(--ink-2); }
+.result .side .fine { margin: 12px 0 0; }
 .result { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 24px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, 1fr); gap: 28px; align-items: start; }
 @media (max-width: 760px) { .result { grid-template-columns: 1fr; } }
 .result .prev { border-radius: 16px; overflow: hidden; background: #0a0a0a; max-height: 440px; display: flex; justify-content: center; position: relative; }
