@@ -410,18 +410,25 @@ src/parse_video_py/
   parser/errors.py               解析错误分类
   convert/ffmpeg.py              ffmpeg 封装：GIF、切段编码、抽帧、缩略图条、进度
   convert/livephoto.py           Apple MakerNote / MOV 标识、Motion Photo XMP
-  convert/tasks.py               后台任务：拉原视频、转换、实况打包
+  convert/tasks.py               后台任务：准备原视频、转 GIF / 实况 / 动态照片、实况打包
+  convert/fetch.py               下载：直链流式下载、国内 CDN 走中继兜底、yt-dlp 下载合并
   convert/jobs.py · store.py     任务队列、原视频缓存、磁盘配额
   convert/limits.py              按 IP 限流与并发配额
   convert/net.py                 SSRF 防护、链接签名、出站连接池
   convert/relay.py               边缘函数中继 transport
   convert/updater.py             yt-dlp 自动升级
   diag.py                        站长诊断：python -m parse_video_py.diag <链接>
-  web.py                         FastAPI 路由
+  web/app.py                     组装 FastAPI：后台任务启停、中间件、路由
+  web/pages.py · parse.py        页面与 SEO 落地页；/api/parse 解析、/api/feedback 失败反馈
+  web/proxy.py · media.py        /api/proxy 直链转发；原视频准备、转换、下载、任务查询
+  web/admin.py · middleware.py   健康检查、统计、测试模式；安全响应头与浏览统计
+  feedback.py                    解析失败反馈：GitHub issue、加密邮箱、修好后复测再发邮件
   stats.py                       使用统计：SQLite 事件表、按时间分桶汇总，/stats 页面
   seo.py · guides.py             落地页与教程内容、JSON-LD、sitemap
   templates/                     base / index / guide / guides / stats / 404
   static/                        自托管字体（衬线按站内用字子集化）、样式、OG 图
+  static/js/                     前端 ES 模块：app（首页入口）· result · converter · trimmer · save · api · ui · dom，
+                                 site（全站动效）、stats（统计页）。整目录按内容哈希挂在 /js/<版本>/ 下
 scripts/push_urls.py             百度主动推送 + sitemap ping
 scripts/esa-relay.js             阿里云 ESA 边缘函数：/probe 探测出口，/relay 给海外服务器当国内中继
 scripts/cf-worker-probe.js       Cloudflare Worker 探测（结论：出口在海外，B站 412）
@@ -470,13 +477,16 @@ docker-compose.yml · Caddyfile   一台机器的 HTTPS 部署
 
 ```bash
 git clone https://github.com/hiyufan/shizhen.git && cd shizhen
-python -m venv .venv && .venv/bin/pip install -e ".[web,cli]" fonttools brotli
+python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 .venv/bin/python main.py
 ```
 
+- **规范** — Python 用 ruff 格式化和检查（规则在 `pyproject.toml`：行宽 120、圈复杂度 ≤ 10、import 排序、常见 bug 写法），前端脚本用 ESLint（`eslint.config.mjs`：复杂度 ≤ 10、嵌套 ≤ 4 层、函数 ≤ 80 行），CI 里任何一项不过就不部署。`pre-commit install` 后每次提交自动跑 ruff；前端提交前跑 `npx eslint@10 src/parse_video_py/static/js`。测试：`python -m pytest -q`，不碰外网。
+- **分层** — `parser/` 只管「链接 → VideoInfo」，不碰 HTTP 接口；`convert/` 是下载、转换、任务队列，不认识 FastAPI；`web/` 只做参数校验、鉴权、限流，把活交给前两层。前端脚本在 `static/js/`，按功能分模块，不往模板里写内联脚本。
+
 - **加平台** — 在 `src/parse_video_py/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
 - **改文案** — 落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
-- **同步上游** — `parser/` 里本项目改过的文件有 `douyin.py` `redbook.py` `twitter.py` `base.py` `__init__.py`，其余可直接覆盖。
+- **同步上游** — `parser/` 里本项目改过的文件有 `douyin.py` `redbook.py` `twitter.py` `kuaishou.py` `ytdlp.py` `base.py` `__init__.py`，其余可直接覆盖（覆盖后跑一遍 `ruff format` / `ruff check`）。
 - **发起出站请求** — 一律用 `utils.create_async_client()` 或 `convert.net.safe_client()`，它们带 SSRF 逐跳检查并复用连接池。不要直接 `httpx.AsyncClient()`。
 - 提交前用真实链接验证：抖音、小红书、X、B站 各一条，三种转换格式各一次。
 
