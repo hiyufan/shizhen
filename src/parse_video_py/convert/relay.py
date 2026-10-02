@@ -22,6 +22,7 @@ import hmac
 import json
 import os
 import time
+import zlib
 
 import httpx
 
@@ -147,7 +148,7 @@ def _body(resp: httpx.Response, request: httpx.Request) -> bytes:
         return resp.content
     try:
         return gzip.decompress(resp.content)
-    except (OSError, EOFError) as err:
+    except (OSError, EOFError, zlib.error) as err:  # 截断 / 头坏了 / 压缩数据中间坏了
         raise httpx.ReadError(f"中继返回的数据不完整: {err}", request=request) from err
 
 

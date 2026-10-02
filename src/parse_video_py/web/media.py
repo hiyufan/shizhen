@@ -16,6 +16,8 @@ from .auth import SITE_AUTH
 
 router = APIRouter(dependencies=SITE_AUTH)
 
+_UPLOAD_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp"}
+
 _MEDIA_TYPES = {
     ".gif": "image/gif",
     ".jpg": "image/jpeg",
@@ -169,7 +171,11 @@ async def api_upload(file: UploadFile = File(...), _ip: str = Depends(limits.upl
     """本地视频也能转 GIF / 实况。"""
     config.ensure_dirs()
     sid = uuid.uuid4().hex[:16]
-    suffix = Path(file.filename or "").suffix.lower() or ".mp4"
+    # 扩展名只认常见视频格式，其余一律存成 .mp4（ffmpeg 再按内容认）。用户给的扩展名不能原样用：
+    # 传一个 .m3u8 播放列表进来，ffmpeg 会按 HLS 打开，顺着里面写的绝对路径去读服务器上别的视频
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in _UPLOAD_SUFFIXES:
+        suffix = ".mp4"
     dest = config.UPLOADS_DIR / f"{sid}{suffix}"
     await _save_upload(file, dest)
     info = await ffmpeg.probe(dest)

@@ -2,12 +2,15 @@
  * 阿里云 ESA 边缘函数 / 边缘 Pages 函数：给拾帧当"国内出口"。
  *
  * 一个文件两个用途：
- *   /probe?token=<TOKEN>&xhs=<小红书分享链接>
- *                                  探测：这个边缘节点的出口 IP、B站 API 状态、小红书页面是否有笔记数据（要带口令）
+ *   /probe?token=<PROBE_TOKEN>&xhs=<小红书分享链接>
+ *                                  探测：这个边缘节点的出口 IP、B站 API 状态、小红书页面是否有笔记数据。
+ *                                  用单独的 PROBE_TOKEN（留空 = 关闭探测）：它会出现在浏览器地址栏和访问日志里，
+ *                                  不能是下面那个同时管中继和图片签名的 TOKEN
  *   /relay?url=<目标地址>          中继：拾帧把国内平台的解析请求发到这里，由边缘节点代为访问
  *   /img?url=&e=&s=                图片：浏览器直接从国内边缘节点取国内平台的图（拾帧设 PARSE_VIDEO_EDGE_IMG=1 才会用）
  *
- * 部署（边缘函数）：ESA 控制台 → 边缘函数 → 新建 → 把本文件贴进去 → 改 TOKEN → 发布，绑定一个域名或用默认地址。
+ * 部署（边缘函数）：ESA 控制台 → 边缘函数 → 新建 → 把本文件贴进去 → 改 TOKEN（要探测再填 PROBE_TOKEN）→
+ *     部署后在「版本管理」里发布到生产环境（只点部署只到测试环境，绑定的域名还是旧版本）→ 绑定域名。
  * 部署（边缘 Pages）：把本文件放到项目的 functions/[[path]].js，把末尾的 export default 换成
  *     export function onRequest({ request }) { return handle(request); }
  *
@@ -20,6 +23,8 @@
  */
 
 const TOKEN = "change-me-to-a-long-random-string";
+// 探测口令：和 TOKEN 不同的一串；留空就关闭 /probe（平时不用探测时建议留空）
+const PROBE_TOKEN = "";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36";
 const DROP_RESP = new Set(["content-encoding", "content-length", "transfer-encoding", "connection", "set-cookie"]);
@@ -38,8 +43,8 @@ async function handle(request) {
   if (url.pathname.endsWith("/img")) return img(url);
   // 探测要带口令。以前任何路径都当探测：爬虫扫一次就让出口 IP 去打一次 B站 API（B站 风控的正是这个 IP），
   // 出口 IP 也公开了，?xhs= 还能让边缘节点替任何人抓任意网址
-  if (url.pathname.endsWith("/probe")) {
-    if (!sameString(url.searchParams.get("token") || "", TOKEN)) return new Response("forbidden", { status: 403 });
+  // 口令不对和别的路径一样回 404，不让人知道这里有个探测
+  if (url.pathname.endsWith("/probe") && PROBE_TOKEN && sameString(url.searchParams.get("token") || "", PROBE_TOKEN)) {
     return probe(url);
   }
   return new Response("not found", { status: 404 });
@@ -50,7 +55,7 @@ const b64e = (s) => btoa(unescape(encodeURIComponent(s)));
 const b64d = (s) => decodeURIComponent(escape(atob(s)));
 
 async function relay(request, url) {
-  if (request.headers.get("x-relay-token") !== TOKEN) return new Response("forbidden", { status: 403 });
+  if (!sameString(request.headers.get("x-relay-token") || "", TOKEN)) return new Response("forbidden", { status: 403 });
   const target = url.searchParams.get("url") || "";
   if (!/^https?:\/\//i.test(target)) return new Response("bad url", { status: 400 });
 
