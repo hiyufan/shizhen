@@ -4,13 +4,28 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml README.md LICENSE main.py ./
-COPY src/ src/
 # chromium 装到固定路径并放开读权限：运行时是 app 用户（10001），浏览器只读执行
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
-RUN pip install --no-cache-dir ".[web,cli,douyin]" bgutil-ytdlp-pot-provider \
+
+# 第三方依赖和 Chromium 单独一层，只跟着 pyproject.toml 变。以前和源码一起装，只改一行代码的
+# 部署也要重装全部依赖、重下 115 MB 的 Chromium、再导出一整层，两分半。
+# 先放一个空包让 pip 按 pyproject 把依赖装上，再卸掉它，真正的代码在后面装
+COPY pyproject.toml ./
+RUN mkdir -p src/parse_video_py && touch src/parse_video_py/__init__.py \
+    && pip install --no-cache-dir ".[web,cli,douyin]" bgutil-ytdlp-pot-provider \
+    && pip uninstall -y parse-video-py && rm -rf src \
     && playwright install --with-deps chromium \
     && chmod -R a+rX /opt/pw-browsers
+
+# yt-dlp 要跟着平台改版勤更新，以前靠每次部署重装顺带拿到最新版。上面那层缓存住以后单独刷：
+# deploy.sh 把 YTDLP_REFRESH 设成当天日期，一天之内的部署共用缓存，换一天就重新拉一次
+ARG YTDLP_REFRESH=""
+RUN echo "yt-dlp refresh: ${YTDLP_REFRESH:-never}" && pip install --no-cache-dir --upgrade "yt-dlp[default]"
+
+# 本项目代码：依赖都在上面了，这里只装自己
+COPY README.md LICENSE main.py ./
+COPY src/ src/
+RUN pip install --no-cache-dir --no-deps .
 
 ENV PARSE_VIDEO_DATA_DIR=/app/data \
     PARSE_VIDEO_TRUST_PROXY=1 \

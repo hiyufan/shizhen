@@ -163,7 +163,8 @@ main() {
   wait_idle
   docker tag "$IMAGE:latest" "$IMAGE:rollback-${deployed:0:7}"
   git merge -q --ff-only "$target"
-  if ! docker compose up -d --build "$SERVICE" || ! verify; then
+  # 依赖层走缓存，镜像里的 yt-dlp 每天最多刷新一次（见 Dockerfile 的 YTDLP_REFRESH）
+  if ! YTDLP_REFRESH=$(date +%F) docker compose up -d --build "$SERVICE" || ! verify; then
     log "上线失败"
     rollback "$deployed"
     return 1

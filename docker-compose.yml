@@ -2,7 +2,11 @@
 # 用法：把 DOMAIN 换成你的域名（DNS 先指到这台机器），然后 docker compose up -d
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # 镜像里的 yt-dlp 按这个值刷新（见 Dockerfile）；deploy.sh 设成当天日期，手动构建不设就一直用缓存
+        YTDLP_REFRESH: ${YTDLP_REFRESH:-}
     restart: unless-stopped
     environment:
       PARSE_VIDEO_TRUST_PROXY: "1"
