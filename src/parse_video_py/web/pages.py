@@ -5,12 +5,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+import re
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 
 from .. import guides, seo
 from .auth import SITE_AUTH
-from .rendering import base_url, page_context, render, render_404, render_tool_page
+from .rendering import JS_DIR, base_url, js_version, page_context, render, render_404, render_tool_page
 
 router = APIRouter()
 
@@ -24,6 +26,7 @@ _ROBOTS = (
     "Sitemap: {sitemap}\n"
 )
 _BAIDU_VERIFY = "codeva-vdJztHZWcG"
+_JS_NAME = re.compile(r"^[\w-]+\.js$")
 
 
 @router.get("/", response_class=HTMLResponse, dependencies=SITE_AUTH)
@@ -94,6 +97,18 @@ async def indexnow_key():
 async def baidu_site_verify():
     # 百度站长平台的文件验证：内容就是验证码字符串，与下载的验证文件一致
     return _BAIDU_VERIFY
+
+
+@router.get("/js/{version}/{name}")
+async def js_module(version: str, name: str):
+    """前端模块（见 rendering.js_url）。版本号对得上才长期缓存；对不上的多半是部署前缓存的老页面，
+    照样给当前的文件，但别让它被当成那个老版本缓存下来。"""
+    path = JS_DIR / name
+    if not _JS_NAME.match(name) or not path.is_file():
+        raise HTTPException(404, "Not Found")
+    current = version == js_version()
+    cache = "public, max-age=31536000, immutable" if current else "no-cache"
+    return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": cache})
 
 
 @router.get("/{slug}", response_class=HTMLResponse, dependencies=SITE_AUTH)

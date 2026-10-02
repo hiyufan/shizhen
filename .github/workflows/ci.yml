@@ -32,6 +32,11 @@ jobs:
         run: |
           python -m ruff format --check .
           python -m ruff check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 前端脚本规范（ESLint：复杂度、嵌套、未用 / 未定义的变量，规则见 eslint.config.mjs）
+        run: npx --yes eslint@10 src/parse_video_py/static/js
       - name: 单元测试
         # 测试不碰外网：平台解析器换成假的，数据目录指到临时目录（见 tests/conftest.py）
         run: python -m pytest -q
