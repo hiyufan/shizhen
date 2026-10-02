@@ -44,6 +44,30 @@ def test_single_picture_post_returns_its_image_and_music():
     assert info.music_url == "https://txmov2.a.kwimgs.com/ufile/atlas/x.m4a"
 
 
+@pytest.mark.parametrize(
+    "caption, noticed",
+    [("好看的晚霞和你一样温柔 #实况 #实况照片 #live", True), ("单图", False), ("#LivePhoto", True)],
+)
+def test_live_photo_post_says_the_moving_part_is_not_available(caption, noticed):
+    # v.kuaishou.com/nnjvZU73：快手实况。分享页数据和普通单图一模一样（mtype 6、没有视频），只能从话题认出来
+    photo = {
+        "photoType": "SINGLE_PICTURE",
+        "singlePicture": True,
+        "mainMvUrls": [],
+        "caption": caption,
+        "coverUrls": [{"url": COVER}],
+        "ext_params": {"mtype": 6, "single": {"type": 3}},
+    }
+    info = KuaiShou._build(_state(photo))
+    assert len(info.images) == 1 and info.video_url == ""
+    assert (info.notice == kuaishou.LIVE_NOTICE) is noticed
+
+
+def test_video_with_live_in_title_gets_no_notice():
+    photo = {"photoType": "VIDEO", "caption": "#live 现场", "mainMvUrls": [{"url": "https://v.kwaicdn.com/1.mp4"}]}
+    assert KuaiShou._build(_state(photo)).notice == ""
+
+
 def test_atlas_keeps_images_and_picks_up_music():
     info = KuaiShou._build(
         _state(

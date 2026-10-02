@@ -14,6 +14,10 @@ _PHOTO_ID = re.compile(r"/(?:short-video|fw/photo|fw/long-video|u/[^/?#]+|profil
 _WEB_SHORT_LINK = re.compile(r"kuaishou\.com/f/[\w-]+")
 _MAX_HOPS = 4
 _HOME_PATHS = ("", "new-reco", "brilliant")
+# 快手实况：分享页的数据里只有照片和配乐（和普通单图作品字段一模一样），会动的那段视频分享页
+# 根本不放，网页版接口又要过滑块验证码（2026-10 实测）。只能从标题里的话题认出来，提醒用户一句
+_LIVE_TAG = re.compile(r"实况|live", re.I)
+LIVE_NOTICE = "这是快手实况：快手只对外提供照片和配乐，会动的部分拿不到。要完整的实况，请在快手 App 里保存。"
 _BLOCK_MARKERS = ("验证", "captcha", "滑块", "安全", "访问频繁")
 # 只替换处在"值"位置上的 undefined（冒号 / 逗号 / 左方括号之后），不碰字符串里的同名文字
 _UNDEFINED = re.compile(r"(?<=[:,\[])\s*undefined(?=\s*[,\]}])")
@@ -159,7 +163,10 @@ class KuaiShou(BaseParser):
         # 单图作品（photoType SINGLE_PICTURE，singlePicture: true）：没有视频也没有 atlas，
         # 那张图就是封面——/upic/ 下用户传的原图，和作品宽高一致；配乐在 ext_params.single。
         # 以前这种作品直接报「没有拿到任何视频或图片」
-        if not images and not video_url and (data.get("singlePicture") or data.get("photoType") == "SINGLE_PICTURE"):
+        single = (
+            not images and not video_url and (data.get("singlePicture") or data.get("photoType") == "SINGLE_PICTURE")
+        )
+        if single:
             cover = next((c.get("url") for c in covers if isinstance(c, dict) and c.get("url")), "")
             if cover:
                 images = [ImgInfo(url=cover.replace("http://", "https://", 1))]
@@ -195,6 +202,7 @@ class KuaiShou(BaseParser):
             width=int(data.get("width") or 0),
             height=int(data.get("height") or 0),
             formats=formats,
+            notice=LIVE_NOTICE if single and _LIVE_TAG.search(data.get("caption") or "") else "",
         )
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
