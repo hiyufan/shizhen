@@ -57,6 +57,15 @@ def _ext_music(block) -> str:
     return f"https://{cdns[0]['cdn']}/{path.lstrip('/')}"
 
 
+def _atlas_image(cdn: str, path: str) -> str:
+    """图集的一张：路径本身带前导 /。atlas.list 给的是 .webp，同一路径的 .jpg 也有、分辨率一样
+    （2026-10 实测 11 张图集张张都有），换成 jpg：存下来的图哪儿都能打开。"""
+    path = path.lstrip("/")
+    if path.endswith(".webp"):
+        path = path[: -len(".webp")] + ".jpg"
+    return f"https://{cdn}/{path}"
+
+
 def _short_side(width: int, height: int) -> int:
     return min(width, height) if width and height else max(width, height)
 
@@ -158,7 +167,7 @@ class KuaiShou(BaseParser):
         ext = data.get("ext_params") or {}
         atlas = ext.get("atlas") or {}
         cdns, paths = atlas.get("cdn") or [], atlas.get("list") or []
-        images = [ImgInfo(url=f"https://{cdns[0]}/{p}") for p in paths if isinstance(p, str)] if cdns else []
+        images = [ImgInfo(url=_atlas_image(cdns[0], p)) for p in paths if isinstance(p, str)] if cdns else []
         covers = data.get("coverUrls") or data.get("webpCoverUrls") or []
         # 单图作品（photoType SINGLE_PICTURE，singlePicture: true）：没有视频也没有 atlas，
         # 那张图就是封面——/upic/ 下用户传的原图，和作品宽高一致；配乐在 ext_params.single。

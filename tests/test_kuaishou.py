@@ -77,7 +77,8 @@ def test_atlas_keeps_images_and_picks_up_music():
                 "ext_params": {
                     "atlas": {
                         "cdn": ["p2.a.yximgs.com"],
-                        "list": ["/ufile/atlas/1.jpg", "/ufile/atlas/2.jpg"],
+                        # v.kuaishou.com/nLZfVo2w（11 张横版图集）：路径带前导 /，给的是 webp
+                        "list": ["/ufile/atlas/1.webp", "/ufile/atlas/2.jpg"],
                         "music": "/ufile/atlas/bgm.m4a",
                         "musicCdnList": [{"cdn": "txmov2.a.kwimgs.com"}],
                     }
@@ -86,6 +87,10 @@ def test_atlas_keeps_images_and_picks_up_music():
         )
     )
     assert len(info.images) == 2 and info.video_url == ""  # 图集的 mainMvUrls 是配乐视频壳
+    assert [i.url for i in info.images] == [
+        "https://p2.a.yximgs.com/ufile/atlas/1.jpg",
+        "https://p2.a.yximgs.com/ufile/atlas/2.jpg",
+    ]
     assert info.music_url.endswith("/ufile/atlas/bgm.m4a")
 
 
