@@ -90,6 +90,7 @@ def test_web_and_landing_links_are_routed_to_kuaishou_by_photo_id():
         f"https://live.kuaishou.com/u/mayang9yc9/{pid}",
         f"https://c.kuaishou.com/fw/photo/{pid}?fid=1&cc=share_copylink",
         f"https://v.m.chenzhongtech.com/fw/long-video/{pid}",
+        f"https://m.gifshow.com/fw/photo/{pid}?cc=share_wxms",  # /f/ 短链跳转链上的一站
     ):
         assert detect_source(url) == VideoSource.KuaiShou, url
         assert _PHOTO_ID.search(url).group(1) == pid, url

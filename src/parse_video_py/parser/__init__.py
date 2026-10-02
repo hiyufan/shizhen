@@ -72,8 +72,8 @@ video_source_info_mapping = {
     },
     VideoSource.KuaiShou: {
         # App 分享短链 v.kuaishou.com；网页版 www / live.kuaishou.com、手机落地页 c.kuaishou.com /
-        # v.m.chenzhongtech.com 的作品链接也认（解析器从路径里取作品 ID）
-        "domain_list": ["kuaishou.com", "chenzhongtech.com"],
+        # v.m.chenzhongtech.com / m.gifshow.com 的作品链接也认（解析器从路径里取作品 ID）
+        "domain_list": ["kuaishou.com", "chenzhongtech.com", "gifshow.com"],
         "parser": KuaiShou,
     },
     VideoSource.LiShiPin: {
