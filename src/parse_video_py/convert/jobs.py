@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import time
 import traceback
 import uuid
@@ -63,15 +64,13 @@ class Job:
 
 
 _jobs: dict[str, Job] = {}
-_sem: asyncio.Semaphore | None = None
 ReleaseFn = Callable[[], None]
 
 
+@functools.cache
 def _semaphore() -> asyncio.Semaphore:
-    global _sem
-    if _sem is None:
-        _sem = asyncio.Semaphore(config.MAX_CONCURRENT_JOBS)
-    return _sem
+    """同时跑的任务数上限；第一次用时才建，免得在 import 时绑到别的事件循环上。"""
+    return asyncio.Semaphore(config.MAX_CONCURRENT_JOBS)
 
 
 def get(job_id: str) -> Job | None:
@@ -115,6 +114,46 @@ class QueueFull(Exception):
     pass
 
 
+def _timeout_message() -> str:
+    limit = config.JOB_TIMEOUT_SECONDS
+    human = f"{limit // 60} 分钟" if limit >= 60 else f"{limit} 秒"
+    return f"超过 {human}还没做完，已放弃。试试缩短时长或降低尺寸"
+
+
+async def _execute(job: Job, fn: JobFn) -> None:
+    """跑任务本体，把结果记成 done / error。超时和取消都会置 abort，让线程里的 yt-dlp 自己停下来。"""
+    job.status = "running"
+    try:
+        await asyncio.wait_for(fn(job), timeout=config.JOB_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        job.abort = True
+        job.status, job.error = "error", _timeout_message()
+    except asyncio.CancelledError:
+        job.abort = True
+        job.status, job.error = "error", "已取消"
+        raise
+    except Exception as e:  # noqa: BLE001 - 错误信息给页面显示
+        traceback.print_exc()
+        job.status, job.error = "error", scrub(str(e)) or e.__class__.__name__
+    else:
+        job.status, job.progress = "done", 1.0
+
+
+def _finish(job: Job, on_release: ReleaseFn | None) -> None:
+    job.finished_at = time.time()
+    # 先还配额：后面记统计哪怕出错，也不能让这个 IP 的名额一直占着
+    if on_release:
+        on_release()
+    usage_stats.record(
+        "job",
+        job.owner or "",
+        source=job.type,
+        ok=job.status == "done",
+        reason=(job.error or "")[:32],
+        ms=(job.finished_at - job.created_at) * 1000,
+    )
+
+
 def start(
     job_type: str,
     fn: JobFn,
@@ -132,39 +171,9 @@ def start(
     async def runner() -> None:
         try:
             async with _semaphore():
-                job.status = "running"
-                try:
-                    await asyncio.wait_for(fn(job), timeout=config.JOB_TIMEOUT_SECONDS)
-                    job.status = "done"
-                    job.progress = 1.0
-                except asyncio.TimeoutError:
-                    job.abort = True
-                    job.status = "error"
-                    limit = config.JOB_TIMEOUT_SECONDS
-                    human = f"{limit // 60} 分钟" if limit >= 60 else f"{limit} 秒"
-                    job.error = f"超过 {human}还没做完，已放弃。试试缩短时长或降低尺寸"
-                except asyncio.CancelledError:
-                    job.abort = True
-                    job.status = "error"
-                    job.error = "已取消"
-                    raise
-                except Exception as e:  # noqa: BLE001 - surfaced to the UI
-                    traceback.print_exc()
-                    job.status = "error"
-                    job.error = scrub(str(e)) or e.__class__.__name__
+                await _execute(job, fn)
         finally:
-            job.finished_at = time.time()
-            # 先还配额：后面记统计哪怕出错，也不能让这个 IP 的名额一直占着
-            if on_release:
-                on_release()
-            usage_stats.record(
-                "job",
-                job.owner or "",
-                source=job.type,
-                ok=job.status == "done",
-                reason=(job.error or "")[:32],
-                ms=(job.finished_at - job.created_at) * 1000,
-            )
+            _finish(job, on_release)
 
     job.task = asyncio.create_task(runner())
     return job

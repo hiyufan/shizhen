@@ -23,7 +23,7 @@ SITE_VERIFICATION_HTML = os.environ.get("PARSE_VIDEO_SITE_VERIFICATION", "")
 ANALYTICS_HTML = os.environ.get("PARSE_VIDEO_ANALYTICS", "")
 
 # IndexNow（Bing / Yandex / Seznam / Naver）的提交凭据。这是公开的验证串不是
-# 机密：web.py 提供 /{key}.txt 路由，scripts/push_urls.py 用它推送新页面。
+# 机密：web/pages.py 提供 /{key}.txt 路由，scripts/push_urls.py 用它推送新页面。
 INDEXNOW_KEY = "f26b149a71c74f67b3a5d9793914505a"
 
 
@@ -463,6 +463,10 @@ def guide_json_ld(guide: Guide, base: str) -> str:
         _crumbs(base, (SITE_NAME, "/"), ("教程", "/guides"), (guide.h1, guide.path)),
     ]
     return _dump(data)
+
+
+def guides_index_json_ld(base: str) -> str:
+    return _dump([_crumbs(base, (SITE_NAME, "/"), ("教程", "/guides"))])
 
 
 def sitemap_xml(base: str) -> str:

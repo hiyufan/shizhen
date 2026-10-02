@@ -170,8 +170,8 @@ class BiliBili(BaseParser):
         """从URL中提取 BV 号（或老的 av 号）"""
         try:
             parsed_url = urlparse(raw_url)
-        except Exception:
-            raise ValueError("URL格式无效")
+        except ValueError as err:
+            raise ValueError("URL格式无效") from err
 
         if "b23.tv" in parsed_url.netloc:
             # 处理短链接
@@ -200,7 +200,8 @@ class BiliBili(BaseParser):
                 response = await client.get(api_url, headers=self.get_default_headers())
             if response.status_code == 412:
                 raise ValueError(
-                    "B站拒绝了服务器所在网络的访问 (412)，海外服务器请配置 PARSE_VIDEO_PROXY_CN 或 PARSE_VIDEO_BILI_COOKIE"
+                    "B站拒绝了服务器所在网络的访问 (412)，"
+                    "海外服务器请配置 PARSE_VIDEO_PROXY_CN 或 PARSE_VIDEO_BILI_COOKIE"
                 )
             if response.status_code != 200:
                 raise ValueError(f"HTTP请求失败, 状态码: {response.status_code}")

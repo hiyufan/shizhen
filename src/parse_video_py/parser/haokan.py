@@ -1,5 +1,4 @@
-from parse_video_py.utils import create_async_client, get_val_from_url_by_query_key
-
+from ..utils import create_async_client, get_val_from_url_by_query_key
 from .base import BaseParser, VideoAuthor, VideoInfo
 
 
@@ -26,7 +25,7 @@ class HaoKan(BaseParser):
         video_data = json_data["data"]["apiData"]["curVideoMeta"]
         user_data = video_data["mth"]
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=video_data["playurl"],
             cover_url=video_data["poster"],
             title=video_data["title"],
@@ -36,4 +35,3 @@ class HaoKan(BaseParser):
                 avatar=user_data["author_photo"],
             ),
         )
-        return video_info

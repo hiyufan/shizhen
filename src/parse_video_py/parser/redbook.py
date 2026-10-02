@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from ..utils import create_async_client
@@ -132,88 +133,38 @@ class RedBook(BaseParser):
         return "/".join(parts[2:]).split("!")[0]
 
     def _build(self, data: dict, *, image_url_key: str, nick_key: str) -> VideoInfo:
-        # 视频: h264 里挑分辨率最高的做默认 (浏览器能直接播), 其余档位和 h265 放进 formats
-        video_url = ""
-        formats: list[FormatInfo] = []
-        width = height = 0
-        duration = 0.0
-        stream = ((data.get("video") or {}).get("media") or {}).get("stream") or {}
-        h264 = [s for s in stream.get("h264") or [] if s.get("masterUrl")]
-        if h264:
-            h264.sort(
-                key=lambda s: (
-                    (s.get("width") or 0) * (s.get("height") or 0),
-                    s.get("videoBitrate") or s.get("avgBitrate") or 0,
-                ),
-                reverse=True,
-            )
-            best = h264[0]
-            video_url = best["masterUrl"]
-            width, height = best.get("width") or 0, best.get("height") or 0
-            duration = float(best.get("duration") or 0) / 1000
-            seen = {(width, height)}
-            for s in h264[1:]:
-                key = (s.get("width") or 0, s.get("height") or 0)
-                if key in seen:
-                    continue
-                seen.add(key)
-                formats.append(
-                    FormatInfo(
-                        label=f"{min(key)}p", url=s["masterUrl"], height=min(key), filesize=int(s.get("size") or 0)
-                    )
-                )
-            for s in stream.get("h265") or []:
-                if s.get("masterUrl"):
-                    short = min(s.get("width") or 0, s.get("height") or 0)
-                    formats.append(
-                        FormatInfo(
-                            label=f"{short}p H.265",
-                            url=s["masterUrl"],
-                            height=short,
-                            filesize=int(s.get("size") or 0),
-                            codec="H.265",
-                        )
-                    )
-                    break
-        if not duration:
-            duration = float(((data.get("video") or {}).get("capa") or {}).get("duration") or 0)
-
-        # 图集: 原图分辨率; 实况图带上短视频
-        images: list[ImgInfo] = []
+        """桌面页和手机页的笔记数据结构一样，只有图片地址和昵称的字段名不同。"""
+        video = _video_tracks(data.get("video") or {})
         image_list = data.get("imageList") or []
-        if not video_url:
-            for item in image_list:
-                page_img = item.get(image_url_key) or item.get("urlDefault") or item.get("url") or ""
-                if not page_img:
-                    continue
-                key = item.get("fileId") or self._image_key(page_img)
-                img = ImgInfo(url=_ORIGINAL_IMAGE.format(key=key) if key else page_img)
-                live = [s for s in ((item.get("stream") or {}).get("h264") or []) if s.get("masterUrl")]
-                if item.get("livePhoto") and live:
-                    img.live_photo_url = live[0]["masterUrl"]
-                images.append(img)
-
-        cover = ""
-        if image_list:
-            cover = (
-                image_list[0].get(image_url_key) or image_list[0].get("urlDefault") or image_list[0].get("url") or ""
-            )
+        images = [] if video.url else [img for item in image_list if (img := self._image(item, image_url_key))]
         user = data.get("user") or {}
         return VideoInfo(
-            video_url=video_url,
-            cover_url=cover,
+            video_url=video.url,
+            cover_url=_page_image(image_list[0], image_url_key) if image_list else "",
             title=data.get("title") or (data.get("desc") or "")[:60],
             images=images,
-            duration=duration,
-            width=width,
-            height=height,
-            formats=formats,
+            duration=video.duration,
+            width=video.width,
+            height=video.height,
+            formats=video.formats,
             author=VideoAuthor(
                 uid=user.get("userId", ""),
                 name=user.get(nick_key) or user.get("nickname") or user.get("nickName") or "",
                 avatar=user.get("avatar", ""),
             ),
         )
+
+    def _image(self, item: dict, image_url_key: str) -> ImgInfo | None:
+        """图集里的一张：换成原图分辨率的地址；实况图带上那段短视频。"""
+        page_img = _page_image(item, image_url_key)
+        if not page_img:
+            return None
+        key = item.get("fileId") or self._image_key(page_img)
+        img = ImgInfo(url=_ORIGINAL_IMAGE.format(key=key) if key else page_img)
+        live = _with_url((item.get("stream") or {}).get("h264"))
+        if item.get("livePhoto") and live:
+            img.live_photo_url = live[0]["masterUrl"]
+        return img
 
     @staticmethod
     def _block_error(final_url: str, html: str) -> Exception:
@@ -234,6 +185,70 @@ class RedBook(BaseParser):
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         raise NotImplementedError("小红书暂不支持直接解析视频ID")
+
+
+def _with_url(streams: list | None) -> list[dict]:
+    return [s for s in streams or [] if s.get("masterUrl")]
+
+
+def _page_image(item: dict, key: str) -> str:
+    return item.get(key) or item.get("urlDefault") or item.get("url") or ""
+
+
+def _short_side(stream: dict) -> int:
+    return min(stream.get("width") or 0, stream.get("height") or 0)
+
+
+@dataclass
+class _VideoTracks:
+    url: str = ""
+    width: int = 0
+    height: int = 0
+    duration: float = 0.0
+    formats: list[FormatInfo] = field(default_factory=list)
+
+
+def _video_tracks(video: dict) -> _VideoTracks:
+    """h264 里挑分辨率最高的做默认（浏览器能直接播），其余分辨率各一档、h265 一档放进 formats。"""
+    stream = (video.get("media") or {}).get("stream") or {}
+    h264 = sorted(
+        _with_url(stream.get("h264")),
+        key=lambda s: (
+            (s.get("width") or 0) * (s.get("height") or 0),
+            s.get("videoBitrate") or s.get("avgBitrate") or 0,
+        ),
+        reverse=True,
+    )
+    tracks = _VideoTracks(duration=float((video.get("capa") or {}).get("duration") or 0))
+    if not h264:
+        return tracks
+    best = h264[0]
+    tracks.url = best["masterUrl"]
+    tracks.width, tracks.height = best.get("width") or 0, best.get("height") or 0
+    tracks.duration = float(best.get("duration") or 0) / 1000 or tracks.duration
+
+    seen = {(tracks.width, tracks.height)}
+    for s in h264[1:]:
+        size = (s.get("width") or 0, s.get("height") or 0)
+        if size not in seen:
+            seen.add(size)
+            tracks.formats.append(
+                FormatInfo(
+                    label=f"{min(size)}p", url=s["masterUrl"], height=min(size), filesize=int(s.get("size") or 0)
+                )
+            )
+    if h265 := _with_url(stream.get("h265")):
+        short = _short_side(h265[0])
+        tracks.formats.append(
+            FormatInfo(
+                label=f"{short}p H.265",
+                url=h265[0]["masterUrl"],
+                height=short,
+                filesize=int(h265[0].get("size") or 0),
+                codec="H.265",
+            )
+        )
+    return tracks
 
 
 class _LoginWall(ValueError):

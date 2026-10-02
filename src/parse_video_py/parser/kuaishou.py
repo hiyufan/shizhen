@@ -86,7 +86,7 @@ class KuaiShou(BaseParser):
         # （content-type / location / set-cookie ...），UA 和 Referer 反而都没带
         # 落地页偶尔（实测约 1/40）回一个没有 INIT_STATE、连标题都没有的空页面，
         # 马上再要一次就正常。验证页不重试，那是真被限流了
-        for attempt in range(2):
+        for _ in range(2):
             async with create_async_client(follow_redirects=True) as client:
                 response = await client.get(location_url, headers=headers, cookies=cookies)
             html = response.text

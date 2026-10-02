@@ -54,7 +54,7 @@ class PiPiXia(BaseParser):
                     video_url = comment["item"]["video"]["video_high"]["url_list"][0]["url"]
                     break
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=video_url,
             cover_url=data["cover"]["url_list"][0]["url"],
             title=data["content"],
@@ -65,5 +65,3 @@ class PiPiXia(BaseParser):
                 avatar=data["author"]["avatar"]["download_list"][0]["url"],
             ),
         )
-
-        return video_info
