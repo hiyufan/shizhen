@@ -97,3 +97,11 @@ def test_job_started_by_a_muted_request_is_not_counted(rows, muted):
 
     asyncio.run(main())
     assert kinds(rows) == ([] if muted else ["job"])
+
+
+def test_links_from_github_issues_are_not_counted(rows):
+    # 反馈 issue 里「在线复现」的链接带 src=issue：公开 issue 会被链接扫描 / 爬虫打开，不能算用户
+    c = TestClient(web.app)
+    c.get("/", params={"url": "https://v.douyin.com/c/", "src": "issue"})
+    c.get("/api/parse", params={"url": "https://v.douyin.com/c/", "src": "issue"})
+    assert rows == []

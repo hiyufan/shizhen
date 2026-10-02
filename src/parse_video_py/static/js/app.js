@@ -43,8 +43,11 @@ function slowParseHints(text) {
   return () => timers.forEach(clearTimeout);
 }
 
+// 从 GitHub issue 的「在线复现」点进来的，解析请求也带上来源，服务端不计入统计
+const FROM = new URLSearchParams(location.search).get('src') === 'issue' ? '&src=issue' : '';
+
 async function parse(text) {
-  const r = await api('/api/parse?url=' + encodeURIComponent(text));
+  const r = await api('/api/parse?url=' + encodeURIComponent(text) + FROM);
   if (r.code !== 200) throw Object.assign(new Error(r.msg || '解析失败'), { reason: r.reason, feedback: r.feedback });
   return r.data;
 }

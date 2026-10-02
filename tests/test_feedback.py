@@ -161,6 +161,7 @@ def test_one_issue_per_link_and_no_email_in_github(fb):
     assert list(gh.issues) == [1] and len(gh.comments) == 1
     issue = gh.issues[1]
     assert "快手" in issue["title"] and LINK in issue["body"]
+    assert f"?url={LINK.replace(':', '%3A').replace('/', '%2F')}&src=issue" in issue["body"]  # 点进来的不计入统计
     assert "example.com" not in issue["body"] + gh.comments[0][1]
 
 
