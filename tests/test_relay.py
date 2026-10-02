@@ -47,10 +47,18 @@ async def test_old_relay_without_compression_still_works():
     assert resp.text == PAGE
 
 
-async def test_truncated_gzip_is_a_network_error():
-    # 中继边收边压边发，上游断在半路时 gzip 尾巴是缺的：按网络问题报，别当成「页面结构变了」
-    cut = gzip.compress(PAGE.encode())[:-20]
-    tr = _transport(lambda request: _relay_reply(cut, **{"x-relay-encoding": "gzip"}))
+@pytest.mark.parametrize(
+    "body",
+    [
+        gzip.compress(PAGE.encode())[:-20],  # 中继边收边压边发，上游断在半路时 gzip 尾巴是缺的
+        bytes.fromhex("1f8b0800000000000003") + b"\xff\xff\xff\xff",  # 压缩数据中间坏了：抛的是 zlib.error
+        b"<html>not gzip</html>",
+    ],
+    ids=["truncated", "corrupt-deflate", "not-gzip"],
+)
+async def test_broken_gzip_is_a_network_error(body):
+    # 按网络问题报，别当成「页面结构变了」
+    tr = _transport(lambda request: _relay_reply(body, **{"x-relay-encoding": "gzip"}))
     with pytest.raises(httpx.ReadError, match="中继"):
         await _get(tr)
 

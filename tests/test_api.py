@@ -9,13 +9,14 @@ import hashlib
 import hmac
 import logging
 import time
+from pathlib import Path
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from parse_video_py import stats, web
-from parse_video_py.convert import config, net, relay
+from parse_video_py.convert import config, ffmpeg, net, relay
 from parse_video_py.parser.base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from parse_video_py.parser.errors import ParseError
 from parse_video_py.web import limits
@@ -219,3 +220,21 @@ def test_live_rejects_unsigned_items(client):
     item = {"image_url": "https://example.com/a.jpg", "video_url": "https://example.com/a.mp4"}
     r = client.post("/api/live", json={"items": [item]})
     assert r.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "filename, saved_as",
+    [("clip.MOV", ".mov"), ("a.webm", ".webm"), ("evil.m3u8", ".mp4"), ("x.ffconcat", ".mp4"), ("noext", ".mp4")],
+)
+def test_upload_keeps_only_video_extensions(client, monkeypatch, tmp_path, filename, saved_as):
+    # 用户给的扩展名不能原样用：.m3u8 会让 ffmpeg 按 HLS 打开，顺着里面的路径去读服务器上别的文件
+    seen = []
+
+    async def fake_probe(path):
+        seen.append(Path(path).suffix)
+        return ffmpeg.ProbeInfo(duration=2, width=320, height=240, fps=15)
+
+    monkeypatch.setattr(ffmpeg, "probe", fake_probe)
+    monkeypatch.setattr(limits.upload_limit, "_buckets", {})
+    r = client.post("/api/upload", files={"file": (filename, b"#EXTM3U\n/app/data/secret.mp4\n", "video/mp4")})
+    assert r.status_code == 200 and seen == [saved_as]
