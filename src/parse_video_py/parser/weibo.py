@@ -1,187 +1,94 @@
 import re
 from urllib.parse import urlparse
 
-from ..utils import create_async_client, get_val_from_url_by_query_key
-from .base import BaseParser, ImgInfo, VideoAuthor, VideoInfo
+import httpx
+
+from ..utils import get_val_from_url_by_query_key
+from .base import BaseParser, ImgInfo, VideoAuthor, VideoInfo, json_in_html
+from .errors import ParseError
+
+# 图片按从大到小找第一个有地址的尺寸
+_PIC_SIZES = ("large", "original", "bmiddle", "url")
+
+
+def _largest_pic(pic: dict) -> str:
+    return next((pic[size]["url"] for size in _PIC_SIZES if (pic.get(size) or {}).get("url")), "")
+
+
+def _from_status(status: dict) -> VideoInfo:
+    """一条微博（手机接口和网页里内嵌的是同一个结构）-> 图集"""
+    user = status.get("user") or {}
+    return VideoInfo(
+        video_url="",  # 普通微博没有视频；视频微博走 parse_video_id
+        cover_url="",
+        title=re.sub(r"<[^>]*>", "", status.get("text", "")).strip(),
+        images=[ImgInfo(url=url) for pic in status.get("pics") or [] if (url := _largest_pic(pic))],
+        author=VideoAuthor(name=user.get("screen_name", ""), avatar=user.get("avatar_large", "")),
+    )
 
 
 class WeiBo(BaseParser):
-    """
-    微博
-    """
+    """微博：视频（/tv/show/、show?fid=）和普通微博的图集"""
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        # Handle video URLs
         if "show?fid=" in share_url:
-            video_id = get_val_from_url_by_query_key(share_url, "fid")
-            return await self.parse_video_id(video_id)
-        if "/tv/show/" in share_url:
-            url_info = urlparse(share_url)
-            video_id = url_info.path.replace("/tv/show/", "")
-            return await self.parse_video_id(video_id)
-        # Handle regular post URLs (potential image albums)
-        # Extract post ID from URLs like https://weibo.com/2543858012/Q9pcJ4S21
-        url_info = urlparse(share_url)
-        path_parts = url_info.path.strip("/").split("/")
-        if len(path_parts) >= 2:
-            post_id = path_parts[-1]
-            return await self.parse_post_url(post_id, share_url)
-
-        raise Exception("unsupported weibo url format")
+            return await self.parse_video_id(get_val_from_url_by_query_key(share_url, "fid"))
+        path = urlparse(share_url).path
+        if "/tv/show/" in path:
+            return await self.parse_video_id(path.replace("/tv/show/", ""))
+        # 普通微博：weibo.com/<用户 ID>/<微博 ID>
+        parts = path.strip("/").split("/")
+        if len(parts) >= 2:
+            return await self.parse_post(parts[-1], share_url)
+        raise ParseError("unsupported", "不是微博视频或单条微博的链接")
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
-        req_url = f"https://h5.video.weibo.com/api/component?page=/show/{video_id}"
-        headers = {
-            "Referer": f"https://h5.video.weibo.com/show/{video_id}",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": self.ua("iOS"),
-        }
-        post_content = 'data={"Component_Play_Playinfo":{"oid":"' + video_id + '"}}'
-        async with create_async_client(follow_redirects=True) as client:
-            response = await client.post(req_url, headers=headers, content=post_content)
-            response.raise_for_status()
-
-        json_data = response.json()
-        data = json_data["data"]["Component_Play_Playinfo"]
-
-        video_url = data["stream_url"]
-        if len(data["urls"]) > 0:
-            # stream_url码率最低，urls中第一条码率最高
-            _, first_mp4_url = next(iter(data["urls"].items()))
-            video_url = f"https:{first_mp4_url}"
-
+        body = await self.post_json(
+            f"https://h5.video.weibo.com/api/component?page=/show/{video_id}",
+            headers={
+                "Referer": f"https://h5.video.weibo.com/show/{video_id}",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": self.ua("iOS"),
+            },
+            content='data={"Component_Play_Playinfo":{"oid":"' + video_id + '"}}',
+            follow_redirects=True,
+        )
+        play = body["data"]["Component_Play_Playinfo"]
+        # stream_url 码率最低；urls 里第一条码率最高
+        video_url = f"https:{next(iter(play['urls'].values()))}" if play["urls"] else play["stream_url"]
         return VideoInfo(
             video_url=video_url,
-            cover_url="https:" + data["cover_image"],
-            title=data["title"],
-            author=VideoAuthor(
-                uid=str(data["user"]["id"]),
-                name=data["author"],
-                avatar="https:" + data["avatar"],
-            ),
+            cover_url="https:" + play["cover_image"],
+            title=play["title"],
+            author=VideoAuthor(uid=str(play["user"]["id"]), name=play["author"], avatar="https:" + play["avatar"]),
         )
 
-    async def parse_post_url(self, post_id: str, original_url: str) -> VideoInfo:
-        """
-        Parse Weibo post (potential image album)
-        """
-        # Try mobile API first
-        req_url = f"https://m.weibo.cn/statuses/show?id={post_id}"
-        headers = {
-            "User-Agent": self.ua("iOS"),
-            "Referer": "https://m.weibo.cn/",
-            "Content-Type": "application/json;charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-
+    async def parse_post(self, post_id: str, page_url: str) -> VideoInfo:
+        """普通微博：先走手机接口，拿不到再解析网页里内嵌的数据"""
         try:
-            async with create_async_client(follow_redirects=True) as client:
-                response = await client.get(req_url, headers=headers)
-                response.raise_for_status()
-
-            json_data = response.json()
-            if "data" in json_data:
-                return await self._parse_mobile_api_data(json_data["data"])
-        except Exception:
-            pass
-
-        # Fallback to desktop page parsing using the original URL
-        headers = {
-            "User-Agent": self.ua("iOS"),
-        }
-
-        async with create_async_client(follow_redirects=True) as client:
-            response = await client.get(original_url, headers=headers)
-            response.raise_for_status()
-
-        return await self._parse_html_page(response.text)
-
-    async def _parse_mobile_api_data(self, data: dict) -> VideoInfo:
-        """
-        Parse data from mobile API
-        """
-        # Extract basic info
-        title = data.get("text", "")
-        author_info = data.get("user", {})
-        author_name = author_info.get("screen_name", "")
-        author_avatar = author_info.get("avatar_large", "")
-
-        # Get images
-        images = []
-        pics_data = data.get("pics", [])
-        for pic in pics_data:
-            # Get the largest image URL available
-            large_pic_url = ""
-            for size in ["large", "original", "bmiddle", "url"]:
-                if size in pic and pic[size].get("url"):
-                    large_pic_url = pic[size]["url"]
-                    break
-
-            if large_pic_url:
-                images.append(ImgInfo(url=large_pic_url))
-
-        return VideoInfo(
-            video_url="",  # Regular posts don't have videos
-            cover_url="",
-            title=self._clean_text(title),
-            images=images,
-            author=VideoAuthor(
-                name=author_name,
-                avatar=author_avatar,
-            ),
+            body = await self.get_json(
+                f"https://m.weibo.cn/statuses/show?id={post_id}",
+                headers={
+                    "User-Agent": self.ua("iOS"),
+                    "Referer": "https://m.weibo.cn/",
+                    "Content-Type": "application/json;charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                follow_redirects=True,
+            )
+        except (httpx.HTTPError, ValueError):
+            body = {}
+        if "data" in body:
+            return _from_status(body["data"])
+        return self._from_page(
+            await self.get_text(page_url, headers={"User-Agent": self.ua("iOS")}, follow_redirects=True)
         )
 
-    async def _parse_html_page(self, html_content: str) -> VideoInfo:
-        """
-        Parse data from HTML page
-        """
-        # Try to extract data from $render_data script
-        pattern = r"\$render_data\s*=\s*(.*?)\[0\]"
-        match = re.search(pattern, html_content)
-        if not match:
-            raise Exception("parse weibo html page fail")
-
-        json_str = match.group(1) + "[0]"
-        import json
-
-        data = json.loads(json_str)
-
-        # Extract basic info
-        status_data = data.get("status", {})
-        title = status_data.get("text", "")
-        author_info = status_data.get("user", {})
-        author_name = author_info.get("screen_name", "")
-        author_avatar = author_info.get("avatar_large", "")
-
-        # Get images
-        images = []
-        pics_data = status_data.get("pics", [])
-        for pic in pics_data:
-            # Get the largest image URL available
-            large_pic_url = ""
-            for size in ["large", "original", "bmiddle", "url"]:
-                if size in pic and pic[size].get("url"):
-                    large_pic_url = pic[size]["url"]
-                    break
-
-            if large_pic_url:
-                images.append(ImgInfo(url=large_pic_url))
-
-        return VideoInfo(
-            video_url="",  # Regular posts don't have videos
-            cover_url="",
-            title=self._clean_text(title),
-            images=images,
-            author=VideoAuthor(
-                name=author_name,
-                avatar=author_avatar,
-            ),
-        )
-
-    def _clean_text(self, text: str) -> str:
-        """
-        Remove HTML tags from text
-        """
-        # Remove HTML tags
-        cleaned = re.sub(r"<[^>]*>", "", text)
-        return cleaned.strip()
+    @staticmethod
+    def _from_page(html: str) -> VideoInfo:
+        # 页面里是 var $render_data = [{"status": {...}}][0] || {};
+        # 以前截出 [...] 之后又拼上 "[0]" 再 json.loads，必然报错，这条兜底从来没成功过
+        data = json_in_html(html, r"\$render_data\s*=\s*(\[.*?\])\[0\]", "微博数据")
+        if not data or not isinstance(data[0], dict):
+            raise ParseError("parse", "微博页面里的数据是空的")
+        return _from_status(data[0].get("status") or {})

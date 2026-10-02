@@ -2,29 +2,32 @@ import base64
 
 from parsel import Selector
 
-from ..utils import create_async_client
 from .base import BaseParser, VideoAuthor, VideoInfo
 
 
+def _cut(s: str, start: int, length: int) -> str:
+    """去掉 s[start:start+length]，并把后面再出现的同样一段也删掉"""
+    piece = s[start : start + length]
+    return s[:start] + s[start + length :].replace(piece, "")
+
+
+def decode_video_url(encoded: str) -> str:
+    """美拍页面上的视频地址是混淆过的 base64：前 4 位倒过来是个十六进制数，
+    它的十进制各位数字给出两次「从哪儿删多长」，删完剩下的才是真正的 base64。"""
+    digits = [int(d) for d in str(int(encoded[:4][::-1], 16))]
+    head, tail = digits[:-2], digits[-2:]
+    body = _cut(encoded[4:], head[0], head[1])
+    body = _cut(body, len(body) - tail[0] - tail[1], tail[1])
+    return "https:" + base64.b64decode(body).decode("utf-8")
+
+
 class MeiPai(BaseParser):
-    """
-    美拍
-    """
+    """美拍"""
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        async with create_async_client() as client:
-            headers = {
-                "User-Agent": self.ua("windows"),
-            }
-            response = await client.get(share_url, headers=headers)
-            response.raise_for_status()
-
-        sel = Selector(response.text)
-        video_bs64 = sel.css("#shareMediaBtn::attr(data-video)").get(default="")
-        video_url = self.parse_video_bs64(video_bs64)
-
+        sel = Selector(await self.get_text(share_url, headers={"User-Agent": self.ua("windows")}))
         return VideoInfo(
-            video_url=video_url,
+            video_url=decode_video_url(sel.css("#shareMediaBtn::attr(data-video)").get(default="")),
             cover_url=sel.css("#detailVideo img::attr(src)").get(default=""),
             title=sel.css(".detail-cover-title::text").get(default="").strip(),
             author=VideoAuthor(
@@ -35,46 +38,4 @@ class MeiPai(BaseParser):
         )
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
-        req_url = f"https://www.meipai.com/video/{video_id}"
-        return await self.parse_share_url(req_url)
-
-    def parse_video_bs64(self, video_bs64: str) -> str:
-        hex_val = self.get_hex(video_bs64)
-        dec_val = self.get_dec(hex_val["hex_1"])
-        d_val = self.sub_str(hex_val["str_1"], dec_val["pre"])
-        p_val = self.get_pos(d_val, dec_val["tail"])
-        kk_val = self.sub_str(d_val, p_val)
-        decode_bs64 = base64.b64decode(kk_val)
-        return "https:" + decode_bs64.decode("utf-8")
-
-    def get_hex(self, s: str) -> dict[str, str]:
-        hex_val = s[:4]
-        str_val = s[4:]
-        return {"hex_1": self.reverse_string(hex_val), "str_1": str_val}
-
-    @staticmethod
-    def get_dec(hex_val: str) -> dict[str, list[int]]:
-        int_n = int(hex_val, 16)
-        str_n = str(int_n)
-        length = len(str_n)
-        pre = [int(str_n[i]) for i in range(length) if i < length - 2]
-        tail = [int(str_n[i]) for i in range(length) if i >= length - 2]
-        return {"pre": pre, "tail": tail}
-
-    @staticmethod
-    def sub_str(s: str, b: list[int]) -> str:
-        index_1 = b[0]
-        index_2 = b[0] + b[1]
-        c = s[:index_1]
-        d = s[index_1:index_2]
-        temp = s[index_2:].replace(d, "")
-        return c + temp
-
-    @staticmethod
-    def get_pos(s: str, b: list[int]) -> list[int]:
-        b[0] = len(s) - b[0] - b[1]
-        return b
-
-    @staticmethod
-    def reverse_string(s: str) -> str:
-        return s[::-1]
+        return await self.parse_share_url(f"https://www.meipai.com/video/{video_id}")

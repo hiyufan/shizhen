@@ -486,7 +486,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 
 - **加平台** — 在 `src/parse_video_py/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
 - **改文案** — 落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
-- **同步上游** — `parser/` 里本项目改过的文件有 `douyin.py` `redbook.py` `twitter.py` `kuaishou.py` `ytdlp.py` `base.py` `__init__.py`，其余可直接覆盖（覆盖后跑一遍 `ruff format` / `ruff check`）。
+- **同步上游** — `parser/` 里的解析器都已按本项目的写法重写过（统一用 `BaseParser.get_json / get_text` 发请求、失败抛带原因的 `ParseError`），不能再拿上游文件直接覆盖；上游修了某个平台时对照着改，并补上 `tests/test_small_parsers.py` 里的离线用例。
 - **发起出站请求** — 一律用 `utils.create_async_client()` 或 `convert.net.safe_client()`，它们带 SSRF 逐跳检查并复用连接池。不要直接 `httpx.AsyncClient()`。
 - 提交前用真实链接验证：抖音、小红书、X、B站 各一条，三种转换格式各一次。
 

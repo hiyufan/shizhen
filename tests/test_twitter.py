@@ -49,8 +49,21 @@ def test_syndication_top_level_video_and_photos():
 
 
 def test_fxtwitter():
-    video = {"media": {"all": [{"type": "photo", "url": "p.jpg"}, {"type": "gif", "thumbnail_url": "t.jpg",
-             "variants": _variants(("video/mp4", "g.mp4", 1)), "duration": 2, "width": 10, "height": 20}]}}  # fmt: skip
+    video = {
+        "media": {
+            "all": [
+                {"type": "photo", "url": "p.jpg"},
+                {
+                    "type": "gif",
+                    "thumbnail_url": "t.jpg",
+                    "variants": _variants(("video/mp4", "g.mp4", 1)),
+                    "duration": 2,
+                    "width": 10,
+                    "height": 20,
+                },
+            ]
+        }
+    }
     info = _from_fxtwitter(video)
     assert (info.video_url, info.cover_url, info.images, info.duration) == ("g.mp4", "t.jpg", [], 2.0)
 

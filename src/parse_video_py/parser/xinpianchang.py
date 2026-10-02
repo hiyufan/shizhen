@@ -2,14 +2,12 @@ import json
 
 from parsel import Selector
 
-from ..utils import create_async_client
 from .base import BaseParser, VideoAuthor, VideoInfo
+from .errors import ParseError
 
 
 class XinPianChang(BaseParser):
-    """
-    新片场
-    """
+    """新片场"""
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         headers = {
@@ -17,37 +15,24 @@ class XinPianChang(BaseParser):
             "Upgrade-Insecure-Requests": "1",
             "Referer": "https://www.xinpianchang.com/",
         }
-        async with create_async_client(follow_redirects=True) as client:
-            response = await client.get(share_url, headers=headers)
-            response.raise_for_status()
-
-        sel = Selector(response.text)
-        json_text = sel.css("script#__NEXT_DATA__::text").get()
-        json_data = json.loads(json_text)
-        data = json_data["props"]["pageProps"]["detail"]
-
-        # 获取 appKey 和 media_id， 另外调用接口获取mp4视频地址
-        app_key = data["video"]["appKey"]
-        media_id = data["media_id"]
-        req_mp4_url = (
-            f"https://mod-api.xinpianchang.com/mod/api/v2/media/{media_id}"
-            f"?appKey={app_key}&extend=userInfo%2CuserStatus"
+        html = await self.get_text(share_url, headers=headers, follow_redirects=True)
+        next_data = Selector(html).css("script#__NEXT_DATA__::text").get()
+        if not next_data:
+            raise ParseError("parse", "页面里没找到作品数据")
+        detail = json.loads(next_data)["props"]["pageProps"]["detail"]
+        # 页面里只有 appKey 和 media_id，mp4 地址要另调一个接口
+        media = await self.get_json(
+            f"https://mod-api.xinpianchang.com/mod/api/v2/media/{detail['media_id']}"
+            f"?appKey={detail['video']['appKey']}&extend=userInfo%2CuserStatus",
+            headers=headers,
+            follow_redirects=True,
         )
-        async with create_async_client(follow_redirects=True) as client:
-            mp4_response = await client.get(req_mp4_url, headers=headers)
-            mp4_response.raise_for_status()
-        mp4_data = mp4_response.json()
-        video_url = mp4_data["data"]["resource"]["progressive"][0]["url"]
-
+        user = detail["author"]["userinfo"]
         return VideoInfo(
-            video_url=video_url,
-            cover_url=data["cover"],
-            title=data["title"],
-            author=VideoAuthor(
-                uid=str(data["author"]["userinfo"]["id"]),
-                name=data["author"]["userinfo"]["username"],
-                avatar=data["author"]["userinfo"]["avatar"],
-            ),
+            video_url=media["data"]["resource"]["progressive"][0]["url"],
+            cover_url=detail["cover"],
+            title=detail["title"],
+            author=VideoAuthor(uid=str(user["id"]), name=user["username"], avatar=user["avatar"]),
         )
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
