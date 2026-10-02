@@ -13,8 +13,20 @@ from .errors import ParseError
 _REFERER = "https://www.bilibili.com/"
 
 # 清晰度 id -> 高度。html5 合一流只给 quality，不给宽高
-_QN_HEIGHT = {6: 240, 16: 360, 32: 480, 64: 720, 74: 720, 80: 1080, 112: 1080, 116: 1080,
-              120: 2160, 125: 2160, 126: 2160, 127: 4320}
+_QN_HEIGHT = {
+    6: 240,
+    16: 360,
+    32: 480,
+    64: 720,
+    74: 720,
+    80: 1080,
+    112: 1080,
+    116: 1080,
+    120: 2160,
+    125: 2160,
+    126: 2160,
+    127: 4320,
+}
 
 
 class BiliBili(BaseParser):
@@ -39,7 +51,7 @@ class BiliBili(BaseParser):
         "(KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
     )
 
-    _buvid_cookie: str = ""   # 进程内缓存一份, 免得每次都去要
+    _buvid_cookie: str = ""  # 进程内缓存一份, 免得每次都去要
 
     def get_default_headers(self) -> dict:
         headers = {
@@ -187,7 +199,9 @@ class BiliBili(BaseParser):
                 await self._ensure_buvid()
                 response = await client.get(api_url, headers=self.get_default_headers())
             if response.status_code == 412:
-                raise ValueError("B站拒绝了服务器所在网络的访问 (412)，海外服务器请配置 PARSE_VIDEO_PROXY_CN 或 PARSE_VIDEO_BILI_COOKIE")
+                raise ValueError(
+                    "B站拒绝了服务器所在网络的访问 (412)，海外服务器请配置 PARSE_VIDEO_PROXY_CN 或 PARSE_VIDEO_BILI_COOKIE"
+                )
             if response.status_code != 200:
                 raise ValueError(f"HTTP请求失败, 状态码: {response.status_code}")
             return response.json()
@@ -211,6 +225,7 @@ def guest_params() -> dict:
     反而不是必须的。做法照 yt-dlp（来源是 B 站自己的 bili-user-fingerprint.js）：
     这些值本来就是前端随机造的，鼠标轨迹那两项留空也能过。
     """
+
     def noise(lo: int, hi: int) -> str:
         raw = "".join(random.choices(string.printable, k=random.randint(lo, hi))).encode()
         return base64.b64encode(raw)[:-2].decode()
@@ -223,8 +238,11 @@ def guest_params() -> dict:
         "dm_cover_img_str": noise(32, 128),
         # 屏幕 1920x1080 时的 wh / of 编码，必须是没有空格的紧凑 JSON
         "dm_img_inter": json.dumps(
-            {"ds": [], "wh": [2 * 1920 + 2 * 1080 + 3 * r, 4 * 1920 - 1080 + r, r],
-             "of": [3 * top + o, 4 * top + 2 * o, o]},
+            {
+                "ds": [],
+                "wh": [2 * 1920 + 2 * 1080 + 3 * r, 4 * 1920 - 1080 + r, r],
+                "of": [3 * top + o, 4 * top + 2 * o, o],
+            },
             separators=(",", ":"),
         ),
     }
@@ -261,6 +279,9 @@ def dash_formats(play_data: dict, duration: float, above: int) -> list[FormatInf
         for short, (h, bw) in sorted(tiers.items(), reverse=True)
     ]
     if audios:
-        formats.append(FormatInfo(label="仅音频", format_spec="ba[ext=m4a]/ba", ext="m4a", height=0,
-                                  filesize=int(audio_bw * duration / 8)))
+        formats.append(
+            FormatInfo(
+                label="仅音频", format_spec="ba[ext=m4a]/ba", ext="m4a", height=0, filesize=int(audio_bw * duration / 8)
+            )
+        )
     return formats

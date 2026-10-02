@@ -1,7 +1,6 @@
 import re
 from urllib.parse import urlparse
 
-
 from ..utils import create_async_client, get_val_from_url_by_query_key
 from .base import BaseParser, ImgInfo, VideoAuthor, VideoInfo
 
@@ -16,18 +15,17 @@ class WeiBo(BaseParser):
         if "show?fid=" in share_url:
             video_id = get_val_from_url_by_query_key(share_url, "fid")
             return await self.parse_video_id(video_id)
-        elif "/tv/show/" in share_url:
+        if "/tv/show/" in share_url:
             url_info = urlparse(share_url)
             video_id = url_info.path.replace("/tv/show/", "")
             return await self.parse_video_id(video_id)
-        else:
-            # Handle regular post URLs (potential image albums)
-            # Extract post ID from URLs like https://weibo.com/2543858012/Q9pcJ4S21
-            url_info = urlparse(share_url)
-            path_parts = url_info.path.strip("/").split("/")
-            if len(path_parts) >= 2:
-                post_id = path_parts[-1]
-                return await self.parse_post_url(post_id, share_url)
+        # Handle regular post URLs (potential image albums)
+        # Extract post ID from URLs like https://weibo.com/2543858012/Q9pcJ4S21
+        url_info = urlparse(share_url)
+        path_parts = url_info.path.strip("/").split("/")
+        if len(path_parts) >= 2:
+            post_id = path_parts[-1]
+            return await self.parse_post_url(post_id, share_url)
 
         raise Exception("unsupported weibo url format")
 

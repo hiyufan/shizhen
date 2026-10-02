@@ -7,6 +7,7 @@
 
 做成 httpx 的 transport，解析器代码一行不用改；跳转由 httpx 在本地处理，每一跳都过 SSRF 检查。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -86,7 +87,8 @@ class RelayTransport(httpx.AsyncBaseTransport):
         # 中继地址是固定的一个域名, 连接留着重复用。httpx 默认 keepalive 只保 5 秒,
         # 解析请求零零散散地来, 5 秒一过连接就没了, 每次都要重做 DNS+TCP+TLS(实测 642ms)
         self._client = httpx.AsyncClient(
-            timeout=timeout, follow_redirects=False,
+            timeout=timeout,
+            follow_redirects=False,
             limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=300.0),
         )
 
@@ -99,8 +101,9 @@ class RelayTransport(httpx.AsyncBaseTransport):
             "x-relay-headers": base64.b64encode(json.dumps(headers, ensure_ascii=False).encode("utf-8")).decode(),
             "content-type": "application/octet-stream",
         }
-        resp = await self._client.post(self.relay_url, params={"url": str(request.url)}, headers=relay_headers,
-                                       content=body)
+        resp = await self._client.post(
+            self.relay_url, params={"url": str(request.url)}, headers=relay_headers, content=body
+        )
         if resp.status_code != 200:
             raise httpx.TransportError(f"中继返回 {resp.status_code}: {resp.text[:120]}", request=request)
         status = int(resp.headers.get("x-relay-status", "599"))
@@ -119,8 +122,10 @@ class RelayTransport(httpx.AsyncBaseTransport):
         relay()），只走一个到边缘节点的往返，是最省的保活方式。
         """
         await self._client.post(
-            self.relay_url, params={"url": ""},
-            headers={"x-relay-token": self.token, "x-relay-method": "GET"}, content=b"",
+            self.relay_url,
+            params={"url": ""},
+            headers={"x-relay-token": self.token, "x-relay-method": "GET"},
+            content=b"",
         )
 
     async def aclose(self) -> None:
@@ -156,7 +161,7 @@ async def keepalive(interval: float = 60.0) -> None:
     """
     tr = shared_transport()
     while True:
-        with contextlib.suppress(Exception):   # 保活失败就等下一轮, 别影响主服务
+        with contextlib.suppress(Exception):  # 保活失败就等下一轮, 别影响主服务
             await tr.ping()
         await asyncio.sleep(interval)
 

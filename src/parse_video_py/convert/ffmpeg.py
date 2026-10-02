@@ -3,6 +3,7 @@
 We prefer an ffmpeg on PATH; otherwise the one bundled with imageio-ffmpeg is
 copied into data/bin so yt-dlp can find it under its normal name too.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,15 +11,15 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
 
 from . import config
 
 ProgressCb = Callable[[float], Awaitable[None] | None]
 
-_FFMPEG: Optional[str] = None
+_FFMPEG: str | None = None
 
 
 def ffmpeg_path() -> str:
@@ -65,8 +66,12 @@ _ROT_RE = re.compile(r"rotate\s*:\s*(-?\d+)|rotation of (-?\d+(?:\.\d+)?) degree
 async def probe(path: str | os.PathLike) -> ProbeInfo:
     """Parse `ffmpeg -i` stderr — we don't ship ffprobe."""
     proc = await asyncio.create_subprocess_exec(
-        ffmpeg_path(), "-hide_banner", "-i", str(path),
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        ffmpeg_path(),
+        "-hide_banner",
+        "-i",
+        str(path),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
     )
     _, err = await proc.communicate()
     text = err.decode("utf-8", "replace")
@@ -98,10 +103,23 @@ async def run(args: list[str], total: float | None = None, on_progress: Progress
 
     任务被取消（超时 / 用户取消）时会把 ffmpeg 一起杀掉，不留孤儿进程。
     """
-    cmd = [ffmpeg_path(), "-hide_banner", "-y", "-nostats", "-loglevel", "error",
-           "-threads", str(threads_per_job()), "-progress", "pipe:1", *args]
+    cmd = [
+        ffmpeg_path(),
+        "-hide_banner",
+        "-y",
+        "-nostats",
+        "-loglevel",
+        "error",
+        "-threads",
+        str(threads_per_job()),
+        "-progress",
+        "pipe:1",
+        *args,
+    ]
     proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
     assert proc.stdout is not None
     last = -1.0
@@ -143,9 +161,19 @@ def _even_scale(width: int | None, max_height: int | None = None) -> str:
     return "scale=trunc(iw/2)*2:trunc(ih/2)*2"
 
 
-async def make_gif(src: str, dst: str, *, start: float, duration: float, fps: int, width: int,
-                   dither: str = "bayer", speed: float = 1.0, colors: int = 256,
-                   on_progress: ProgressCb | None = None) -> None:
+async def make_gif(
+    src: str,
+    dst: str,
+    *,
+    start: float,
+    duration: float,
+    fps: int,
+    width: int,
+    dither: str = "bayer",
+    speed: float = 1.0,
+    colors: int = 256,
+    on_progress: ProgressCb | None = None,
+) -> None:
     dither_opt = {
         "bayer": "dither=bayer:bayer_scale=4",
         "sierra2_4a": "dither=sierra2_4a",
@@ -159,25 +187,66 @@ async def make_gif(src: str, dst: str, *, start: float, duration: float, fps: in
         f"[b][p]paletteuse={dither_opt}:diff_mode=rectangle"
     )
     out_dur = duration / speed
-    await run([
-        "-ss", f"{start:.3f}", "-t", f"{duration:.3f}", "-i", src,
-        "-filter_complex", vf, "-loop", "0", "-an", dst,
-    ], total=out_dur, on_progress=on_progress)
+    await run(
+        [
+            "-ss",
+            f"{start:.3f}",
+            "-t",
+            f"{duration:.3f}",
+            "-i",
+            src,
+            "-filter_complex",
+            vf,
+            "-loop",
+            "0",
+            "-an",
+            dst,
+        ],
+        total=out_dur,
+        on_progress=on_progress,
+    )
 
 
-async def encode_segment(src: str, dst: str, *, start: float, duration: float,
-                         max_height: int = 1080, fps: int = 30, container: str = "mov",
-                         extra_metadata: dict[str, str] | None = None,
-                         on_progress: ProgressCb | None = None) -> None:
+async def encode_segment(
+    src: str,
+    dst: str,
+    *,
+    start: float,
+    duration: float,
+    max_height: int = 1080,
+    fps: int = 30,
+    container: str = "mov",
+    extra_metadata: dict[str, str] | None = None,
+    on_progress: ProgressCb | None = None,
+) -> None:
     """H.264 + AAC clip, the building block for live / motion photos."""
     args = [
-        "-ss", f"{start:.3f}", "-t", f"{duration:.3f}", "-i", src,
-        "-vf", f"{_even_scale(None, max_height)},fps={fps}",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
-        "-profile:v", "high", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart+use_metadata_tags",
-        "-map_metadata", "-1",
+        "-ss",
+        f"{start:.3f}",
+        "-t",
+        f"{duration:.3f}",
+        "-i",
+        src,
+        "-vf",
+        f"{_even_scale(None, max_height)},fps={fps}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "21",
+        "-profile:v",
+        "high",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart+use_metadata_tags",
+        "-map_metadata",
+        "-1",
     ]
     for k, v in (extra_metadata or {}).items():
         args += ["-metadata", f"{k}={v}"]
@@ -187,27 +256,61 @@ async def encode_segment(src: str, dst: str, *, start: float, duration: float,
 
 async def remux_live(src: str, dst: str, *, identifier: str) -> None:
     """平台自带的实况视频 (H.264 小片段) 不重编码, 直接换成 MOV 并写入 Apple 配对标识。"""
-    await run([
-        "-i", src, "-c", "copy", "-map_metadata", "-1",
-        "-movflags", "+faststart+use_metadata_tags",
-        "-metadata", f"com.apple.quicktime.content.identifier={identifier}",
-        "-f", "mov", dst,
-    ])
+    await run(
+        [
+            "-i",
+            src,
+            "-c",
+            "copy",
+            "-map_metadata",
+            "-1",
+            "-movflags",
+            "+faststart+use_metadata_tags",
+            "-metadata",
+            f"com.apple.quicktime.content.identifier={identifier}",
+            "-f",
+            "mov",
+            dst,
+        ]
+    )
 
 
 async def extract_frame(src: str, dst: str, *, at: float, max_height: int = 1080) -> None:
-    await run([
-        "-ss", f"{at:.3f}", "-i", src, "-frames:v", "1",
-        "-vf", _even_scale(None, max_height), "-q:v", "2", "-f", "image2", dst,
-    ])
+    await run(
+        [
+            "-ss",
+            f"{at:.3f}",
+            "-i",
+            src,
+            "-frames:v",
+            "1",
+            "-vf",
+            _even_scale(None, max_height),
+            "-q:v",
+            "2",
+            "-f",
+            "image2",
+            dst,
+        ]
+    )
 
 
 async def filmstrip(src: str, dst: str, *, duration: float, frames: int = 16, height: int = 72) -> None:
     """One JPEG with `frames` thumbnails side by side — the trimmer's backdrop."""
     frames = max(2, min(40, frames))
     step = max(duration / frames, 0.04)
-    await run([
-        "-i", src,
-        "-vf", f"fps=1/{step:.4f},scale=-2:{height},tile={frames}x1",
-        "-frames:v", "1", "-q:v", "5", "-f", "image2", dst,
-    ])
+    await run(
+        [
+            "-i",
+            src,
+            "-vf",
+            f"fps=1/{step:.4f},scale=-2:{height},tile={frames}x1",
+            "-frames:v",
+            "1",
+            "-q:v",
+            "5",
+            "-f",
+            "image2",
+            dst,
+        ]
+    )

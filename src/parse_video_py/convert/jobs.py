@@ -1,19 +1,19 @@
 """极简后台任务队列：下载 / 转换共用，带进度。"""
+
 from __future__ import annotations
 
 import asyncio
 import time
 import traceback
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
 
-from . import config
-from .net import scrub
 # 起别名：本模块自己有个 stats() 函数，同名会把统计模块覆盖掉
 from .. import stats as usage_stats
-
+from . import config
+from .net import scrub
 
 JobFn = Callable[["Job"], Awaitable[None]]
 
@@ -22,20 +22,20 @@ JobFn = Callable[["Job"], Awaitable[None]]
 class Job:
     id: str
     type: str
-    source_id: Optional[str] = None
+    source_id: str | None = None
     status: str = "queued"
     progress: float = 0.0
     message: str = ""
-    error: Optional[str] = None
-    result_path: Optional[str] = None
-    filename: Optional[str] = None
-    preview: Optional[str] = None
+    error: str | None = None
+    result_path: str | None = None
+    filename: str | None = None
+    preview: str | None = None
     extra: dict = field(default_factory=dict)
-    owner: Optional[str] = None            # 客户端 IP，用于配额
-    abort: bool = False                    # 超时 / 取消后置位；跑在线程里的 yt-dlp 靠它自己停下来
+    owner: str | None = None  # 客户端 IP，用于配额
+    abort: bool = False  # 超时 / 取消后置位；跑在线程里的 yt-dlp 靠它自己停下来
     created_at: float = field(default_factory=time.time)
-    finished_at: Optional[float] = None
-    task: Optional[asyncio.Task] = None
+    finished_at: float | None = None
+    task: asyncio.Task | None = None
 
     def set(self, progress: float | None = None, message: str | None = None) -> None:
         if progress is not None:
@@ -48,15 +48,22 @@ class Job:
         if self.result_path and Path(self.result_path).exists():
             size = Path(self.result_path).stat().st_size
         return {
-            "id": self.id, "type": self.type, "status": self.status,
-            "progress": round(self.progress, 4), "message": self.message,
-            "error": self.error, "filename": self.filename, "filesize": size,
-            "source_id": self.source_id, "preview": self.preview, "extra": self.extra,
+            "id": self.id,
+            "type": self.type,
+            "status": self.status,
+            "progress": round(self.progress, 4),
+            "message": self.message,
+            "error": self.error,
+            "filename": self.filename,
+            "filesize": size,
+            "source_id": self.source_id,
+            "preview": self.preview,
+            "extra": self.extra,
         }
 
 
 _jobs: dict[str, Job] = {}
-_sem: Optional[asyncio.Semaphore] = None
+_sem: asyncio.Semaphore | None = None
 ReleaseFn = Callable[[], None]
 
 
@@ -67,7 +74,7 @@ def _semaphore() -> asyncio.Semaphore:
     return _sem
 
 
-def get(job_id: str) -> Optional[Job]:
+def get(job_id: str) -> Job | None:
     return _jobs.get(job_id)
 
 
@@ -75,7 +82,7 @@ def pending_count() -> int:
     return sum(1 for j in _jobs.values() if j.status in ("queued", "running"))
 
 
-def find_pending(job_type: str, source_id: str) -> Optional[Job]:
+def find_pending(job_type: str, source_id: str) -> Job | None:
     """同一个来源正在准备中的任务；爆款链接几个人同时点，只下载一次。"""
     for j in _jobs.values():
         if j.type == job_type and j.source_id == source_id and j.status in ("queued", "running"):
@@ -108,8 +115,14 @@ class QueueFull(Exception):
     pass
 
 
-def start(job_type: str, fn: JobFn, source_id: str | None = None, *,
-          owner: str | None = None, on_release: ReleaseFn | None = None) -> Job:
+def start(
+    job_type: str,
+    fn: JobFn,
+    source_id: str | None = None,
+    *,
+    owner: str | None = None,
+    on_release: ReleaseFn | None = None,
+) -> Job:
     """排队执行 fn(job)。超过队列上限直接拒绝；单个任务超时会被取消并杀掉 ffmpeg。"""
     if pending_count() >= config.MAX_QUEUED_JOBS:
         raise QueueFull("服务器正忙，排队的任务太多了，请稍后再试")
@@ -144,8 +157,14 @@ def start(job_type: str, fn: JobFn, source_id: str | None = None, *,
             # 先还配额：后面记统计哪怕出错，也不能让这个 IP 的名额一直占着
             if on_release:
                 on_release()
-            usage_stats.record("job", job.owner or "", source=job.type, ok=job.status == "done",
-                               reason=(job.error or "")[:32], ms=(job.finished_at - job.created_at) * 1000)
+            usage_stats.record(
+                "job",
+                job.owner or "",
+                source=job.type,
+                ok=job.status == "done",
+                reason=(job.error or "")[:32],
+                ms=(job.finished_at - job.created_at) * 1000,
+            )
 
     job.task = asyncio.create_task(runner())
     return job

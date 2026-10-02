@@ -11,7 +11,6 @@ from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, _random_ua
 from .errors import ParseError
 
-
 # slidesinfo 的两个入口主机，按优先级排。同一个接口两个域名都挂着，走的是不同的
 # CDN 边缘。热连接实测（各 15 次）：www.douyin.com p50 ~200ms / p90 ~220ms，
 # www.iesdouyin.com p50 226~266ms / p90 273~349ms——前者不仅快，尾部也稳得多。
@@ -106,8 +105,7 @@ async def warmup_browser() -> None:
     解析图文的用户垫这十几秒。playwright 没装或起不来就静默放弃。"""
     with contextlib.suppress(Exception):
         async with _warm_browser.page() as page:
-            await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
-                            timeout=30000)
+            await page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(3000)
 
 
@@ -244,7 +242,7 @@ class DouYin(BaseParser):
     抖音 / 抖音火山版
     """
 
-    _note = False   # 地址上看出来是图文（/note/、/slides/）
+    _note = False  # 地址上看出来是图文（/note/、/slides/）
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         # 解析URL获取域名
@@ -334,17 +332,11 @@ class DouYin(BaseParser):
 
             original_video_info = None
             if VIDEO_ID_PAGE_KEY in json_data["loaderData"]:
-                original_video_info = json_data["loaderData"][VIDEO_ID_PAGE_KEY][
-                    "videoInfoRes"
-                ]
+                original_video_info = json_data["loaderData"][VIDEO_ID_PAGE_KEY]["videoInfoRes"]
             elif NOTE_ID_PAGE_KEY in json_data["loaderData"]:
-                original_video_info = json_data["loaderData"][NOTE_ID_PAGE_KEY][
-                    "videoInfoRes"
-                ]
+                original_video_info = json_data["loaderData"][NOTE_ID_PAGE_KEY]["videoInfoRes"]
             else:
-                raise Exception(
-                    "failed to parse Videos or Photo Gallery info from json"
-                )
+                raise Exception("failed to parse Videos or Photo Gallery info from json")
 
             # 如果没有视频信息，获取并抛出异常
             if len(original_video_info["item_list"]) == 0:
@@ -366,28 +358,18 @@ class DouYin(BaseParser):
         if "images" in data and isinstance(data["images"], list):
             # 获取每个图片的url_list中的第一个元素，优先获取非 .webp 格式的图片 url
             for img in data["images"]:
-                if (
-                    "url_list" in img
-                    and isinstance(img["url_list"], list)
-                    and len(img["url_list"]) > 0
-                ):
+                if "url_list" in img and isinstance(img["url_list"], list) and len(img["url_list"]) > 0:
                     # 注意 download_url_list 是带用户名水印的 (tplv-dy-water-v2), 不能用
                     image_url = self._get_no_webp_url(img["url_list"])
                     if image_url:
                         live_photo_url = ""
-                        if (
-                            "video" in img
-                            and "play_addr" in img["video"]
-                            and "url_list" in img["video"]["play_addr"]
-                        ):
+                        if "video" in img and "play_addr" in img["video"] and "url_list" in img["video"]["play_addr"]:
                             live_photo_url = (
                                 img["video"]["play_addr"]["url_list"][0]
                                 if img["video"]["play_addr"]["url_list"]
                                 else ""
                             )
-                        images.append(
-                            ImgInfo(url=image_url, live_photo_url=live_photo_url)
-                        )
+                        images.append(ImgInfo(url=image_url, live_photo_url=live_photo_url))
 
         # 获取视频和音频播放地址
         # 浏览器预览 / 默认下载用 H.264 (play_addr_h264), 其余清晰度档位放进 formats
@@ -426,11 +408,7 @@ class DouYin(BaseParser):
 
         # 获取封面图片，优先获取非 .webp 格式的图片 url
         cover_url = ""
-        if (
-            "video" in data
-            and "cover" in data["video"]
-            and "url_list" in data["video"]["cover"]
-        ):
+        if "video" in data and "cover" in data["video"] and "url_list" in data["video"]["cover"]:
             cover_url = self._get_no_webp_url(data["video"]["cover"]["url_list"])
 
         video_info = VideoInfo(
@@ -447,9 +425,7 @@ class DouYin(BaseParser):
                 uid=data.get("author", {}).get("sec_uid", ""),
                 name=data.get("author", {}).get("nickname", ""),
                 avatar=(
-                    data.get("author", {})
-                    .get("avatar_thumb", {})
-                    .get("url_list", [""])[0]
+                    data.get("author", {}).get("avatar_thumb", {}).get("url_list", [""])[0]
                     if data.get("author", {}).get("avatar_thumb", {}).get("url_list")
                     else ""
                 ),
@@ -669,8 +645,7 @@ class DouYin(BaseParser):
                     # 第一次 12 秒还没到 DOMContentLoaded 多半是跨境连接卡死了（正常
                     # 1~1.5 秒，统计里有 25~40 秒的长尾），换个页面重来比干等划算；第二次
                     # 放宽到 25 秒，网络只是慢的时候别两次都掐掉
-                    await page.goto(page_url, wait_until="domcontentloaded",
-                                    timeout=12000 if attempt == 0 else 25000)
+                    await page.goto(page_url, wait_until="domcontentloaded", timeout=12000 if attempt == 0 else 25000)
                     if f"/note/{video_id}" not in page.url:
                         if f"/video/{video_id}" in page.url:
                             # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
@@ -689,7 +664,7 @@ class DouYin(BaseParser):
             if dom.get("images"):
                 break
             if dom.get("total") == 0:
-                return None   # awemeInfo 里没有图：不是图文，交回上层报原错
+                return None  # awemeInfo 里没有图：不是图文，交回上层报原错
             # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
             # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
         else:
@@ -741,7 +716,7 @@ class DouYin(BaseParser):
             if n != prev:
                 prev, changed_at = n, now
             elif n and now - changed_at >= (3 if total else 1.5):
-                return dom   # 知道总数却一直凑不齐（轮播没全渲染）就别等满 15 秒了
+                return dom  # 知道总数却一直凑不齐（轮播没全渲染）就别等满 15 秒了
             if not dom.get("detail") and now - start >= 6:
                 return dom
             await page.wait_for_timeout(200)

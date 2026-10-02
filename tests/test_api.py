@@ -28,8 +28,11 @@ def _info(**kw) -> VideoInfo:
         cover_url="https://p3-sign.douyinpic.com/cover.jpeg",
         title="标题",
         music_url="https://sf3-cdn.douyinstatic.com/music.mp3",
-        images=[ImgInfo(url="https://p3-sign.douyinpic.com/1.webp",
-                        live_photo_url="https://v3-web.douyinvod.com/live/1.mp4")],
+        images=[
+            ImgInfo(
+                url="https://p3-sign.douyinpic.com/1.webp", live_photo_url="https://v3-web.douyinvod.com/live/1.mp4"
+            )
+        ],
         author=VideoAuthor(name="作者"),
         source="douyin",
         formats=[FormatInfo(label="1080p", url="https://v3-web.douyinvod.com/play/1080.mp4")],
@@ -85,8 +88,15 @@ def test_success_returns_data_and_signs_every_url(client, calls, recorded):
     assert data["share_url"] == SHARE
     assert data["author"]["name"] == "作者"
     info = _info()
-    expected = {info.video_url, info.cover_url, info.music_url, info.images[0].url,
-                info.images[0].live_photo_url, info.formats[0].url, SHARE}
+    expected = {
+        info.video_url,
+        info.cover_url,
+        info.music_url,
+        info.images[0].url,
+        info.images[0].live_photo_url,
+        info.formats[0].url,
+        SHARE,
+    }
     assert set(data["sig"]) == expected
     # 签名是前端调 /api/proxy、/api/prepare 的凭证，必须能被验过
     assert all(net.verify(u, s) for u, s in data["sig"].items())
@@ -138,12 +148,15 @@ def test_edge_image_urls_only_for_whitelisted_cdns(client, calls, recorded, monk
 # --------------------------------------------------------------------------- 失败路径
 
 
-@pytest.mark.parametrize("exc, code, reason", [
-    (ParseError("deleted"), 500, "deleted"),
-    (asyncio.TimeoutError(), 504, "timeout"),
-    (RuntimeError("HTTP 412 Precondition Failed"), 500, "blocked"),
-    (RuntimeError("莫名其妙"), 500, "parse"),
-])
+@pytest.mark.parametrize(
+    "exc, code, reason",
+    [
+        (ParseError("deleted"), 500, "deleted"),
+        (asyncio.TimeoutError(), 504, "timeout"),
+        (RuntimeError("HTTP 412 Precondition Failed"), 500, "blocked"),
+        (RuntimeError("莫名其妙"), 500, "parse"),
+    ],
+)
 def test_failure_reports_reason_and_logs_link(client, calls, recorded, caplog, exc, code, reason):
     calls["result"] = exc
     with caplog.at_level(logging.WARNING, logger="uvicorn.error"):
@@ -152,7 +165,7 @@ def test_failure_reports_reason_and_logs_link(client, calls, recorded, caplog, e
     assert body["code"] == code and body["reason"] == reason
     assert "data" not in body
     assert f"解析失败 url={SHARE} reason={reason}" in caplog.text
-    (kind, kw), = recorded
+    ((kind, kw),) = recorded
     assert kind == "parse" and kw["ok"] is False and kw["reason"] == reason and kw["source"] == "douyin"
 
 

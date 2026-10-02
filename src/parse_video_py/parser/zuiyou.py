@@ -19,9 +19,7 @@ class ZuiYou(BaseParser):
             "pid": int_video_id,
         }
         async with create_async_client(follow_redirects=True) as client:
-            response = await client.post(
-                req_url, headers=self.get_default_headers(), json=post_data
-            )
+            response = await client.post(req_url, headers=self.get_default_headers(), json=post_data)
             response.raise_for_status()
 
         json_data = response.json()

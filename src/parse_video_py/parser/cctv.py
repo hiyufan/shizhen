@@ -21,7 +21,7 @@ class CCTV(BaseParser):
         if not video_id:
             raise ValueError("视频GUID不能为空")
 
-        api_url = "https://vdn.apps.cntv.cn/api/" f"getHttpVideoInfo.do?pid={video_id}"
+        api_url = f"https://vdn.apps.cntv.cn/api/getHttpVideoInfo.do?pid={video_id}"
 
         async with create_async_client() as client:
             response = await client.get(api_url, headers=self.get_default_headers())
@@ -32,9 +32,7 @@ class CCTV(BaseParser):
         # 检查 API 状态
         status = data.get("status", "")
         if status != "001":
-            raise Exception(
-                f"央视网视频API返回错误 (status: {status}, " f'title: {data.get("title", "")})'
-            )
+            raise Exception(f"央视网视频API返回错误 (status: {status}, title: {data.get('title', '')})")
 
         # 提取 HLS 视频播放地址
         # 注：manifest 中的 h5e/enc/enc2 高码率流在

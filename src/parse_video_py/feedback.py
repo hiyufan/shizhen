@@ -10,6 +10,7 @@
    真能用了才发「修好了」的邮件，还是不行就把 issue 重新打开；标成「不修了」的发一封说明。
    邮件发完立刻删邮箱，最长留 90 天。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +26,6 @@ import sqlite3
 import time
 from email.message import EmailMessage
 from email.utils import formataddr
-from typing import Optional
 from urllib.parse import quote
 
 import httpx
@@ -34,13 +34,13 @@ from .convert import config, net
 
 log = logging.getLogger("uvicorn.error")
 
-REPO = os.environ.get("PARSE_VIDEO_FEEDBACK_REPO", "").strip()              # owner/name，私有仓库
-GH_TOKEN = os.environ.get("PARSE_VIDEO_FEEDBACK_GH_TOKEN", "").strip()       # 只给这个仓库 Issues 读写
+REPO = os.environ.get("PARSE_VIDEO_FEEDBACK_REPO", "").strip()  # owner/name，私有仓库
+GH_TOKEN = os.environ.get("PARSE_VIDEO_FEEDBACK_GH_TOKEN", "").strip()  # 只给这个仓库 Issues 读写
 SMTP_HOST = os.environ.get("PARSE_VIDEO_SMTP_HOST", "smtp.qq.com").strip()
 SMTP_PORT = int(os.environ.get("PARSE_VIDEO_SMTP_PORT", "465") or 465)
-SMTP_USER = os.environ.get("PARSE_VIDEO_SMTP_USER", "").strip()              # 发件邮箱
-SMTP_PASS = os.environ.get("PARSE_VIDEO_SMTP_PASS", "").strip()              # QQ 邮箱的 SMTP 授权码
-_KEY_B64 = os.environ.get("PARSE_VIDEO_FEEDBACK_KEY", "").strip()            # 32 字节，base64
+SMTP_USER = os.environ.get("PARSE_VIDEO_SMTP_USER", "").strip()  # 发件邮箱
+SMTP_PASS = os.environ.get("PARSE_VIDEO_SMTP_PASS", "").strip()  # QQ 邮箱的 SMTP 授权码
+_KEY_B64 = os.environ.get("PARSE_VIDEO_FEEDBACK_KEY", "").strip()  # 32 字节，base64
 SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "https://ynvan.com").rstrip("/")
 
 DB_PATH = config.DATA_DIR / "feedback.db"
@@ -51,13 +51,19 @@ CHECK_INTERVAL = 30 * 60
 # 修得好的失败才给反馈：删了 / 平台限制 / 要登录 / 被风控 这些我们改代码也没用
 FIXABLE = {"parse", "empty", "unsupported", "timeout"}
 PLATFORM_NAMES = {
-    "douyin": "抖音", "redbook": "小红书", "kuaishou": "快手", "bilibili": "B站", "weibo": "微博",
-    "twitter": "X", "youtube": "YouTube", "ytdlp": "其他站点",
+    "douyin": "抖音",
+    "redbook": "小红书",
+    "kuaishou": "快手",
+    "bilibili": "B站",
+    "weibo": "微博",
+    "twitter": "X",
+    "youtube": "YouTube",
+    "ytdlp": "其他站点",
 }
 REASON_NAMES = {"parse": "解析出错", "empty": "没拿到内容", "unsupported": "不支持的链接", "timeout": "超时"}
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
 
-_wake: Optional[asyncio.Event] = None
+_wake: asyncio.Event | None = None
 
 
 def mail_enabled() -> bool:
@@ -84,16 +90,21 @@ def _sig(body: str) -> str:
     return _b64(hmac.new(net._secret(), b"feedback:" + body.encode(), hashlib.sha256).digest()[:18])
 
 
-def make_ticket(url: str, reason: str, platform: str, msg: str) -> Optional[str]:
+def make_ticket(url: str, reason: str, platform: str, msg: str) -> str | None:
     """失败结果里附的反馈凭证；不在 FIXABLE 里的失败、或者功能没开，返回 None（页面就不显示反馈按钮）。"""
     if not enabled() or reason not in FIXABLE or not url:
         return None
-    body = _b64(json.dumps({"u": url[:2000], "r": reason, "p": platform, "m": msg[:300], "t": int(time.time())},
-                           ensure_ascii=False, separators=(",", ":")).encode())
+    body = _b64(
+        json.dumps(
+            {"u": url[:2000], "r": reason, "p": platform, "m": msg[:300], "t": int(time.time())},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode()
+    )
     return f"{body}.{_sig(body)}"
 
 
-def read_ticket(ticket: str) -> Optional[dict]:
+def read_ticket(ticket: str) -> dict | None:
     try:
         body, sig = ticket.split(".", 1)
         if not hmac.compare_digest(sig, _sig(body)):
@@ -161,8 +172,16 @@ def add_report(ticket: dict, email: str, ip_hash: str) -> bool:
         dup = conn.execute("SELECT 1 FROM reports WHERE link_key = ? AND outcome = '' LIMIT 1", (key,)).fetchone()
         conn.execute(
             "INSERT INTO reports (created, link, link_key, platform, reason, msg, ip, email) VALUES (?,?,?,?,?,?,?,?)",
-            (time.time(), ticket["u"], key, ticket.get("p", ""), ticket.get("r", ""), ticket.get("m", ""), ip_hash,
-             encrypt_email(email) if email else None),
+            (
+                time.time(),
+                ticket["u"],
+                key,
+                ticket.get("p", ""),
+                ticket.get("r", ""),
+                ticket.get("m", ""),
+                ip_hash,
+                encrypt_email(email) if email else None,
+            ),
         )
     if _wake:
         _wake.set()
@@ -186,10 +205,18 @@ class GitHub:
         self.c = client
 
     async def call(self, method: str, path: str, **kw) -> dict:
-        r = await self.c.request(method, f"https://api.github.com/repos/{REPO}{path}", headers={
-            "Authorization": f"Bearer {GH_TOKEN}", "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "shizhen-feedback",
-        }, timeout=20, **kw)
+        r = await self.c.request(
+            method,
+            f"https://api.github.com/repos/{REPO}{path}",
+            headers={
+                "Authorization": f"Bearer {GH_TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "shizhen-feedback",
+            },
+            timeout=20,
+            **kw,
+        )
         r.raise_for_status()
         return r.json() if r.content else {}
 
@@ -247,11 +274,16 @@ async def _sync_issues(gh: GitHub) -> None:
         rows = conn.execute("SELECT * FROM reports WHERE synced = 0 ORDER BY id").fetchall()
     for row in rows:
         with _connect() as conn:
-            known = conn.execute("SELECT issue FROM reports WHERE link_key = ? AND issue IS NOT NULL AND outcome = '' "
-                                 "ORDER BY id DESC LIMIT 1", (row["link_key"],)).fetchone()
+            known = conn.execute(
+                "SELECT issue FROM reports WHERE link_key = ? AND issue IS NOT NULL AND outcome = '' "
+                "ORDER BY id DESC LIMIT 1",
+                (row["link_key"],),
+            ).fetchone()
         if known:
             number = known["issue"]
-            await gh.comment(number, f"又有一人反馈（{_when(row['created'])}）" + ("，留了邮箱。" if row["email"] else "。"))
+            await gh.comment(
+                number, f"又有一人反馈（{_when(row['created'])}）" + ("，留了邮箱。" if row["email"] else "。")
+            )
         else:
             number = await gh.create_issue(*_issue_text(row))
         with _connect() as conn:
@@ -273,21 +305,27 @@ def _send_mail(to: str, subject: str, text: str) -> None:
 
 
 def fixed_mail(link: str) -> tuple[str, str]:
-    return ("你在拾帧反馈的链接已经能解析了", (
-        "你好，\n\n"
-        f"你之前在拾帧（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
-        f"这个问题已经修好了，我们刚刚又解析了一次，确认可以用。点这里直接打开：\n{SITE_URL}/?url={quote(link, safe='')}\n\n"
-        "谢谢你的反馈。这是一封一次性通知，你的邮箱在邮件发出后已经删除，之后不会再收到我们的邮件。\n\n— 拾帧"
-    ))
+    return (
+        "你在拾帧反馈的链接已经能解析了",
+        (
+            "你好，\n\n"
+            f"你之前在拾帧（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
+            f"这个问题已经修好了，我们刚刚又解析了一次，确认可以用。点这里直接打开：\n{SITE_URL}/?url={quote(link, safe='')}\n\n"
+            "谢谢你的反馈。这是一封一次性通知，你的邮箱在邮件发出后已经删除，之后不会再收到我们的邮件。\n\n— 拾帧"
+        ),
+    )
 
 
 def wontfix_mail(link: str) -> tuple[str, str]:
-    return ("关于你在拾帧反馈的链接", (
-        "你好，\n\n"
-        f"你之前在拾帧（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
-        "我们看过了，这个问题暂时没法解决，多半是平台那边限制了这类内容。抱歉没能帮上忙。\n\n"
-        "这是一封一次性通知，你的邮箱在邮件发出后已经删除。\n\n— 拾帧"
-    ))
+    return (
+        "关于你在拾帧反馈的链接",
+        (
+            "你好，\n\n"
+            f"你之前在拾帧（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
+            "我们看过了，这个问题暂时没法解决，多半是平台那边限制了这类内容。抱歉没能帮上忙。\n\n"
+            "这是一封一次性通知，你的邮箱在邮件发出后已经删除。\n\n— 拾帧"
+        ),
+    )
 
 
 async def _notify(gh: GitHub, reparse) -> None:
@@ -317,21 +355,28 @@ async def _notify(gh: GitHub, reparse) -> None:
                 await asyncio.to_thread(_send_mail, decrypt_email(row["email"]), *mail)
                 sent += 1
             with _connect() as conn:
-                conn.execute("UPDATE reports SET email = NULL, notified = ?, outcome = ? WHERE id = ?",
-                             (time.time(), outcome, row["id"]))
+                conn.execute(
+                    "UPDATE reports SET email = NULL, notified = ?, outcome = ? WHERE id = ?",
+                    (time.time(), outcome, row["id"]),
+                )
         if sent:
-            await gh.comment(number, f"已给 {sent} 位留了邮箱的反馈者发邮件（{'已修好' if outcome == 'fixed' else '暂不修'}），邮箱已删除。")
+            await gh.comment(
+                number,
+                f"已给 {sent} 位留了邮箱的反馈者发邮件（{'已修好' if outcome == 'fixed' else '暂不修'}），邮箱已删除。",
+            )
 
 
 def purge_old_emails() -> int:
     if not DB_PATH.exists():
         return 0
     with _connect() as conn:
-        return conn.execute("UPDATE reports SET email = NULL WHERE email IS NOT NULL AND created < ?",
-                            (time.time() - EMAIL_TTL_DAYS * 86400,)).rowcount
+        return conn.execute(
+            "UPDATE reports SET email = NULL WHERE email IS NOT NULL AND created < ?",
+            (time.time() - EMAIL_TTL_DAYS * 86400,),
+        ).rowcount
 
 
-async def run_once(reparse, client: Optional[httpx.AsyncClient] = None) -> None:
+async def run_once(reparse, client: httpx.AsyncClient | None = None) -> None:
     own = client is None
     client = client or httpx.AsyncClient()
     try:
