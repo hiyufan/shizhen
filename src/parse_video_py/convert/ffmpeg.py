@@ -38,6 +38,20 @@ def ffmpeg_dir() -> str:
     return str(Path(ffmpeg_path()).parent)
 
 
+def _local_inputs(args: list[str]) -> list[str]:
+    """每个 -i 前面加 -protocol_whitelist file：输入只能是本机文件。
+
+    处理的都是用户上传 / 平台给的不可信媒体，文件里引用的 http / tcp / rtmp 地址一律不让 ffmpeg 去连。
+    ffmpeg 的 HLS 等解复用器默认也有限制，这里写死成我们自己的规则，不靠它的实现细节。
+    """
+    out: list[str] = []
+    for arg in args:
+        if arg == "-i":
+            out += ["-protocol_whitelist", "file"]
+        out.append(arg)
+    return out
+
+
 @dataclass
 class ProbeInfo:
     duration: float = 0.0
@@ -59,8 +73,7 @@ async def probe(path: str | os.PathLike) -> ProbeInfo:
     proc = await asyncio.create_subprocess_exec(
         ffmpeg_path(),
         "-hide_banner",
-        "-i",
-        str(path),
+        *_local_inputs(["-i", str(path)]),
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -117,7 +130,7 @@ async def run(args: list[str], total: float | None = None, on_progress: Progress
         str(threads_per_job()),
         "-progress",
         "pipe:1",
-        *args,
+        *_local_inputs(args),
     ]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
