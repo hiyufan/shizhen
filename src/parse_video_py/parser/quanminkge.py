@@ -1,7 +1,6 @@
 import json
 import re
 
-
 from parse_video_py.utils import create_async_client, get_val_from_url_by_query_key
 
 from .base import BaseParser, VideoAuthor, VideoInfo

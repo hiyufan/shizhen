@@ -22,11 +22,7 @@ class QQVideo(BaseParser):
         if not video_id:
             raise ValueError("视频ID不能为空")
 
-        api_url = (
-            "https://vv.video.qq.com/getinfo"
-            f"?vids={video_id}"
-            "&platform=101001&otype=json&defn=shd"
-        )
+        api_url = f"https://vv.video.qq.com/getinfo?vids={video_id}&platform=101001&otype=json&defn=shd"
 
         async with create_async_client() as client:
             response = await client.get(api_url, headers=self.get_default_headers())
@@ -41,9 +37,7 @@ class QQVideo(BaseParser):
 
         # 检查 API 级别错误
         if data.get("em", 0) != 0:
-            raise Exception(
-                f'腾讯视频API返回错误: {data.get("msg", "")}' f' (em: {data.get("em")})'
-            )
+            raise Exception(f"腾讯视频API返回错误: {data.get('msg', '')} (em: {data.get('em')})")
 
         # 检查视频列表
         vi_list = data.get("vl", {}).get("vi", [])
@@ -69,7 +63,7 @@ class QQVideo(BaseParser):
         # 提取视频元信息
         vid = vi.get("vid", "")
         title = vi.get("ti", "")
-        cover_url = f"https://puui.qpic.cn/vpic_cover" f"/{vid}/{vid}_hz.jpg/496"
+        cover_url = f"https://puui.qpic.cn/vpic_cover/{vid}/{vid}_hz.jpg/496"
 
         return VideoInfo(
             video_url=video_url,

@@ -3,6 +3,7 @@
 SQLite 落在 data/stats.db，站长开 /stats 看（需要 PARSE_VIDEO_STATS_TOKEN）。
 只记事件不记内容：链接不存，IP 用签名密钥做 HMAC 后只留 12 位——能数出"多少个人"，还原不出是谁。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +15,6 @@ import os
 import sqlite3
 import threading
 import time
-from typing import Optional
 
 from .convert import config, net
 
@@ -27,8 +27,8 @@ KINDS = ("view", "parse", "job", "download")
 # 站长自己和服务器自己的请求不计入：本机 / 内网地址（部署脚本冒烟、容器里的测试、docker 网关），
 # 加上这里列出的 IP（服务器自己的公网地址：容器里的浏览器测试绕公网回来就是它）
 IGNORE_IPS = {ip.strip() for ip in os.environ.get("PARSE_VIDEO_STATS_IGNORE_IPS", "").split(",") if ip.strip()}
-TEST_COOKIE = "sz_test"        # /test 用统计口令开启，签名值，httponly
-TEST_FLAG_COOKIE = "sz_t"      # 给页面上的「测试模式」小标记看的，不参与判断
+TEST_COOKIE = "sz_test"  # /test 用统计口令开启，签名值，httponly
+TEST_FLAG_COOKIE = "sz_t"  # 给页面上的「测试模式」小标记看的，不参与判断
 
 # 这次请求不计入统计。中间件里设；请求里 create_task 出去的转换任务会继承，任务做完记 job 时也就跳过了
 _muted: contextvars.ContextVar[bool] = contextvars.ContextVar("stats_muted", default=False)
@@ -52,8 +52,9 @@ def test_cookie_value() -> str:
     return hmac.new(net._secret(), b"stats-test-device", hashlib.sha256).hexdigest()[:32]
 
 
-def is_test_cookie(value: Optional[str]) -> bool:
+def is_test_cookie(value: str | None) -> bool:
     return bool(value) and hmac.compare_digest(value, test_cookie_value())
+
 
 _buf: list[tuple] = []
 _lock = threading.Lock()
@@ -140,30 +141,37 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
         rows = conn.execute(
             f"SELECT {bucket} AS b, kind, COUNT(*), SUM(ok) FROM events "
             "WHERE ts >= ? AND ts < ? AND NOT (kind = 'parse' AND reason = 'cache') "
-            "GROUP BY b, kind", (since, until),
+            "GROUP BY b, kind",
+            (since, until),
         ).fetchall()
-        users = dict(conn.execute(
-            f"SELECT {bucket} AS b, COUNT(DISTINCT ip) FROM events "
-            "WHERE ts >= ? AND ts < ? AND kind IN ('parse', 'job') GROUP BY b", (since, until),
-        ).fetchall())
-        total_users, = conn.execute(
+        users = dict(
+            conn.execute(
+                f"SELECT {bucket} AS b, COUNT(DISTINCT ip) FROM events "
+                "WHERE ts >= ? AND ts < ? AND kind IN ('parse', 'job') GROUP BY b",
+                (since, until),
+            ).fetchall()
+        )
+        (total_users,) = conn.execute(
             "SELECT COUNT(DISTINCT ip) FROM events WHERE ts >= ? AND ts < ? AND kind IN ('parse', 'job')",
             (since, until),
         ).fetchone()
         by_source = conn.execute(
             "SELECT source, COUNT(*), SUM(ok), COUNT(DISTINCT ip), CAST(AVG(ms) AS INTEGER) FROM events "
             "WHERE ts >= ? AND ts < ? AND kind = 'parse' AND reason != 'cache' "
-            "GROUP BY source ORDER BY 2 DESC LIMIT 20", (since, until),
+            "GROUP BY source ORDER BY 2 DESC LIMIT 20",
+            (since, until),
         ).fetchall()
         reasons = conn.execute(
             "SELECT reason, COUNT(*) FROM events WHERE ts >= ? AND ts < ? AND kind = 'parse' AND ok = 0 "
-            "AND reason != 'cache' GROUP BY reason ORDER BY 2 DESC LIMIT 8", (since, until),
+            "AND reason != 'cache' GROUP BY reason ORDER BY 2 DESC LIMIT 8",
+            (since, until),
         ).fetchall()
         jobs = conn.execute(
             "SELECT source, COUNT(*), SUM(ok), CAST(AVG(ms) AS INTEGER) FROM events "
-            "WHERE ts >= ? AND ts < ? AND kind = 'job' GROUP BY source ORDER BY 2 DESC", (since, until),
+            "WHERE ts >= ? AND ts < ? AND kind = 'job' GROUP BY source ORDER BY 2 DESC",
+            (since, until),
         ).fetchall()
-        first, = conn.execute("SELECT MIN(ts) FROM events").fetchone()
+        (first,) = conn.execute("SELECT MIN(ts) FROM events").fetchone()
 
     buckets: dict[float, dict] = {}
     t = since - ((since + tz_offset) % step)
@@ -171,7 +179,9 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
         buckets[t] = {"t": t, "view": 0, "parse": 0, "parse_ok": 0, "job": 0, "job_ok": 0, "download": 0, "users": 0}
         t += step
     for b, kind, n, ok in rows:
-        cell = buckets.setdefault(b, {"t": b, "view": 0, "parse": 0, "parse_ok": 0, "job": 0, "job_ok": 0, "download": 0, "users": 0})
+        cell = buckets.setdefault(
+            b, {"t": b, "view": 0, "parse": 0, "parse_ok": 0, "job": 0, "job_ok": 0, "download": 0, "users": 0}
+        )
         cell[kind] = n
         if kind in ("parse", "job"):
             cell[kind + "_ok"] = ok or 0
@@ -182,7 +192,10 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
     totals = {k: sum(c[k] for c in series) for k in ("view", "parse", "parse_ok", "job", "job_ok", "download")}
     totals["users"] = total_users or 0
     return {
-        "since": since, "until": until, "step": step, "first": first,
+        "since": since,
+        "until": until,
+        "step": step,
+        "first": first,
         "totals": totals,
         "series": series,
         "sources": [{"source": s, "n": n, "ok": ok or 0, "users": u, "ms": ms or 0} for s, n, ok, u, ms in by_source],
@@ -191,5 +204,5 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
     }
 
 
-def check_token(token: Optional[str]) -> bool:
+def check_token(token: str | None) -> bool:
     return enabled() and bool(token) and hmac.compare_digest(token, TOKEN)

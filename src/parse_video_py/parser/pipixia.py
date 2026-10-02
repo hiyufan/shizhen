@@ -44,18 +44,14 @@ class PiPiXia(BaseParser):
 
         video_url = ""
         if data.get("video") is not None:
-            video_url = data["video"]["video_high"]["url_list"][0][
-                "url"
-            ]  # 备用视频地址, 可能有水印
+            video_url = data["video"]["video_high"]["url_list"][0]["url"]  # 备用视频地址, 可能有水印
             # comments中可能带有不带水印视频, 但是comments可能为空
             for comment in data.get("comments", []):
                 if (
                     comment["item"]["author"]["id"] == author_id
                     and comment["item"]["video"]["video_high"]["url_list"][0]["url"]
                 ):
-                    video_url = comment["item"]["video"]["video_high"]["url_list"][0][
-                        "url"
-                    ]
+                    video_url = comment["item"]["video"]["video_high"]["url_list"][0]["url"]
                     break
 
         video_info = VideoInfo(

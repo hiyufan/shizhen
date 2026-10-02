@@ -40,20 +40,14 @@ class Sohu(BaseParser):
 
         # 检查API状态
         if data.get("status") != 200:
-            raise Exception(
-                f"搜狐视频API返回错误: "
-                f'{data.get("statusText", "")} '
-                f'(status: {data.get("status")})'
-            )
+            raise Exception(f"搜狐视频API返回错误: {data.get('statusText', '')} (status: {data.get('status')})")
 
         video_data = data.get("data")
         if not video_data:
             raise Exception("API响应中未找到视频数据")
 
         # 提取视频播放地址，优先高清，回退到下载地址
-        video_url = video_data.get("url_high_mp4", "") or (
-            video_data.get("download_url", "")
-        )
+        video_url = video_data.get("url_high_mp4", "") or (video_data.get("download_url", ""))
         if not video_url:
             raise Exception("未找到视频播放地址")
 

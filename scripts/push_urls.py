@@ -6,6 +6,7 @@
   # IndexNow 不需要账号（Bing / Yandex / Seznam / Naver 参与互通），新页面
   # 上线后重跑一次即可；Google 不参与 IndexNow，收录要走 Search Console。
 """
+
 from __future__ import annotations
 
 import json
@@ -30,7 +31,8 @@ token = os.environ.get("BAIDU_PUSH_TOKEN")
 if token:
     req = urllib.request.Request(
         f"http://data.zz.baidu.com/urls?site={host}&token={token}",
-        data="\n".join(urls).encode(), headers={"Content-Type": "text/plain"},
+        data="\n".join(urls).encode(),
+        headers={"Content-Type": "text/plain"},
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -42,14 +44,17 @@ else:
     print("未设置 BAIDU_PUSH_TOKEN，跳过百度推送")
 
 key = seo.INDEXNOW_KEY
-payload = json.dumps({
-    "host": host,
-    "key": key,
-    "keyLocation": f"{site}/{key}.txt",
-    "urlList": urls,
-}).encode()
+payload = json.dumps(
+    {
+        "host": host,
+        "key": key,
+        "keyLocation": f"{site}/{key}.txt",
+        "urlList": urls,
+    }
+).encode()
 req = urllib.request.Request(
-    "https://api.indexnow.org/indexnow", data=payload,
+    "https://api.indexnow.org/indexnow",
+    data=payload,
     headers={"Content-Type": "application/json; charset=utf-8"},
 )
 try:

@@ -1,12 +1,13 @@
 """原视频缓存：同一个来源只下载一次，GIF / 实况多次转换都复用它。"""
+
 from __future__ import annotations
 
 import hashlib
 import shutil
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional
 
 from . import config
 
@@ -20,13 +21,17 @@ class Source:
     width: int = 0
     height: int = 0
     fps: float = 0.0
-    strip_path: Optional[str] = None
+    strip_path: str | None = None
     created_at: float = field(default_factory=time.time)
 
     def view(self) -> dict:
         return {
-            "id": self.id, "title": self.title, "duration": round(self.duration, 3),
-            "width": self.width, "height": self.height, "fps": self.fps,
+            "id": self.id,
+            "title": self.title,
+            "duration": round(self.duration, 3),
+            "width": self.width,
+            "height": self.height,
+            "fps": self.fps,
         }
 
 
@@ -37,7 +42,7 @@ def source_id_for(*parts: str) -> str:
     return hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
-def get(source_id: str) -> Optional[Source]:
+def get(source_id: str) -> Source | None:
     src = _sources.get(source_id)
     if src and Path(src.path).exists():
         src.created_at = time.time()  # 用到就续期

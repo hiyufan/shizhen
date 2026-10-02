@@ -9,9 +9,32 @@ import httpx
 current_source: contextvars.ContextVar[str] = contextvars.ContextVar("current_source", default="")
 
 # 这些平台对海外 / 机房 IP 不友好；海外部署时给它们单独配 PARSE_VIDEO_PROXY_CN
-CN_SOURCES = {"douyin", "redbook", "kuaishou", "bilibili", "weibo", "xigua", "pipixia", "acfun", "weishi",
-              "lvzhou", "zuiyou", "quanmin", "lishipin", "pipigaoxiao", "huya", "doupai", "meipai",
-              "quanminkge", "sixroom", "xinpianchang", "haokan", "qqvideo", "sohu", "cctv"}
+CN_SOURCES = {
+    "douyin",
+    "redbook",
+    "kuaishou",
+    "bilibili",
+    "weibo",
+    "xigua",
+    "pipixia",
+    "acfun",
+    "weishi",
+    "lvzhou",
+    "zuiyou",
+    "quanmin",
+    "lishipin",
+    "pipigaoxiao",
+    "huya",
+    "doupai",
+    "meipai",
+    "quanminkge",
+    "sixroom",
+    "xinpianchang",
+    "haokan",
+    "qqvideo",
+    "sohu",
+    "cctv",
+}
 
 
 def proxy_for(source: str | None = None) -> str | None:
@@ -20,6 +43,7 @@ def proxy_for(source: str | None = None) -> str | None:
     if source in CN_SOURCES and os.getenv("PARSE_VIDEO_PROXY_CN"):
         return os.getenv("PARSE_VIDEO_PROXY_CN")
     return os.getenv("PARSE_VIDEO_PROXY") or None
+
 
 URL_REG = re.compile(r"http[s]?:\/\/[\w.-]+[\w\/-]*[\w.-]*\??[\w=&:\-\+\%.]*[/]*")
 

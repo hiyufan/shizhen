@@ -9,6 +9,7 @@
 - 900 只用在品牌名和各页大标题（.brand、.hero h1、.article h1）：只收这些字。它是首屏标题的字体、
   首页 LCP 元素就是它，Lighthouse 会把它的下载算进 LCP；全收是 200KB，只收标题 30KB 左右。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,7 +28,10 @@ _ALWAYS = set("0123456789+-–—·…（）()[]{}“”‘’、。，：；！
 
 def page_text() -> str:
     text = ""
-    for f in glob.glob(os.path.join(PKG, "templates", "*.html")) + [os.path.join(PKG, "seo.py"), os.path.join(PKG, "guides.py")]:
+    for f in glob.glob(os.path.join(PKG, "templates", "*.html")) + [
+        os.path.join(PKG, "seo.py"),
+        os.path.join(PKG, "guides.py"),
+    ]:
         text += open(f, encoding="utf-8").read()
     return text
 
@@ -38,14 +42,16 @@ def heading_text() -> str:
     from parse_video_py import guides, seo
 
     text = BRAND + "".join(p.h1 for p in seo.PAGES) + "".join(g.h1 for g in guides.GUIDES)
-    for f in glob.glob(os.path.join(PKG, "templates", "*.html")):   # 写死在模板里的 h1（教程列表、404、统计页）
+    for f in glob.glob(os.path.join(PKG, "templates", "*.html")):  # 写死在模板里的 h1（教程列表、404、统计页）
         text += "".join(re.findall(r"<h1[^>]*>([^{<]*)</h1>", open(f, encoding="utf-8").read()))
-    return re.sub(r"<[^>]+>", "", text)   # page.h1 里允许 <em> / <br>
+    return re.sub(r"<[^>]+>", "", text)  # page.h1 里允许 <em> / <br>
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default=os.path.join(ROOT, "fonts"), help="存放 NotoSerifCJKsc-Bold.otf / -Black.otf 的目录")
+    ap.add_argument(
+        "--src", default=os.path.join(ROOT, "fonts"), help="存放 NotoSerifCJKsc-Bold.otf / -Black.otf 的目录"
+    )
     ap.add_argument("--weight", choices=("700", "900"), action="append", help="只重建这个字重（可重复），默认两个都建")
     args = ap.parse_args()
 
@@ -63,13 +69,28 @@ def main() -> None:
         if not os.path.exists(src):
             print(f"没有 {src}，用现有的 {os.path.basename(out)} 当源（只能删字）")
             src = out
-        subprocess.run([sys.executable, "-m", "fontTools.subset", src, f"--text-file={glyphs}", "--flavor=woff2",
-                        f"--output-file={out}.tmp", "--layout-features=kern,liga,locl", "--no-hinting",
-                        "--desubroutinize"], check=True)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "fontTools.subset",
+                src,
+                f"--text-file={glyphs}",
+                "--flavor=woff2",
+                f"--output-file={out}.tmp",
+                "--layout-features=kern,liga,locl",
+                "--no-hinting",
+                "--desubroutinize",
+            ],
+            check=True,
+        )
         os.replace(out + ".tmp", out)
         cmap = TTFont(out).getBestCmap()
         missing = "".join(sorted(ch for ch in chars if ord(ch) > 0x2000 and ord(ch) not in cmap))
-        print(f"{weight}: {len(chars)} 个字形，{os.path.getsize(out) // 1000} KB" + (f"，源字体里没有：{missing}" if missing else ""))
+        print(
+            f"{weight}: {len(chars)} 个字形，{os.path.getsize(out) // 1000} KB"
+            + (f"，源字体里没有：{missing}" if missing else "")
+        )
 
 
 if __name__ == "__main__":

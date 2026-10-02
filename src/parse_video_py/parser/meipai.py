@@ -1,5 +1,4 @@
 import base64
-from typing import Dict, List
 
 from parsel import Selector
 
@@ -29,9 +28,7 @@ class MeiPai(BaseParser):
             cover_url=sel.css("#detailVideo img::attr(src)").get(default=""),
             title=sel.css(".detail-cover-title::text").get(default="").strip(),
             author=VideoAuthor(
-                uid=sel.css(".detail-name a::attr(href)")
-                .get(default="")
-                .split("/")[-1],
+                uid=sel.css(".detail-name a::attr(href)").get(default="").split("/")[-1],
                 name=sel.css(".detail-avatar::attr(alt)").get(default=""),
                 avatar="https:" + sel.css(".detail-avatar::attr(src)").get(default=""),
             ),
@@ -52,13 +49,13 @@ class MeiPai(BaseParser):
         video_url = "https:" + decode_bs64.decode("utf-8")
         return video_url
 
-    def get_hex(self, s: str) -> Dict[str, str]:
+    def get_hex(self, s: str) -> dict[str, str]:
         hex_val = s[:4]
         str_val = s[4:]
         return {"hex_1": self.reverse_string(hex_val), "str_1": str_val}
 
     @staticmethod
-    def get_dec(hex_val: str) -> Dict[str, List[int]]:
+    def get_dec(hex_val: str) -> dict[str, list[int]]:
         int_n = int(hex_val, 16)
         str_n = str(int_n)
         length = len(str_n)
@@ -67,7 +64,7 @@ class MeiPai(BaseParser):
         return {"pre": pre, "tail": tail}
 
     @staticmethod
-    def sub_str(s: str, b: List[int]) -> str:
+    def sub_str(s: str, b: list[int]) -> str:
         index_1 = b[0]
         index_2 = b[0] + b[1]
         c = s[:index_1]
@@ -76,7 +73,7 @@ class MeiPai(BaseParser):
         return c + temp
 
     @staticmethod
-    def get_pos(s: str, b: List[int]) -> List[int]:
+    def get_pos(s: str, b: list[int]) -> list[int]:
         b[0] = len(s) - b[0] - b[1]
         return b
 

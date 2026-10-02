@@ -5,6 +5,7 @@
 
 会打印：出口 IP 与归属地、解析结果或错误原因、以及小红书 / B站 原始响应的状态码、最终地址和页面标题。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -12,14 +13,11 @@ import dataclasses
 import re
 import sys
 
-import httpx
-
 from . import parse_video_share_url
 from .parser.errors import ParseError
 from .utils import create_async_client, current_source, extract_url
 
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36")
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 
 
 async def egress() -> None:
@@ -31,8 +29,12 @@ async def egress() -> None:
                     d = (await c.get("https://myip.ipip.net/json")).json().get("data", {})
                     print(f"[{name}] {d.get('ip')}  {' '.join(d.get('location') or [])}")
                 except Exception:
-                    d = (await c.get("http://ip-api.com/json/?fields=query,country,regionName,isp,hosting&lang=zh-CN")).json()
-                    print(f"[{name}] {d.get('query')}  {d.get('country')} {d.get('regionName')}  {d.get('isp')}  机房={d.get('hosting')}")
+                    d = (
+                        await c.get("http://ip-api.com/json/?fields=query,country,regionName,isp,hosting&lang=zh-CN")
+                    ).json()
+                    print(
+                        f"[{name}] {d.get('query')}  {d.get('country')} {d.get('regionName')}  {d.get('isp')}  机房={d.get('hosting')}"
+                    )
         except Exception as e:  # noqa: BLE001
             print(f"[{name}] 探测失败: {e}")
         finally:
@@ -64,15 +66,22 @@ async def main() -> None:
     print(f"链接: {url}\n")
     from .convert import relay
     from .utils import proxy_for
-    route = "中继 " + relay.RELAY_URL if relay.enabled() else ("代理 " + proxy_for("bilibili") if proxy_for("bilibili") else "服务器直连")
+
+    route = (
+        "中继 " + relay.RELAY_URL
+        if relay.enabled()
+        else ("代理 " + proxy_for("bilibili") if proxy_for("bilibili") else "服务器直连")
+    )
     print(f"国内平台走: {route}")
     await egress()
     print()
     try:
         info = await parse_video_share_url(url)
         d = dataclasses.asdict(info)
-        print(f"[解析成功] 平台={d['source']} 标题={d['title'][:30]!r} 视频={'有' if d['video_url'] else '无'} "
-              f"图片={len(d['images'])} 清晰度={[f['label'] for f in d['formats']]}")
+        print(
+            f"[解析成功] 平台={d['source']} 标题={d['title'][:30]!r} 视频={'有' if d['video_url'] else '无'} "
+            f"图片={len(d['images'])} 清晰度={[f['label'] for f in d['formats']]}"
+        )
     except ParseError as e:
         print(f"[解析失败] 原因={e.reason}  {e}")
     except Exception as e:  # noqa: BLE001
