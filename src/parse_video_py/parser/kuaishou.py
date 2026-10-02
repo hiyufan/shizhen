@@ -35,6 +35,16 @@ def _json_after(html: str, marker: str):
         return None
 
 
+def _ext_music(block) -> str:
+    """图集 / 单图作品的配乐：ext_params 里给的是相对路径 + musicCdnList。"""
+    if not isinstance(block, dict):
+        return ""
+    path, cdns = block.get("music"), block.get("musicCdnList") or []
+    if not path or not cdns or not isinstance(cdns[0], dict) or not cdns[0].get("cdn"):
+        return ""
+    return f"https://{cdns[0]['cdn']}/{path.lstrip('/')}"
+
+
 def _short_side(width: int, height: int) -> int:
     return min(width, height) if width and height else max(width, height)
 
@@ -102,9 +112,18 @@ class KuaiShou(BaseParser):
         video_url = mv[0].get("url", "") if mv else ""
 
         # 图集：cdn + 相对路径拼出来
-        atlas = (data.get("ext_params") or {}).get("atlas") or {}
+        ext = data.get("ext_params") or {}
+        atlas = ext.get("atlas") or {}
         cdns, paths = atlas.get("cdn") or [], atlas.get("list") or []
         images = [ImgInfo(url=f"https://{cdns[0]}/{p}") for p in paths if isinstance(p, str)] if cdns else []
+        covers = data.get("coverUrls") or data.get("webpCoverUrls") or []
+        # 单图作品（photoType SINGLE_PICTURE，singlePicture: true）：没有视频也没有 atlas，
+        # 那张图就是封面——/upic/ 下用户传的原图，和作品宽高一致；配乐在 ext_params.single。
+        # 以前这种作品直接报「没有拿到任何视频或图片」
+        if not images and not video_url and (data.get("singlePicture") or data.get("photoType") == "SINGLE_PICTURE"):
+            cover = next((c.get("url") for c in covers if isinstance(c, dict) and c.get("url")), "")
+            if cover:
+                images = [ImgInfo(url=cover.replace("http://", "https://", 1))]
 
         # 有的作品在 manifest 里给了多档清晰度
         formats = []
@@ -120,7 +139,6 @@ class KuaiShou(BaseParser):
             formats.append(FormatInfo(label=label, url=url, height=short, filesize=int(rep.get("fileSize") or 0),
                                       codec=codec))
 
-        covers = data.get("coverUrls") or data.get("webpCoverUrls") or []
         return VideoInfo(
             # 图集作品的 mainMvUrls 是配乐的视频壳，不是作品本身
             video_url="" if images else video_url,
@@ -132,6 +150,7 @@ class KuaiShou(BaseParser):
                 avatar=data.get("headUrl") or "",
             ),
             images=images,
+            music_url=_ext_music(atlas) or _ext_music(ext.get("single")),
             duration=(data.get("duration") or 0) / 1000,
             width=int(data.get("width") or 0),
             height=int(data.get("height") or 0),
