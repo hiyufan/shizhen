@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from urllib.parse import urlparse
 
 from ..utils import current_source
 from .acfun import AcFun
@@ -196,10 +197,18 @@ async def _ytdlp_extra(share_url: str):
 
 
 def detect_source(share_url: str) -> VideoSource:
-    """链接属于哪个平台；没有专用解析器的站点统统交给 yt-dlp 兜底。"""
+    """链接属于哪个平台；没有专用解析器的站点统统交给 yt-dlp 兜底。
+
+    按主机名匹配（本身或子域名）。以前是在整个链接里找子串，pinterest.com / reddit.com
+    里藏着 "t.co"，会被当成 X 的链接；参数里带个 x.com 也一样。
+    """
+    try:
+        host = (urlparse(share_url).hostname or "").lower()
+    except ValueError:
+        host = ""
     for item_source, item_source_info in video_source_info_mapping.items():
-        for item_url_domain in item_source_info["domain_list"]:
-            if item_url_domain in share_url:
+        for domain in item_source_info["domain_list"]:
+            if host == domain or host.endswith("." + domain):
                 return item_source
     return VideoSource.YtDlp
 
