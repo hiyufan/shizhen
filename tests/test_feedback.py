@@ -199,3 +199,16 @@ def test_emails_are_purged_after_90_days(fb, monkeypatch):
     report("u@example.com")
     monkeypatch.setattr(feedback.time, "time", lambda: time.time_ns() / 1e9 + 91 * 86400)
     assert feedback.purge_old_emails() == 1
+
+
+def test_public_issue_hides_link_params_but_keeps_report_id(fb):
+    gh = FakeGitHub()
+    t = feedback.read_ticket(feedback.make_ticket("https://www.xiaohongshu.com/explore/abc?xsec_token=SECRET&x=1",
+                                                  "empty", "redbook", "空"))
+    feedback.add_report(t, "u@example.com", "iphash")
+    run(gh, ok)
+    body = gh.issues[1]["body"]
+    assert "SECRET" not in body + gh.issues[1]["title"]
+    assert "https://www.xiaohongshu.com/explore/abc" in body and "反馈编号**：1" in body
+    full = sqlite3.connect(feedback.DB_PATH).execute("SELECT link FROM reports WHERE id = 1").fetchone()[0]
+    assert "xsec_token=SECRET" in full   # 完整链接留在本机
