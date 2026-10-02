@@ -1,7 +1,8 @@
 """使用统计：什么时候有多少人在用、用的哪个平台、成功率多少。
 
 SQLite 落在 data/stats.db，站长开 /stats 看（需要 PARSE_VIDEO_STATS_TOKEN）。
-只记事件不记内容：链接不存，IP 用签名密钥做 HMAC 后只留 12 位——能数出"多少个人"，还原不出是谁。
+只记事件不记链接，IP 用签名密钥做 HMAC 后只留 12 位——能数出"多少个人"，还原不出是谁。
+（解析失败的链接另存 7 天，见 failures.py。）
 """
 
 from __future__ import annotations
@@ -13,11 +14,10 @@ import hashlib
 import hmac
 import ipaddress
 import os
-import sqlite3
 import threading
 import time
-from collections.abc import Iterator
 
+from . import db
 from .convert import config, net
 
 DB_PATH = config.DATA_DIR / "stats.db"
@@ -80,22 +80,18 @@ _SCHEMA = (
 )
 
 
-@contextlib.contextmanager
-def _db() -> Iterator[sqlite3.Connection]:
-    """一次事务：成功提交、出错回滚，用完关掉连接。"""
-    config.ensure_dirs()
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    try:
-        conn.executescript(_SCHEMA)
-        with conn:
-            yield conn
-    finally:
-        conn.close()
+def _db():
+    return db.transaction(DB_PATH, _SCHEMA)
+
+
+def counted(ip: str) -> bool:
+    """这个请求算不算真实用户：站长测试设备（/test）和服务器自己的请求不算。"""
+    return not _muted.get() and not ignored_ip(ip)
 
 
 def record(kind: str, ip: str, *, source: str = "", ok: bool = True, reason: str = "", ms: float = 0) -> None:
     """先攒在内存里，flusher 每几秒批量落盘；请求路径上不碰磁盘。没配 token 就什么都不记。"""
-    if not TOKEN or kind not in KINDS or _muted.get() or ignored_ip(ip):
+    if not TOKEN or kind not in KINDS or not counted(ip):
         return
     row = (time.time(), kind, hash_ip(ip), (source or "")[:32], int(bool(ok)), (reason or "")[:32], int(ms))
     with _lock:

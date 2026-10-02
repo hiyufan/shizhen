@@ -8,7 +8,7 @@ import time
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
-from .. import stats
+from .. import failures, stats
 from ..convert import config, jobs, store, updater
 from . import limits, parse
 from .auth import require_stats_enabled, require_stats_token
@@ -55,6 +55,7 @@ async def api_stats(range: str = "24h", tz: int = 0):  # noqa: A002 - 查询参�
     since -= (since + tz_offset) % step  # 对齐到桶的起点，最左一格才是完整的
     await asyncio.to_thread(stats.flush)
     data = await asyncio.to_thread(stats.summary, since, now, step, tz_offset)
+    data["failures"] = await asyncio.to_thread(failures.recent, max(since, now - failures.RETENTION_DAYS * 86400))
     data["range"] = range
     return data
 
