@@ -270,9 +270,11 @@ const PHOTOS = IOS && (() => {
 })();
 // iPhone 上实况的出路：视频存相册后用视频转实况的 App 转一下；有 Mac 的话 zip 拖进「照片」
 const LIVE_APP = 'https://apps.apple.com/cn/app/id6738693561';   // 一键实况：免费，只做视频转实况
-const IPHONE_LIVE_HINT = () => ['iPhone 上网页存不了会动的实况，系统只让 App 写。先把实况视频存到相册，再用',
-  el('a', { href: LIVE_APP, target: '_blank', rel: 'noopener' }, '「一键实况」'),
-  '这类视频转实况 App 转一下。有 Mac 的话，下载实况包，把 JPG 和 MOV 一起拖进 Mac 的「照片」App 就是实况，开了 iCloud 照片会同步到 iPhone。'];
+// 三行小字：先说是 iOS 的限制（不然用户以为是网站做得不行），再给两条出路。btn / zip 是本处按钮上的叫法
+const IPHONE_LIVE_HINT = (btn, zip = '实况包') => el('div', { class: 'fine' },
+  el('p', {}, el('b', {}, '受 iOS 限制，网页无法直接把会动的实况存进相册'), '，只有 App 能写。'),
+  el('p', {}, '做法：先点「' + btn + '」，再用', el('a', { href: LIVE_APP, target: '_blank', rel: 'noopener' }, '「一键实况」'), '这类 App 把视频转成实况。'),
+  el('p', {}, '有 Mac：下载' + zip + '，把 JPG 和 MOV 一起拖进「照片」App 就是实况，开了 iCloud 照片会同步到 iPhone。'));
 const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov' };
 
 // 拉一个文件（同源地址），边下边报进度。跨境转发偶尔卡在半路：20 秒没收到数据就算卡住，
@@ -543,9 +545,10 @@ function renderResult(d) {
         : ANDROID ? [android('btn sm dark'), still('btn sm'), iphone('btn sm quiet')]
         : [iphone('btn sm dark'), android('btn sm'), still('btn sm quiet')];
       res.append(el('div', { class: 'live-actions' }, el('span', { class: 'label' }, '保存实况'), ...buttons));
-      res.append(el('p', { class: 'hint', style: 'margin:-4px 0 12px' }, ...(IOS ? IPHONE_LIVE_HINT()
-        : [ANDROID ? '动态照片存到相册就会动，Google 相册、三星、小米、OPPO、vivo 都认。'
-          : 'iPhone 实况包是 zip：解压后把 JPG 和 MOV 一起拖进 Mac 的「照片」App 就是实况，开了 iCloud 照片会同步到 iPhone（直接传到 iPhone 上存不成实况）。安卓动态照片是一张内嵌视频的 JPG，存相册就会动。'])));
+      res.append(PHOTOS ? IPHONE_LIVE_HINT('存实况视频到相册')
+        : el('div', { class: 'fine' }, ...(ANDROID ? [el('p', {}, '动态照片存到相册就会动，Google 相册、三星、小米、OPPO、vivo 都认。')]
+          : [el('p', {}, el('b', {}, '受 iOS 限制，iPhone 上存不成实况'), '：实况包要在 Mac 上用，解压后把 JPG 和 MOV 一起拖进「照片」App，开了 iCloud 照片会同步到 iPhone。'),
+             el('p', {}, '安卓动态照片是一张内嵌视频的 JPG，存到相册就会动。')])));
       res.append(liveJobs);
     }
     const grid = el('div', { class: 'grid' });
@@ -894,7 +897,7 @@ function showResult(box, job, format) {
       el('a', { class: 'btn block' + (photos ? '' : ' dark'), href: fileUrl, download: job.filename || '', style: photos ? 'margin-top:10px' : null },
         (photos ? '下载 ' : '保存 ') + ext + (job.filesize ? '，' + fmtSize(job.filesize) : '')),
       el('div', { class: 'size' }, job.filename || ''),
-      el('p', { class: 'hint' }, ...(PHOTOS && format === 'livephoto' ? IPHONE_LIVE_HINT() : [note])))));
+      PHOTOS && format === 'livephoto' ? IPHONE_LIVE_HINT('存视频到相册', ' ZIP') : el('p', { class: 'hint' }, note))));
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
