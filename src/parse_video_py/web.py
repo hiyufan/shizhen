@@ -116,6 +116,11 @@ _BOT_UA = re.compile(r"bot|spider|crawl|slurp|fetch|curl|wget|python|http", re.I
 
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
+    # 站长测试设备（/test 开过）和服务器自己的请求不计入统计；要在 call_next 之前设，
+    # 接口里起的转换任务会继承这个标记
+    if stats_enabled and (stats.ignored_ip(limits.client_ip(request))
+                          or stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE))):
+        stats.mute()
     response = await call_next(request)
     path = request.url.path
     if path.startswith("/static/"):
@@ -124,7 +129,7 @@ async def _security_headers(request: Request, call_next):
     elif request.method == "GET" and response.headers.get("content-type", "").startswith("text/html") and not path.startswith("/api"):
         response.headers.setdefault("Cache-Control", "public, max-age=600")
         is_bot = _BOT_UA.search(request.headers.get("user-agent", ""))
-        if response.status_code == 200 and stats_enabled and path != "/stats" and not is_bot:
+        if response.status_code == 200 and stats_enabled and path not in ("/stats", "/test") and not is_bot:
             stats.record("view", limits.client_ip(request), source=path)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -780,6 +785,45 @@ def _stats_auth(request: Request, token: str = "") -> None:
     if not stats.check_token(token or bearer):
         # 没配 token 时假装这个页面不存在
         raise HTTPException(404, "Not Found")
+
+
+def _test_page(request: Request, *, on: bool, error: str = "", set_on: bool = False, set_off: bool = False):
+    ctx = _common_context(request, title="测试模式 - 拾帧", description="", path="/test")
+    ctx.update({"page": seo.PAGE_BY_SLUG[""], "test_on": on, "test_error": error})
+    response = templates.TemplateResponse(request=request, name="test.html", context=ctx,
+                                          status_code=403 if error else 200,
+                                          headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    if set_on:
+        year = 365 * 86400
+        response.set_cookie(stats.TEST_COOKIE, stats.test_cookie_value(), max_age=year, httponly=True,
+                            secure=secure, samesite="lax")
+        response.set_cookie(stats.TEST_FLAG_COOKIE, "1", max_age=year, secure=secure, samesite="lax")
+    if set_off:
+        response.delete_cookie(stats.TEST_COOKIE)
+        response.delete_cookie(stats.TEST_FLAG_COOKIE)
+    return response
+
+
+@app.get("/test", response_class=HTMLResponse)
+async def test_mode(request: Request, off: int = 0):
+    """站长测试模式：用统计口令开一次，这台设备之后的访问、解析、下载、转换都不计入统计。
+    口令走 POST 表单，不进网址（免得留在浏览器历史和访问日志里）。"""
+    if not stats.enabled():
+        raise HTTPException(404, "Not Found")
+    if off:
+        return _test_page(request, on=False, set_off=True)
+    return _test_page(request, on=stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE)))
+
+
+@app.post("/test", response_class=HTMLResponse)
+async def test_mode_on(request: Request, ip: str = Depends(limits.parse_limit)):
+    if not stats.enabled():
+        raise HTTPException(404, "Not Found")
+    token = str((await request.form()).get("token") or "")
+    if not stats.check_token(token):
+        return _test_page(request, on=False, error="口令不对")
+    return _test_page(request, on=True, set_on=True)
 
 
 @app.get("/api/stats")
