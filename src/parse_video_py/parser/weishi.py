@@ -1,5 +1,4 @@
-from parse_video_py.utils import create_async_client, get_val_from_url_by_query_key
-
+from ..utils import create_async_client, get_val_from_url_by_query_key
 from .base import BaseParser, VideoAuthor, VideoInfo
 
 
@@ -28,7 +27,7 @@ class WeiShi(BaseParser):
 
         data = json_data["data"]["feeds"][0]
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=data["video_url"],
             cover_url=data["images"][0]["url"],
             title=data["feed_desc_withat"],
@@ -38,4 +37,3 @@ class WeiShi(BaseParser):
                 avatar=data["poster"]["avatar"],
             ),
         )
-        return video_info

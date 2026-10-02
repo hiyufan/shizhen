@@ -78,6 +78,11 @@ select = [
     "PLW0603",       # 改模块级全局变量
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# 页面文案表：一段文案一行，按行宽切开反而不好搜、不好改
+"src/parse_video_py/seo.py" = ["E501"]
+"src/parse_video_py/guides.py" = ["E501"]
+
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 

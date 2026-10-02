@@ -7,6 +7,7 @@ copied into data/bin so yt-dlp can find it under its normal name too.
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
 import re
 import shutil
@@ -19,28 +20,18 @@ from . import config
 
 ProgressCb = Callable[[float], Awaitable[None] | None]
 
-_FFMPEG: str | None = None
 
-
+@functools.cache
 def ffmpeg_path() -> str:
-    global _FFMPEG
-    if _FFMPEG:
-        return _FFMPEG
-    exe = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-    local = config.BIN_DIR / exe
-    found = shutil.which("ffmpeg")
-    if found:
-        _FFMPEG = found
-    elif local.exists():
-        _FFMPEG = str(local)
-    else:
+    if found := shutil.which("ffmpeg"):
+        return found
+    local = config.BIN_DIR / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+    if not local.exists():
         import imageio_ffmpeg  # bundled binary, ~80MB, no ffprobe
 
-        src = imageio_ffmpeg.get_ffmpeg_exe()
         config.BIN_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, local)
-        _FFMPEG = str(local)
-    return _FFMPEG
+        shutil.copy2(imageio_ffmpeg.get_ffmpeg_exe(), local)
+    return str(local)
 
 
 def ffmpeg_dir() -> str:
@@ -98,6 +89,18 @@ def threads_per_job() -> int:
     return max(1, (os.cpu_count() or 2) // max(1, config.MAX_CONCURRENT_JOBS))
 
 
+def _progress_fraction(line: bytes, total: float | None) -> float | None:
+    """`-progress` 输出里的 out_time_us= / out_time_ms= 行换算成 0~0.99；别的行返回 None。"""
+    text = line.decode("utf-8", "replace").strip()
+    if not total or not text.startswith(("out_time_us=", "out_time_ms=")):
+        return None
+    try:
+        us = int(text.split("=", 1)[1])  # ffmpeg labels both keys in microseconds
+    except ValueError:
+        return None
+    return max(0.0, min(0.99, us / 1_000_000 / total))
+
+
 async def run(args: list[str], total: float | None = None, on_progress: ProgressCb | None = None) -> None:
     """Run ffmpeg, streaming `-progress` output into on_progress(0..1).
 
@@ -124,23 +127,14 @@ async def run(args: list[str], total: float | None = None, on_progress: Progress
     assert proc.stdout is not None
     last = -1.0
     try:
-        while True:
-            line = await proc.stdout.readline()
-            if not line:
-                break
-            s = line.decode("utf-8", "replace").strip()
-            if total and on_progress and s.startswith(("out_time_us=", "out_time_ms=")):
-                try:
-                    us = int(s.split("=", 1)[1])
-                except ValueError:
-                    continue
-                # ffmpeg labels both keys in microseconds
-                frac = max(0.0, min(0.99, us / 1_000_000 / total))
-                if frac - last >= 0.01:
-                    last = frac
-                    r = on_progress(frac)
-                    if asyncio.iscoroutine(r):
-                        await r
+        while line := await proc.stdout.readline():
+            frac = _progress_fraction(line, total) if on_progress else None
+            if frac is None or frac - last < 0.01:
+                continue
+            last = frac
+            r = on_progress(frac)
+            if asyncio.iscoroutine(r):
+                await r
         _, err = await proc.communicate()
     except asyncio.CancelledError:
         if proc.returncode is None:

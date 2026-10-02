@@ -32,9 +32,8 @@ async def egress() -> None:
                     d = (
                         await c.get("http://ip-api.com/json/?fields=query,country,regionName,isp,hosting&lang=zh-CN")
                     ).json()
-                    print(
-                        f"[{name}] {d.get('query')}  {d.get('country')} {d.get('regionName')}  {d.get('isp')}  机房={d.get('hosting')}"
-                    )
+                    where = f"{d.get('country')} {d.get('regionName')}  {d.get('isp')}"
+                    print(f"[{name}] {d.get('query')}  {where}  机房={d.get('hosting')}")
         except Exception as e:  # noqa: BLE001
             print(f"[{name}] 探测失败: {e}")
         finally:

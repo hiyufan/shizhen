@@ -40,7 +40,7 @@ class AcFun(BaseParser):
         name = sel.css("div.up-info span.up-name::text").get(default="")
         avatar = sel.css("div.up-info span.up-avatar > img::attr(src)").get(default="")
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=play_info_data["streams"][0]["playUrls"][0],
             cover_url=video_data["cover"],
             title=video_data["title"],
@@ -50,7 +50,6 @@ class AcFun(BaseParser):
                 avatar=avatar,
             ),
         )
-        return video_info
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         # acid, 格式: ac36935385

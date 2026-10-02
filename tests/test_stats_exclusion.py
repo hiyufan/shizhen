@@ -6,18 +6,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 from parse_video_py import stats, web
-from parse_video_py.convert import jobs, limits
+from parse_video_py.convert import jobs
 from parse_video_py.parser.base import VideoInfo
+from parse_video_py.web import limits
+from parse_video_py.web import parse as parse_api
 
 
 @pytest.fixture
 def rows(monkeypatch):
     monkeypatch.setattr(stats, "TOKEN", "tok")
-    monkeypatch.setattr(web, "stats_enabled", True)
     monkeypatch.setattr(stats, "_buf", [])
     for rl in (limits.parse_limit, limits.job_limit):
         monkeypatch.setattr(rl, "_buckets", {})
-    web._parse_cache.clear()
+    parse_api.cache.clear()
 
     async def fake_parse(url):
         return VideoInfo(video_url="https://v3-web.douyinvod.com/1.mp4", title="t", source="douyin")
@@ -25,8 +26,8 @@ def rows(monkeypatch):
     async def always_safe(url):
         return True
 
-    monkeypatch.setattr(web, "parse_video_share_url", fake_parse)
-    monkeypatch.setattr(web, "is_safe_url_async", always_safe)
+    monkeypatch.setattr(parse_api, "parse_video_share_url", fake_parse)
+    monkeypatch.setattr(parse_api, "is_safe_url_async", always_safe)
     return stats._buf
 
 

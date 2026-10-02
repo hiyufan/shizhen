@@ -314,3 +314,8 @@ GUIDES: list[Guide] = [
 ]
 
 GUIDE_BY_SLUG = {g.slug: g for g in GUIDES}
+
+
+def pick(slugs: list[str]) -> list[Guide]:
+    """按 slug 取教程，写错 / 已下线的 slug 跳过。"""
+    return [GUIDE_BY_SLUG[s] for s in slugs if s in GUIDE_BY_SLUG]

@@ -35,7 +35,7 @@ class SixRoom(BaseParser):
         json_data = response.json()
         data = json_data["content"]
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=data["playurl"],
             cover_url=data["picurl"],
             title=data["title"],
@@ -45,4 +45,3 @@ class SixRoom(BaseParser):
                 avatar=data["picuser"],
             ),
         )
-        return video_info

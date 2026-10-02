@@ -37,6 +37,15 @@ CN_SOURCES = {
 }
 
 
+# 国内平台的域名关键字：页面 / CDN 地址里带这些的，海外服务器访问时走国内代理
+CN_HOST_KEYWORDS = ("bilibili", "b23.tv", "xiaohongshu", "douyin", "kuaishou", "weibo", "pipix", "ixigua", "acfun")
+
+
+def is_cn_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(k in host for k in CN_HOST_KEYWORDS)
+
+
 def proxy_for(source: str | None = None) -> str | None:
     """PARSE_VIDEO_PROXY_CN 只给国内平台用，PARSE_VIDEO_PROXY 给所有平台兜底。"""
     source = source if source is not None else current_source.get()
@@ -64,15 +73,12 @@ def get_val_from_url_by_query_key(url: str, query_key: str) -> str:
     url_res = urlparse(url)
     url_query = parse_qs(url_res.query, keep_blank_values=True)
 
-    try:
-        query_val = url_query[query_key][0]
-    except KeyError:
+    if query_key not in url_query:
         raise KeyError(f"url中不存在query参数: {query_key}")
-
-    if len(query_val) == 0:
+    query_val = url_query[query_key][0]
+    if not query_val:
         raise ValueError(f"url中query参数值长度为0: {query_key}")
-
-    return url_query[query_key][0]
+    return query_val
 
 
 def create_async_client(**kwargs) -> httpx.AsyncClient:

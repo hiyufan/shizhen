@@ -34,7 +34,7 @@ class HuYa(BaseParser):
         if data["uid"] == 0:
             raise Exception("video not found")
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=data["definitions"][0]["url"],
             cover_url=data["videoCover"],
             title=data["videoTitle"],
@@ -44,4 +44,3 @@ class HuYa(BaseParser):
                 avatar=data["actorAvatarUrl"],
             ),
         )
-        return video_info

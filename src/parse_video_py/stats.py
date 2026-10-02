@@ -7,6 +7,7 @@ SQLite 落在 data/stats.db，站长开 /stats 看（需要 PARSE_VIDEO_STATS_TO
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import hashlib
 import hmac
@@ -15,6 +16,7 @@ import os
 import sqlite3
 import threading
 import time
+from collections.abc import Iterator
 
 from .convert import config, net
 
@@ -49,7 +51,7 @@ def ignored_ip(ip: str) -> bool:
 
 
 def test_cookie_value() -> str:
-    return hmac.new(net._secret(), b"stats-test-device", hashlib.sha256).hexdigest()[:32]
+    return hmac.new(net.secret_key(), b"stats-test-device", hashlib.sha256).hexdigest()[:32]
 
 
 def is_test_cookie(value: str | None) -> bool:
@@ -58,39 +60,44 @@ def is_test_cookie(value: str | None) -> bool:
 
 _buf: list[tuple] = []
 _lock = threading.Lock()
-_ready = False
 
 
 def enabled() -> bool:
     return bool(TOKEN)
 
 
-def _hash_ip(ip: str) -> str:
-    return hmac.new(net._secret(), (ip or "").encode(), hashlib.sha256).hexdigest()[:12]
+def hash_ip(ip: str) -> str:
+    """IP 的 12 位 HMAC 摘要：能数出「多少个人」，还原不出是谁。"""
+    return hmac.new(net.secret_key(), (ip or "").encode(), hashlib.sha256).hexdigest()[:12]
 
 
-def _connect() -> sqlite3.Connection:
-    global _ready
+_SCHEMA = (
+    "PRAGMA journal_mode=WAL;"
+    "CREATE TABLE IF NOT EXISTS events ("
+    " ts REAL NOT NULL, kind TEXT NOT NULL, ip TEXT NOT NULL, source TEXT NOT NULL DEFAULT '',"
+    " ok INTEGER NOT NULL DEFAULT 1, reason TEXT NOT NULL DEFAULT '', ms INTEGER NOT NULL DEFAULT 0);"
+    "CREATE INDEX IF NOT EXISTS events_ts ON events (ts);"
+)
+
+
+@contextlib.contextmanager
+def _db() -> Iterator[sqlite3.Connection]:
+    """一次事务：成功提交、出错回滚，用完关掉连接。"""
     config.ensure_dirs()
     conn = sqlite3.connect(DB_PATH, timeout=10)
-    if not _ready:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS events ("
-            "ts REAL NOT NULL, kind TEXT NOT NULL, ip TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', "
-            "ok INTEGER NOT NULL DEFAULT 1, reason TEXT NOT NULL DEFAULT '', ms INTEGER NOT NULL DEFAULT 0)"
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS events_ts ON events (ts)")
-        conn.commit()
-        _ready = True
-    return conn
+    try:
+        conn.executescript(_SCHEMA)
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def record(kind: str, ip: str, *, source: str = "", ok: bool = True, reason: str = "", ms: float = 0) -> None:
     """先攒在内存里，flusher 每几秒批量落盘；请求路径上不碰磁盘。没配 token 就什么都不记。"""
     if not TOKEN or kind not in KINDS or _muted.get() or ignored_ip(ip):
         return
-    row = (time.time(), kind, _hash_ip(ip), (source or "")[:32], int(bool(ok)), (reason or "")[:32], int(ms))
+    row = (time.time(), kind, hash_ip(ip), (source or "")[:32], int(bool(ok)), (reason or "")[:32], int(ms))
     with _lock:
         _buf.append(row)
 
@@ -100,7 +107,7 @@ def flush() -> int:
         rows, _buf[:] = list(_buf), []
     if not rows:
         return 0
-    with _connect() as conn:
+    with _db() as conn:
         conn.executemany("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
     return len(rows)
 
@@ -109,23 +116,43 @@ async def flusher(interval: float = 5.0) -> None:
     try:
         while True:
             await asyncio.sleep(interval)
-            try:
+            with contextlib.suppress(Exception):  # 统计写失败不能影响服务
                 await asyncio.to_thread(flush)
-            except Exception:  # noqa: BLE001 - 统计写失败不能影响服务
-                pass
     finally:
         # 进程退出前把攒着的写掉
-        try:
+        with contextlib.suppress(Exception):
             flush()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def prune() -> int:
     cutoff = time.time() - RETENTION_DAYS * 86400
-    with _connect() as conn:
-        n = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
-    return n
+    with _db() as conn:
+        return conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
+
+
+_COUNTERS = ("view", "parse", "parse_ok", "job", "job_ok", "download")
+
+
+def _empty_bucket(t: float) -> dict:
+    return {"t": t, **dict.fromkeys(_COUNTERS, 0), "users": 0}
+
+
+def _series(rows: list, users: dict, since: float, until: float, step: int, tz_offset: int) -> list[dict]:
+    """查询结果摊到连续的时间格子上，没有数据的格子补 0。"""
+    buckets: dict[float, dict] = {}
+    t = since - ((since + tz_offset) % step)
+    while t < until:
+        buckets[t] = _empty_bucket(t)
+        t += step
+    for b, kind, n, ok in rows:
+        cell = buckets.setdefault(b, _empty_bucket(b))
+        cell[kind] = n
+        if kind in ("parse", "job"):
+            cell[kind + "_ok"] = ok or 0
+    for b, n in users.items():
+        if b in buckets:
+            buckets[b]["users"] = n
+    return [buckets[k] for k in sorted(buckets)]
 
 
 def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
@@ -135,7 +162,7 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
     """
     step = max(60, int(step))
     bucket = f"(CAST((ts + {tz_offset}) / {step} AS INTEGER) * {step} - {tz_offset})"
-    with _connect() as conn:
+    with _db() as conn:
         # 解析结果缓存命中不是一次新的解析：一个人连点几下会把同一个结果重放好几遍，
         # 计进去会虚增次数、压低成功率。口径跟下面的 by_source 保持一致。
         rows = conn.execute(
@@ -173,23 +200,8 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
         ).fetchall()
         (first,) = conn.execute("SELECT MIN(ts) FROM events").fetchone()
 
-    buckets: dict[float, dict] = {}
-    t = since - ((since + tz_offset) % step)
-    while t < until:
-        buckets[t] = {"t": t, "view": 0, "parse": 0, "parse_ok": 0, "job": 0, "job_ok": 0, "download": 0, "users": 0}
-        t += step
-    for b, kind, n, ok in rows:
-        cell = buckets.setdefault(
-            b, {"t": b, "view": 0, "parse": 0, "parse_ok": 0, "job": 0, "job_ok": 0, "download": 0, "users": 0}
-        )
-        cell[kind] = n
-        if kind in ("parse", "job"):
-            cell[kind + "_ok"] = ok or 0
-    for b, n in users.items():
-        if b in buckets:
-            buckets[b]["users"] = n
-    series = [buckets[k] for k in sorted(buckets)]
-    totals = {k: sum(c[k] for c in series) for k in ("view", "parse", "parse_ok", "job", "job_ok", "download")}
+    series = _series(rows, users, since, until, step, tz_offset)
+    totals = {k: sum(c[k] for c in series) for k in _COUNTERS}
     totals["users"] = total_users or 0
     return {
         "since": since,

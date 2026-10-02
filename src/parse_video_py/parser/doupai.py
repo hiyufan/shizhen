@@ -20,7 +20,7 @@ class DouPai(BaseParser):
         json_data = response.json()
         data = json_data["data"]
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=data["videoUrl"],
             cover_url=data["imageUrl"],
             title=data["name"],
@@ -30,4 +30,3 @@ class DouPai(BaseParser):
                 avatar=data["userId"]["avatar"],
             ),
         )
-        return video_info

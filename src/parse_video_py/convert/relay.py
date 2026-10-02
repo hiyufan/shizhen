@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import functools
 import hashlib
 import hmac
 import json
@@ -132,9 +133,7 @@ class RelayTransport(httpx.AsyncBaseTransport):
         await self._client.aclose()
 
 
-_shared: RelayTransport | None = None
-
-
+@functools.cache
 def shared_transport() -> RelayTransport:
     """全局共用一个中继 transport。
 
@@ -142,10 +141,7 @@ def shared_transport() -> RelayTransport:
     AsyncClient, 于是每次解析调用都要重新对中继握手。单例之后一次 B站 解析
     实测从 1098ms/次降到 268ms/次。
     """
-    global _shared
-    if _shared is None:
-        _shared = RelayTransport()
-    return _shared
+    return RelayTransport()
 
 
 async def keepalive(interval: float = 60.0) -> None:
@@ -167,7 +163,6 @@ async def keepalive(interval: float = 60.0) -> None:
 
 
 async def aclose_shared() -> None:
-    global _shared
-    if _shared is not None:
-        await _shared.aclose()
-        _shared = None
+    if shared_transport.cache_info().currsize:
+        await shared_transport().aclose()
+        shared_transport.cache_clear()

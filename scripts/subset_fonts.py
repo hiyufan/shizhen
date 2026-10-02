@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 PKG = os.path.join(ROOT, "src", "parse_video_py")
@@ -32,7 +33,7 @@ def page_text() -> str:
         os.path.join(PKG, "seo.py"),
         os.path.join(PKG, "guides.py"),
     ]:
-        text += open(f, encoding="utf-8").read()
+        text += Path(f).read_text(encoding="utf-8")
     return text
 
 
@@ -43,7 +44,7 @@ def heading_text() -> str:
 
     text = BRAND + "".join(p.h1 for p in seo.PAGES) + "".join(g.h1 for g in guides.GUIDES)
     for f in glob.glob(os.path.join(PKG, "templates", "*.html")):  # 写死在模板里的 h1（教程列表、404、统计页）
-        text += "".join(re.findall(r"<h1[^>]*>([^{<]*)</h1>", open(f, encoding="utf-8").read()))
+        text += "".join(re.findall(r"<h1[^>]*>([^{<]*)</h1>", Path(f).read_text(encoding="utf-8")))
     return re.sub(r"<[^>]+>", "", text)  # page.h1 里允许 <em> / <br>
 
 
@@ -63,7 +64,7 @@ def main() -> None:
         name, text = sources[weight][0], sources[weight][1]()
         chars = {ch for ch in text if ord(ch) > 0x2000} | _ALWAYS
         glyphs = os.path.join(ROOT, "data", f"glyphs-{weight}.txt")
-        open(glyphs, "w", encoding="utf-8").write("".join(sorted(chars)))
+        Path(glyphs).write_text("".join(sorted(chars)), encoding="utf-8")
         out = os.path.join(PKG, "static", f"noto-serif-sc-{weight}.woff2")
         src = os.path.join(args.src, name)
         if not os.path.exists(src):

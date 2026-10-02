@@ -53,98 +53,94 @@ class YtDlp(BaseParser):
             raise ValueError("yt-dlp 没有解析出内容")
         return info
 
-    @classmethod
-    def _to_video_info(cls, info: dict[str, Any], share_url: str) -> VideoInfo:
-        formats: list[dict[str, Any]] = [f for f in (info.get("formats") or []) if f.get("url")]
-
-        def is_video(f: dict[str, Any]) -> bool:
-            return f.get("vcodec") not in (None, "none")
-
-        def is_audio(f: dict[str, Any]) -> bool:
-            return f.get("acodec") not in (None, "none")
-
-        def is_http(f: dict[str, Any]) -> bool:
-            return (f.get("protocol") or "https").startswith("http") and not f.get("manifest_url")
-
-        progressive = [f for f in formats if is_video(f) and is_audio(f) and is_http(f)]
-        progressive.sort(key=lambda f: ((f.get("ext") == "mp4"), f.get("height") or 0, f.get("tbr") or 0))
-        best_direct: dict[str, Any] | None = progressive[-1] if progressive else None
-
-        video_url = ""
-        headers: dict[str, str] = {}
-        width = height = 0
-        if best_direct:
-            video_url = best_direct["url"]
-            headers = dict(best_direct.get("http_headers") or {})
-            width, height = best_direct.get("width") or 0, best_direct.get("height") or 0
-        elif info.get("url") and info.get("ext") in ("mp4", "mov", "webm"):
-            video_url = info["url"]
-            headers = dict(info.get("http_headers") or {})
-            width, height = info.get("width") or 0, info.get("height") or 0
-
-        # 更高清晰度: 视频轨最大高度 > 直链高度的, 给出合并选项
-        merged: list[FormatInfo] = []
-        video_heights = sorted({f.get("height") or 0 for f in formats if is_video(f)}, reverse=True)
-        top = video_heights[0] if video_heights else 0
-        if top and top > height:
-            seen = set()
-            for h in _HEIGHT_LADDER:
-                if h > top or h <= height or h in seen:
-                    continue
-                if not any((f.get("height") or 0) >= h for f in formats if is_video(f)):
-                    continue
-                seen.add(h)
-                approx = max(
-                    (
-                        (f.get("filesize") or f.get("filesize_approx") or 0)
-                        for f in formats
-                        if is_video(f) and (f.get("height") or 0) == h
-                    ),
-                    default=0,
-                )
-                merged.append(
-                    FormatInfo(
-                        label=f"{h}p",
-                        format_spec=f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]",
-                        ext="mp4",
-                        height=h,
-                        filesize=int(approx),
-                    )
-                )
-        if any(is_audio(f) and not is_video(f) for f in formats):
-            merged.append(FormatInfo(label="仅音频", format_spec="ba[ext=m4a]/ba", ext="m4a", height=0))
-
-        # 图片: yt-dlp 把纯图片帖当 thumbnails 或 formats(ext=jpg) 返回
-        images: list[ImgInfo] = []
-        for f in formats:
-            if f.get("ext") in ("jpg", "jpeg", "png", "webp") and not is_video(f):
-                images.append(ImgInfo(url=f["url"]))
-
-        cover = info.get("thumbnail") or ""
-        if not cover and info.get("thumbnails"):
-            cover = info["thumbnails"][-1].get("url", "")
-
-        extractor = (info.get("extractor_key") or info.get("extractor") or "ytdlp").lower()
-        for key in ("youtube", "tiktok", "instagram", "vimeo", "facebook", "twitch", "reddit", "pinterest"):
-            if key in extractor:
-                extractor = key
-                break
-
+    @staticmethod
+    def _to_video_info(info: dict[str, Any], share_url: str) -> VideoInfo:
+        formats = [f for f in (info.get("formats") or []) if f.get("url")]
+        video_url, headers, width, height = _direct_stream(info, formats)
         return VideoInfo(
             video_url=video_url,
-            cover_url=cover,
+            cover_url=_cover(info),
             title=info.get("title") or info.get("description") or "",
-            images=images,
+            images=[ImgInfo(url=f["url"]) for f in formats if f.get("ext") in _IMAGE_EXTS and not _is_video(f)],
             author=VideoAuthor(
                 uid=str(info.get("uploader_id") or info.get("channel_id") or ""),
                 name=info.get("uploader") or info.get("channel") or info.get("creator") or "",
                 avatar="",
             ),
-            source=extractor,
+            source=_site_name(info),
             page_url=info.get("webpage_url") or share_url,
             duration=float(info.get("duration") or 0),
             width=width,
             height=height,
-            formats=merged,
+            formats=_merge_options(formats, height),
             video_headers=headers,
         )
+
+
+# 纯图片帖：yt-dlp 把图当 thumbnails 或 formats(ext=jpg) 返回
+_IMAGE_EXTS = ("jpg", "jpeg", "png", "webp")
+_KNOWN_SITES = ("youtube", "tiktok", "instagram", "vimeo", "facebook", "twitch", "reddit", "pinterest")
+
+
+def _is_video(f: dict[str, Any]) -> bool:
+    return f.get("vcodec") not in (None, "none")
+
+
+def _is_audio(f: dict[str, Any]) -> bool:
+    return f.get("acodec") not in (None, "none")
+
+
+def _is_http(f: dict[str, Any]) -> bool:
+    return (f.get("protocol") or "https").startswith("http") and not f.get("manifest_url")
+
+
+def _direct_stream(info: dict[str, Any], formats: list[dict[str, Any]]) -> tuple[str, dict[str, str], int, int]:
+    """浏览器能直接播的那一路：音视频合一的 http 直链，mp4 优先、越清晰越好。
+    返回 (地址, 要带的请求头, 宽, 高)；没有就是空地址。"""
+    progressive = [f for f in formats if _is_video(f) and _is_audio(f) and _is_http(f)]
+    best = max(
+        reversed(progressive),  # 一样好的取后面那个（yt-dlp 按从差到好排）
+        key=lambda f: (f.get("ext") == "mp4", f.get("height") or 0, f.get("tbr") or 0),
+        default=None,
+    )
+    if best is None and info.get("url") and info.get("ext") in ("mp4", "mov", "webm"):
+        best = info
+    if best is None:
+        return "", {}, 0, 0
+    return best["url"], dict(best.get("http_headers") or {}), best.get("width") or 0, best.get("height") or 0
+
+
+def _merge_options(formats: list[dict[str, Any]], direct_height: int) -> list[FormatInfo]:
+    """比直链更清晰的档位（要服务端合并音视频），以及「仅音频」。"""
+    videos = [f for f in formats if _is_video(f)]
+    top = max((f.get("height") or 0 for f in videos), default=0)
+    options = []
+    for h in _HEIGHT_LADDER:
+        if not (direct_height < h <= top):
+            continue
+        same_height = [f for f in videos if (f.get("height") or 0) == h]
+        approx = max((f.get("filesize") or f.get("filesize_approx") or 0 for f in same_height), default=0)
+        options.append(
+            FormatInfo(
+                label=f"{h}p",
+                format_spec=f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]",
+                ext="mp4",
+                height=h,
+                filesize=int(approx),
+            )
+        )
+    if any(_is_audio(f) and not _is_video(f) for f in formats):
+        options.append(FormatInfo(label="仅音频", format_spec="ba[ext=m4a]/ba", ext="m4a", height=0))
+    return options
+
+
+def _cover(info: dict[str, Any]) -> str:
+    if cover := info.get("thumbnail"):
+        return cover
+    thumbnails = info.get("thumbnails") or []
+    return thumbnails[-1].get("url", "") if thumbnails else ""
+
+
+def _site_name(info: dict[str, Any]) -> str:
+    extractor = (info.get("extractor_key") or info.get("extractor") or "ytdlp").lower()
+    return next((key for key in _KNOWN_SITES if key in extractor), extractor)

@@ -13,7 +13,10 @@ REASONS = {
     "network": "连不上对方平台，稍后再试",
     "timeout": "对方平台响应太慢，稍后再试",
     "empty": "解析成功但没有拿到任何视频或图片",
-    "restricted": "平台没有对外提供这条内容的数据，可能是作者限制了分享，也可能要登录才能拿到。内容本身通常还在，用 App 打开一般能看",
+    "restricted": (
+        "平台没有对外提供这条内容的数据，可能是作者限制了分享，也可能要登录才能拿到。"
+        "内容本身通常还在，用 App 打开一般能看"
+    ),
     "parse": "平台页面结构变了，解析器需要更新",
 }
 
@@ -29,7 +32,8 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     (
         "deleted",
         re.compile(
-            r"status_deleted|作品不见了|已被删除|不存在|undefined|private|removed|unavailable|has been deleted|404|没有作品|tombstone|parse video ID|video ID from",
+            r"status_deleted|作品不见了|已被删除|不存在|undefined|private|removed|unavailable|has been deleted"
+            r"|404|没有作品|tombstone|parse video ID|video ID from",
             re.I,
         ),
     ),
@@ -37,7 +41,8 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     (
         "blocked",
         re.compile(
-            r"429|too many|rate ?limit|forbidden|403|412|风控|验证|captcha|bot|blocked|access denied|encrypt_data_miss|限流|拒绝了服务器",
+            r"429|too many|rate ?limit|forbidden|403|412|风控|验证|captcha|bot|blocked|access denied"
+            r"|encrypt_data_miss|限流|拒绝了服务器",
             re.I,
         ),
     ),

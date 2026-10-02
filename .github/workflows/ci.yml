@@ -28,9 +28,10 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: 安装依赖
         run: pip install -e ".[web,dev]"
-      - name: 语法错误 / 未定义的名字
-        # 完整风格检查现在有几十处历史遗留，先只拦会让程序跑不起来的
-        run: python -m flake8 src tests --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: 代码规范（ruff：格式、import 顺序、复杂度、常见 bug 写法，规则见 pyproject.toml）
+        run: |
+          python -m ruff format --check .
+          python -m ruff check .
       - name: 单元测试
         # 测试不碰外网：平台解析器换成假的，数据目录指到临时目录（见 tests/conftest.py）
         run: python -m pytest -q

@@ -14,31 +14,32 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import web
-from parse_video_py.convert import limits, net, relay
+from parse_video_py import stats, web
+from parse_video_py.convert import config, net, relay
 from parse_video_py.parser.base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from parse_video_py.parser.errors import ParseError
+from parse_video_py.web import limits
+from parse_video_py.web import parse as parse_api
 
 SHARE = "https://v.douyin.com/abc123/"
 
 
 def _info(**kw) -> VideoInfo:
-    base = dict(
-        video_url="https://v3-web.douyinvod.com/play/1.mp4",
-        cover_url="https://p3-sign.douyinpic.com/cover.jpeg",
-        title="标题",
-        music_url="https://sf3-cdn.douyinstatic.com/music.mp3",
-        images=[
+    base = {
+        "video_url": "https://v3-web.douyinvod.com/play/1.mp4",
+        "cover_url": "https://p3-sign.douyinpic.com/cover.jpeg",
+        "title": "标题",
+        "music_url": "https://sf3-cdn.douyinstatic.com/music.mp3",
+        "images": [
             ImgInfo(
                 url="https://p3-sign.douyinpic.com/1.webp", live_photo_url="https://v3-web.douyinvod.com/live/1.mp4"
             )
         ],
-        author=VideoAuthor(name="作者"),
-        source="douyin",
-        formats=[FormatInfo(label="1080p", url="https://v3-web.douyinvod.com/play/1080.mp4")],
-    )
-    base.update(kw)
-    return VideoInfo(**base)
+        "author": VideoAuthor(name="作者"),
+        "source": "douyin",
+        "formats": [FormatInfo(label="1080p", url="https://v3-web.douyinvod.com/play/1080.mp4")],
+    }
+    return VideoInfo(**{**base, **kw})
 
 
 @pytest.fixture
@@ -55,21 +56,21 @@ def calls(monkeypatch):
     async def always_safe(url):
         return True
 
-    monkeypatch.setattr(web, "parse_video_share_url", fake_parse)
-    monkeypatch.setattr(web, "is_safe_url_async", always_safe)
+    monkeypatch.setattr(parse_api, "parse_video_share_url", fake_parse)
+    monkeypatch.setattr(parse_api, "is_safe_url_async", always_safe)
     return state
 
 
 @pytest.fixture
 def recorded(monkeypatch):
     rows = []
-    monkeypatch.setattr(web.stats, "record", lambda kind, ip, **kw: rows.append((kind, kw)))
+    monkeypatch.setattr(stats, "record", lambda kind, ip, **kw: rows.append((kind, kw)))
     return rows
 
 
 @pytest.fixture
 def client(monkeypatch):
-    web._parse_cache.clear()
+    parse_api.cache.clear()
     for rl in (limits.parse_limit, limits.proxy_limit, limits.job_limit):
         monkeypatch.setattr(rl, "_buckets", {})
     # 不进 with 块就不跑 lifespan：不起清理任务，也不预热抖音的 Chromium
@@ -140,7 +141,7 @@ def test_edge_image_urls_only_for_whitelisted_cdns(client, calls, recorded, monk
     assert str(edge.copy_with(query=None)) == "https://edge.example.com/img"
     exp = int(edge.params["e"])
     # 结果会缓存 PARSE_CACHE_SECONDS，边缘签名要比缓存活得久
-    assert exp > time.time() + web.cconfig.PARSE_CACHE_SECONDS
+    assert exp > time.time() + config.PARSE_CACHE_SECONDS
     want = hmac.new(b"tok", f"img\n{exp}\n{img}".encode(), hashlib.sha256).hexdigest()[:32]
     assert edge.params["s"] == want and edge.params["url"] == img
 
@@ -182,7 +183,7 @@ def test_text_without_link_is_rejected_before_parsing(client, calls, recorded):
 
 
 def test_internal_address_is_rejected_before_parsing(client, calls, recorded, monkeypatch):
-    monkeypatch.setattr(web, "is_safe_url_async", net.is_safe_url_async)
+    monkeypatch.setattr(parse_api, "is_safe_url_async", net.is_safe_url_async)
     body = client.get("/api/parse", params={"url": "http://127.0.0.1:8000/x"}).json()
     assert body["code"] == 400 and body["reason"] == "unsupported"
     assert calls["urls"] == []

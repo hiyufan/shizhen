@@ -39,7 +39,7 @@ class XinPianChang(BaseParser):
         mp4_data = mp4_response.json()
         video_url = mp4_data["data"]["resource"]["progressive"][0]["url"]
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=video_url,
             cover_url=data["cover"],
             title=data["title"],
@@ -49,8 +49,6 @@ class XinPianChang(BaseParser):
                 avatar=data["author"]["userinfo"]["avatar"],
             ),
         )
-
-        return video_info
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         raise NotImplementedError("新片场暂不支持直接解析视频ID")

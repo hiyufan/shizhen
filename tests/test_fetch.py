@@ -5,7 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from parse_video_py.convert import relay, tasks
+from parse_video_py.convert import fetch, relay
 
 DOUYIN_IMG = "https://p95-zjwztc-sign.douyinpic.com/tos-cn-i-0813c000-ce/abc~tplv-dy-aweme-images:q75.jpeg"
 VIDEO = "https://v95-se-zjwztc-default.365yg.com/x/video/tos/cn/tos-cn-ve-15/abc/"
@@ -21,15 +21,15 @@ def calls(monkeypatch, tmp_path):
         if not via_relay:
             raise httpx.ConnectTimeout("handshake timed out")
 
-    monkeypatch.setattr(tasks, "_fetch_once", fake_fetch_once)
-    monkeypatch.setattr(tasks, "_RELAY_FIRST", {})
+    monkeypatch.setattr(fetch, "_fetch_once", fake_fetch_once)
+    monkeypatch.setattr(fetch, "_RELAY_FIRST", {})
     monkeypatch.setattr(relay, "RELAY_URL", "https://edge.example.com/relay")
     monkeypatch.setattr(relay, "RELAY_TOKEN", "tok")
     return log
 
 
 def _fetch(url, dest):
-    asyncio.run(tasks._fetch_bytes(url, dest))
+    asyncio.run(fetch.fetch_bytes(url, dest))
 
 
 def test_cn_image_falls_back_to_relay_then_goes_relay_first(calls, tmp_path):

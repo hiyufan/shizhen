@@ -4,8 +4,9 @@
 1. /api/parse 失败、而且是「修得好」的那类（解析出错 / 拿到空的 / 不支持 / 超时），结果里附一张
    签名的反馈凭证（链接 + 原因 + 时间）。没有凭证提交不了反馈，别人没法拿任意链接来刷 issue。
 2. /api/feedback 收凭证和选填的邮箱：同一条链接已经有没关的 issue 就追加一条评论，不重复建。
-   issue 建在私有仓库里（链接原样保留，小红书那种要带着令牌才能复现）；邮箱只存在本机，
-   AES-256-GCM 加密，密钥（PARSE_VIDEO_FEEDBACK_KEY）不和数据库放在一起。
+   issue 建在公开仓库里，链接去掉 ? 之后的参数（小红书那种带着访问令牌）；完整链接和邮箱只存在
+   本机 data/feedback.db，按 issue 里的「反馈编号」查。邮箱 AES-256-GCM 加密，密钥
+   （PARSE_VIDEO_FEEDBACK_KEY）不和数据库放在一起。
 3. 后台每 30 分钟看一眼：issue 关了（提交里写 Fixes owner/repo#N）先自己再解析一次那条链接，
    真能用了才发「修好了」的邮件，还是不行就把 issue 重新打开；标成「不修了」的发一封说明。
    邮件发完立刻删邮箱，最长留 90 天。
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -24,6 +26,7 @@ import re
 import smtplib
 import sqlite3
 import time
+from collections.abc import Awaitable, Callable, Iterator
 from email.message import EmailMessage
 from email.utils import formataddr
 from urllib.parse import quote
@@ -34,7 +37,7 @@ from .convert import config, net
 
 log = logging.getLogger("uvicorn.error")
 
-REPO = os.environ.get("PARSE_VIDEO_FEEDBACK_REPO", "").strip()  # owner/name，私有仓库
+REPO = os.environ.get("PARSE_VIDEO_FEEDBACK_REPO", "").strip()  # owner/name
 GH_TOKEN = os.environ.get("PARSE_VIDEO_FEEDBACK_GH_TOKEN", "").strip()  # 只给这个仓库 Issues 读写
 SMTP_HOST = os.environ.get("PARSE_VIDEO_SMTP_HOST", "smtp.qq.com").strip()
 SMTP_PORT = int(os.environ.get("PARSE_VIDEO_SMTP_PORT", "465") or 465)
@@ -61,9 +64,8 @@ PLATFORM_NAMES = {
     "ytdlp": "其他站点",
 }
 REASON_NAMES = {"parse": "解析出错", "empty": "没拿到内容", "unsupported": "不支持的链接", "timeout": "超时"}
+_EMAIL_AAD = b"shizhen-feedback-email"
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
-
-_wake: asyncio.Event | None = None
 
 
 def mail_enabled() -> bool:
@@ -87,7 +89,7 @@ def _unb64(s: str) -> bytes:
 
 
 def _sig(body: str) -> str:
-    return _b64(hmac.new(net._secret(), b"feedback:" + body.encode(), hashlib.sha256).digest()[:18])
+    return _b64(hmac.new(net.secret_key(), b"feedback:" + body.encode(), hashlib.sha256).digest()[:18])
 
 
 def make_ticket(url: str, reason: str, platform: str, msg: str) -> str | None:
@@ -131,11 +133,11 @@ def _aead():
 
 def encrypt_email(email: str) -> bytes:
     nonce = os.urandom(12)
-    return nonce + _aead().encrypt(nonce, email.encode(), b"shizhen-feedback-email")
+    return nonce + _aead().encrypt(nonce, email.encode(), _EMAIL_AAD)
 
 
 def decrypt_email(blob: bytes) -> str:
-    return _aead().decrypt(blob[:12], blob[12:], b"shizhen-feedback-email").decode()
+    return _aead().decrypt(blob[:12], blob[12:], _EMAIL_AAD).decode()
 
 
 def valid_email(email: str) -> bool:
@@ -144,21 +146,29 @@ def valid_email(email: str) -> bool:
 
 # --------------------------------------------------------------------------- 存储
 
+_SCHEMA = (
+    "PRAGMA journal_mode=WAL;"
+    "CREATE TABLE IF NOT EXISTS reports ("
+    " id INTEGER PRIMARY KEY, created REAL NOT NULL, link TEXT NOT NULL, link_key TEXT NOT NULL,"
+    " platform TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', msg TEXT NOT NULL DEFAULT '',"
+    " ip TEXT NOT NULL DEFAULT '', email BLOB, issue INTEGER, synced INTEGER NOT NULL DEFAULT 0,"
+    " notified REAL, outcome TEXT NOT NULL DEFAULT '');"
+    "CREATE INDEX IF NOT EXISTS reports_link ON reports (link_key);"
+)
 
-def _connect() -> sqlite3.Connection:
+
+@contextlib.contextmanager
+def _db() -> Iterator[sqlite3.Connection]:
+    """一次事务：成功提交、出错回滚，用完关掉连接。"""
     config.ensure_dirs()
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.executescript(
-        "CREATE TABLE IF NOT EXISTS reports ("
-        " id INTEGER PRIMARY KEY, created REAL NOT NULL, link TEXT NOT NULL, link_key TEXT NOT NULL,"
-        " platform TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', msg TEXT NOT NULL DEFAULT '',"
-        " ip TEXT NOT NULL DEFAULT '', email BLOB, issue INTEGER, synced INTEGER NOT NULL DEFAULT 0,"
-        " notified REAL, outcome TEXT NOT NULL DEFAULT '');"
-        "CREATE INDEX IF NOT EXISTS reports_link ON reports (link_key);"
-    )
-    return conn
+    try:
+        conn.executescript(_SCHEMA)
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def link_key(url: str) -> str:
@@ -168,33 +178,73 @@ def link_key(url: str) -> str:
 def add_report(ticket: dict, email: str, ip_hash: str) -> bool:
     """记一条反馈；返回这条链接之前是不是已经有人反馈过（页面上说「已经有人反馈，正在修」）。"""
     key = link_key(ticket["u"])
-    with _connect() as conn:
+    row = (
+        time.time(),
+        ticket["u"],
+        key,
+        ticket.get("p", ""),
+        ticket.get("r", ""),
+        ticket.get("m", ""),
+        ip_hash,
+        encrypt_email(email) if email else None,
+    )
+    with _db() as conn:
         dup = conn.execute("SELECT 1 FROM reports WHERE link_key = ? AND outcome = '' LIMIT 1", (key,)).fetchone()
         conn.execute(
             "INSERT INTO reports (created, link, link_key, platform, reason, msg, ip, email) VALUES (?,?,?,?,?,?,?,?)",
-            (
-                time.time(),
-                ticket["u"],
-                key,
-                ticket.get("p", ""),
-                ticket.get("r", ""),
-                ticket.get("m", ""),
-                ip_hash,
-                encrypt_email(email) if email else None,
-            ),
+            row,
         )
-    if _wake:
-        _wake.set()
+    _syncer.wake()
     return bool(dup)
 
 
-def pending_counts() -> dict:
+def _unsynced_reports() -> list[sqlite3.Row]:
+    with _db() as conn:
+        return conn.execute("SELECT * FROM reports WHERE synced = 0 ORDER BY id").fetchall()
+
+
+def _open_issue_for(key: str) -> int | None:
+    """这条链接已经建过、还没处理完的 issue。"""
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT issue FROM reports WHERE link_key = ? AND issue IS NOT NULL AND outcome = '' "
+            "ORDER BY id DESC LIMIT 1",
+            (key,),
+        ).fetchone()
+    return row["issue"] if row else None
+
+
+def _mark_synced(report_id: int, issue: int) -> None:
+    with _db() as conn:
+        conn.execute("UPDATE reports SET issue = ?, synced = 1 WHERE id = ?", (issue, report_id))
+
+
+def _pending_by_issue() -> dict[int, list[sqlite3.Row]]:
+    with _db() as conn:
+        rows = conn.execute("SELECT * FROM reports WHERE outcome = '' AND issue IS NOT NULL").fetchall()
+    grouped: dict[int, list[sqlite3.Row]] = {}
+    for row in rows:
+        grouped.setdefault(row["issue"], []).append(row)
+    return grouped
+
+
+def _close_report(report_id: int, outcome: str) -> None:
+    """处理完了：记下结论，邮箱立刻删掉。"""
+    with _db() as conn:
+        conn.execute(
+            "UPDATE reports SET email = NULL, notified = ?, outcome = ? WHERE id = ?",
+            (time.time(), outcome, report_id),
+        )
+
+
+def purge_old_emails() -> int:
     if not DB_PATH.exists():
-        return {"open": 0, "waiting_mail": 0}
-    with _connect() as conn:
-        open_ = conn.execute("SELECT COUNT(DISTINCT link_key) FROM reports WHERE outcome = ''").fetchone()[0]
-        mail = conn.execute("SELECT COUNT(*) FROM reports WHERE email IS NOT NULL").fetchone()[0]
-    return {"open": open_, "waiting_mail": mail}
+        return 0
+    with _db() as conn:
+        return conn.execute(
+            "UPDATE reports SET email = NULL WHERE email IS NOT NULL AND created < ?",
+            (time.time() - EMAIL_TTL_DAYS * 86400,),
+        ).rowcount
 
 
 # --------------------------------------------------------------------------- GitHub
@@ -270,24 +320,14 @@ def _issue_text(row: sqlite3.Row) -> tuple[str, str, list[str]]:
 
 async def _sync_issues(gh: GitHub) -> None:
     """没同步到 GitHub 的反馈：同一链接已有 issue 就评论 +1，没有就建一个。"""
-    with _connect() as conn:
-        rows = conn.execute("SELECT * FROM reports WHERE synced = 0 ORDER BY id").fetchall()
-    for row in rows:
-        with _connect() as conn:
-            known = conn.execute(
-                "SELECT issue FROM reports WHERE link_key = ? AND issue IS NOT NULL AND outcome = '' "
-                "ORDER BY id DESC LIMIT 1",
-                (row["link_key"],),
-            ).fetchone()
-        if known:
-            number = known["issue"]
-            await gh.comment(
-                number, f"又有一人反馈（{_when(row['created'])}）" + ("，留了邮箱。" if row["email"] else "。")
-            )
-        else:
+    for row in _unsynced_reports():
+        number = _open_issue_for(row["link_key"])
+        if number is None:
             number = await gh.create_issue(*_issue_text(row))
-        with _connect() as conn:
-            conn.execute("UPDATE reports SET issue = ?, synced = 1 WHERE id = ?", (number, row["id"]))
+        else:
+            left_email = "，留了邮箱。" if row["email"] else "。"
+            await gh.comment(number, f"又有一人反馈（{_when(row['created'])}）{left_email}")
+        _mark_synced(row["id"], number)
 
 
 # --------------------------------------------------------------------------- 邮件
@@ -310,7 +350,8 @@ def fixed_mail(link: str) -> tuple[str, str]:
         (
             "你好，\n\n"
             f"你之前在拾帧（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
-            f"这个问题已经修好了，我们刚刚又解析了一次，确认可以用。点这里直接打开：\n{SITE_URL}/?url={quote(link, safe='')}\n\n"
+            "这个问题已经修好了，我们刚刚又解析了一次，确认可以用。点这里直接打开：\n"
+            f"{SITE_URL}/?url={quote(link, safe='')}\n\n"
             "谢谢你的反馈。这是一封一次性通知，你的邮箱在邮件发出后已经删除，之后不会再收到我们的邮件。\n\n— 拾帧"
         ),
     )
@@ -328,78 +369,83 @@ def wontfix_mail(link: str) -> tuple[str, str]:
     )
 
 
-async def _notify(gh: GitHub, reparse) -> None:
+_MAILS = {"fixed": fixed_mail, "wontfix": wontfix_mail}
+_OUTCOME_NAMES = {"fixed": "已修好", "wontfix": "暂不修"}
+
+Reparse = Callable[[str], Awaitable[object]]
+
+
+async def _outcome(gh: GitHub, number: int, issue: dict, link: str, reparse: Reparse) -> str | None:
+    """关掉的 issue 算哪种结论。标了「已完成」的先复测，还是失败就重新打开，返回 None。"""
+    if issue.get("state_reason") == "not_planned":
+        return "wontfix"
+    try:
+        await reparse(link)
+    except Exception as err:  # noqa: BLE001 - 复测失败就别发「修好了」
+        await gh.reopen(number, f"issue 关了，但服务器复测还是失败：{str(err)[:200]}\n先重新打开。")
+        return None
+    return "fixed"
+
+
+async def _mail_reporters(reports: list[sqlite3.Row], outcome: str) -> int:
+    """给留了邮箱的人各发一封，然后把这批反馈都结掉（邮箱随之删除）。返回发了几封。"""
+    subject, text = _MAILS[outcome](reports[0]["link"])
+    sent = 0
+    for row in reports:
+        if row["email"] and mail_enabled():
+            await asyncio.to_thread(_send_mail, decrypt_email(row["email"]), subject, text)
+            sent += 1
+        _close_report(row["id"], outcome)
+    return sent
+
+
+async def _notify(gh: GitHub, reparse: Reparse) -> None:
     """issue 关了的：completed 先复测，能用才发「修好了」，不行就重新打开；not_planned 发说明。"""
-    with _connect() as conn:
-        rows = conn.execute("SELECT * FROM reports WHERE outcome = '' AND issue IS NOT NULL").fetchall()
-    by_issue: dict[int, list] = {}
-    for row in rows:
-        by_issue.setdefault(row["issue"], []).append(row)
-    for number, group in by_issue.items():
+    for number, reports in _pending_by_issue().items():
         issue = await gh.issue(number)
         if issue.get("state") != "closed":
             continue
-        link = group[0]["link"]
-        if issue.get("state_reason") == "not_planned":
-            outcome, mail = "wontfix", wontfix_mail(link)
-        else:
-            try:
-                await reparse(link)
-            except Exception as err:  # noqa: BLE001 - 复测失败就别发「修好了」
-                await gh.reopen(number, f"issue 关了，但服务器复测还是失败：{str(err)[:200]}\n先重新打开。")
-                continue
-            outcome, mail = "fixed", fixed_mail(link)
-        sent = 0
-        for row in group:
-            if row["email"] and mail_enabled():
-                await asyncio.to_thread(_send_mail, decrypt_email(row["email"]), *mail)
-                sent += 1
-            with _connect() as conn:
-                conn.execute(
-                    "UPDATE reports SET email = NULL, notified = ?, outcome = ? WHERE id = ?",
-                    (time.time(), outcome, row["id"]),
-                )
-        if sent:
-            await gh.comment(
-                number,
-                f"已给 {sent} 位留了邮箱的反馈者发邮件（{'已修好' if outcome == 'fixed' else '暂不修'}），邮箱已删除。",
-            )
+        outcome = await _outcome(gh, number, issue, reports[0]["link"], reparse)
+        if outcome is None:
+            continue
+        if sent := await _mail_reporters(reports, outcome):
+            await gh.comment(number, f"已给 {sent} 位留了邮箱的反馈者发邮件（{_OUTCOME_NAMES[outcome]}），邮箱已删除。")
 
 
-def purge_old_emails() -> int:
-    if not DB_PATH.exists():
-        return 0
-    with _connect() as conn:
-        return conn.execute(
-            "UPDATE reports SET email = NULL WHERE email IS NOT NULL AND created < ?",
-            (time.time() - EMAIL_TTL_DAYS * 86400,),
-        ).rowcount
+# --------------------------------------------------------------------------- 后台循环
 
 
-async def run_once(reparse, client: httpx.AsyncClient | None = None) -> None:
-    own = client is None
-    client = client or httpx.AsyncClient()
-    try:
+async def run_once(reparse: Reparse, client: httpx.AsyncClient | None = None) -> None:
+    async with contextlib.AsyncExitStack() as stack:
+        if client is None:
+            client = await stack.enter_async_context(httpx.AsyncClient())
         gh = GitHub(client)
         await _sync_issues(gh)
         await _notify(gh, reparse)
         purge_old_emails()
-    finally:
-        if own:
-            await client.aclose()
 
 
-async def loop(reparse) -> None:
-    """有新反馈马上同步一次；平时每 CHECK_INTERVAL 看一眼 issue 关没关。"""
-    global _wake
-    _wake = asyncio.Event()
-    while True:
-        try:
-            await run_once(reparse)
-        except Exception:  # noqa: BLE001 - GitHub / 邮箱一时不通，下一轮再来
-            log.exception("反馈同步失败")
-        try:
-            await asyncio.wait_for(_wake.wait(), CHECK_INTERVAL)
-        except asyncio.TimeoutError:
-            pass
-        _wake.clear()
+class _Syncer:
+    """后台同步：有新反馈马上同步一次，平时每 CHECK_INTERVAL 看一眼 issue 关没关。"""
+
+    def __init__(self) -> None:
+        self._wake: asyncio.Event | None = None
+
+    def wake(self) -> None:
+        if self._wake is not None:
+            self._wake.set()
+
+    async def run_forever(self, reparse: Reparse) -> None:
+        self._wake = asyncio.Event()
+        while True:
+            try:
+                await run_once(reparse)
+            except Exception:  # noqa: BLE001 - GitHub / 邮箱一时不通，下一轮再来
+                log.exception("反馈同步失败")
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._wake.wait(), CHECK_INTERVAL)
+            self._wake.clear()
+
+
+_syncer = _Syncer()
+loop = _syncer.run_forever
