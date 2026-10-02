@@ -372,3 +372,11 @@ img.failed { opacity: .35; cursor: pointer; }
 .tbl-wrap td:first-child { font-family: var(--sans); }
 .tbl-wrap td.muted { color: var(--ink-3); text-align: left; }
 .dash .notice { margin: 0 0 20px; max-width: none; }
+
+/* ---------- 测试模式（/test） */
+.test-badge { position: fixed; left: 12px; bottom: 12px; z-index: 60; padding: 6px 12px; border-radius: 99px; background: var(--orange); color: #fff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 6px 20px rgba(232,112,42,.35); }
+.test-form { display: flex; flex-wrap: wrap; gap: 10px; max-width: 520px; margin-top: 24px; }
+.test-form input { flex: 1 1 220px; min-width: 0; height: 48px; padding: 0 18px; border: 1px solid var(--line-2); border-radius: 999px; background: #fff; font-size: 15px; }
+.test-form input:focus { outline: none; border-color: var(--sky); box-shadow: 0 0 0 4px rgba(107,175,223,.18); }
+.test-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.test-note { margin-top: 32px; font-size: 13px; color: var(--ink-3); }

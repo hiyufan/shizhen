@@ -6,8 +6,10 @@ SQLite 落在 data/stats.db，站长开 /stats 看（需要 PARSE_VIDEO_STATS_TO
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import hashlib
 import hmac
+import ipaddress
 import os
 import sqlite3
 import threading
@@ -21,6 +23,37 @@ TOKEN = os.environ.get("PARSE_VIDEO_STATS_TOKEN", "").strip()
 RETENTION_DAYS = int(os.environ.get("PARSE_VIDEO_STATS_DAYS", 90))
 
 KINDS = ("view", "parse", "job", "download")
+
+# 站长自己和服务器自己的请求不计入：本机 / 内网地址（部署脚本冒烟、容器里的测试、docker 网关），
+# 加上这里列出的 IP（服务器自己的公网地址：容器里的浏览器测试绕公网回来就是它）
+IGNORE_IPS = {ip.strip() for ip in os.environ.get("PARSE_VIDEO_STATS_IGNORE_IPS", "").split(",") if ip.strip()}
+TEST_COOKIE = "sz_test"        # /test 用统计口令开启，签名值，httponly
+TEST_FLAG_COOKIE = "sz_t"      # 给页面上的「测试模式」小标记看的，不参与判断
+
+# 这次请求不计入统计。中间件里设；请求里 create_task 出去的转换任务会继承，任务做完记 job 时也就跳过了
+_muted: contextvars.ContextVar[bool] = contextvars.ContextVar("stats_muted", default=False)
+
+
+def mute() -> None:
+    _muted.set(True)
+
+
+def ignored_ip(ip: str) -> bool:
+    if ip in IGNORE_IPS:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private or addr.is_link_local
+
+
+def test_cookie_value() -> str:
+    return hmac.new(net._secret(), b"stats-test-device", hashlib.sha256).hexdigest()[:32]
+
+
+def is_test_cookie(value: Optional[str]) -> bool:
+    return bool(value) and hmac.compare_digest(value, test_cookie_value())
 
 _buf: list[tuple] = []
 _lock = threading.Lock()
@@ -54,7 +87,7 @@ def _connect() -> sqlite3.Connection:
 
 def record(kind: str, ip: str, *, source: str = "", ok: bool = True, reason: str = "", ms: float = 0) -> None:
     """先攒在内存里，flusher 每几秒批量落盘；请求路径上不碰磁盘。没配 token 就什么都不记。"""
-    if not TOKEN or kind not in KINDS:
+    if not TOKEN or kind not in KINDS or _muted.get() or ignored_ip(ip):
         return
     row = (time.time(), kind, _hash_ip(ip), (source or "")[:32], int(bool(ok)), (reason or "")[:32], int(ms))
     with _lock:

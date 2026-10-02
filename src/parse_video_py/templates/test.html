@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block head %}<meta name="robots" content="noindex,nofollow">{% endblock %}
+{% block content %}
+<section class="sec cold article">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="位置"><a href="/">拾帧</a><span>/</span><span>测试模式</span></nav>
+    <h1>测试模式</h1>
+    {% if test_on %}
+    <p class="intro"><b>已开启。</b>这个浏览器之后的访问、解析、下载、转换都不计入统计，有效一年；页面左下角会显示「测试模式」。</p>
+    <div class="test-acts">
+      <a class="btn dark" href="/">去首页解析</a>
+      <a class="btn" href="/test?off=1">关闭测试模式</a>
+    </div>
+    {% else %}
+    <p class="intro">开启后，这个浏览器之后的访问、解析、下载、转换都不计入统计。换浏览器或换手机要各开一次。</p>
+    <form class="test-form" method="post" action="/test">
+      <input type="password" name="token" placeholder="统计口令（和 /stats 用的一样）" autocomplete="current-password" required aria-label="统计口令">
+      <button class="btn dark" type="submit">开启</button>
+    </form>
+    {% if test_error %}<p class="notice">{{ test_error }}。</p>{% endif %}
+    {% endif %}
+    <p class="test-note">服务器自己的请求（部署时的检查、测试脚本）本来就不计入，不用开。</p>
+  </div>
+</section>
+{% endblock %}
