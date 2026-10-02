@@ -147,6 +147,9 @@ class VideoInfo:
     # 直链需要附带的请求头（Referer / Cookie 等）
     video_headers: dict[str, str] = dataclasses.field(default_factory=dict)
 
+    # 给用户看的一句说明：平台不给的那部分是什么、怎么办（页面上显示在结果标题下面）
+    notice: str = ""
+
 
 def json_in_html(html: str, pattern: str, what: str) -> Any:
     """页面里内嵌的 JSON（pattern 的第一个分组）；找不到就是页面结构变了。"""

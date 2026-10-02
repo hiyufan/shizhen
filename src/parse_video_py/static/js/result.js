@@ -20,7 +20,9 @@ const download = (url, filename, label, cls) =>
 
 export function renderResult(d) {
   const title = d.title || '未命名';
-  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), ...resultBody(d, safeName(title) || 'video'));
+  // notice：平台不给的那部分是什么（比如快手实况只有照片），说在前面免得用户以为是网站漏了
+  const notice = d.notice ? el('p', { class: 'fine' }, d.notice) : null;
+  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), notice, ...resultBody(d, safeName(title) || 'video'));
   const box = $('#result');
   box.replaceChildren(res);
   box.hidden = false;
