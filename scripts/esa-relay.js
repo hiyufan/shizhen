@@ -154,7 +154,7 @@ async function img(url) {
   const upstream = { "User-Agent": UA, Referer: ok.ref, Accept: "image/avif,image/webp,image/*,*/*;q=0.8" };
   let resp;
   try {
-    resp = await fetchFollowing(ok.target, upstream, imgReferer);
+    resp = await fetchFollowing(ok.target, upstream);
   } catch (e) {
     return fetchError(e);
   }
@@ -172,20 +172,36 @@ async function img(url) {
   return new Response(resp.body, { headers });
 }
 
-// 跳转自己跟：每一跳先查白名单再请求。以前让 fetch 自动跟、拿到结果再查，名单外的地址已经被请求过了。
-// 跳出白名单或跳太多次抛 Blocked，错误信息里带上跳去的域名（平台换了调度域名时一眼看出该加哪个）。
-// allow(host) 返回真值才算在白名单里
+// 跳转自己跟，每一跳先查再请求。跳去哪不再按域名白名单卡：起点是签过名的平台地址，跳转是平台 CDN 发的，
+// 外人控制不了；而平台的调度域名说换就换（2026-10-02 抖音 365yg.com 时不时跳到腾讯 *.v.smtcdns.com、
+// 字节 *.bdcgslb.com，不在名单里的四成抖音视频直接 502）。只守底线：http(s)、不进内网 / 本机、最多跳 4 次；
+// 回来的内容类型各接口自己再查。拦下时 502 里带上目标，排查一眼看出是哪
 class Blocked extends Error {}
 
-async function fetchFollowing(target, headers, allow) {
+function privateIPv4(host) {
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(host);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b < 128)
+    || (a === 169 && b === 254) || (a === 172 && b >= 16 && b < 32) || (a === 192 && b === 168);
+}
+
+function hopAllowed(url) {
+  const host = url.hostname.toLowerCase();
+  if (!/^https?:$/.test(url.protocol) || host.startsWith("[")) return false;  // IPv6 字面量一律不跟
+  if (host === "localhost" || /\.(localhost|local|internal)$/.test(host)) return false;
+  return !privateIPv4(host);
+}
+
+async function fetchFollowing(target, headers) {
   let current = target;
   for (let hop = 0; hop < 4; hop++) {
     const resp = await fetch(current, { headers, redirect: "manual" });
     const location = resp.status >= 300 && resp.status < 400 && resp.headers.get("location");
     if (!location) return resp;
-    current = new URL(location, current).href;
-    const host = new URL(current).hostname;
-    if (!/^https?:/i.test(current) || !allow(host)) throw new Blocked("redirect not allowed: " + host);
+    const next = new URL(location, current);
+    if (!hopAllowed(next)) throw new Blocked("redirect not allowed: " + next.protocol + "//" + next.hostname);
+    current = next.href;
   }
   throw new Blocked("too many redirects");
 }
@@ -207,11 +223,6 @@ const MEDIA_REFERERS = [
   ["weibocdn.com", "https://weibo.com/"],
 ];
 const mediaReferer = (host) => (MEDIA_REFERERS.find(([s]) => host === s || host.endsWith("." + s)) || [])[1];
-// 只许当跳转目标、不签名的：抖音的 365yg.com 时不时 302 到调度域名——腾讯云的 xxx.v.smtcdns.com、
-// 字节自己的 xxx.bdcgslb.com（2026-10-02 实测四成抖音视频会跳）。不放行的话抖音视频播不了
-// （退回服务器转发，跨两次太平洋）、下载直接失败
-const MEDIA_REDIRECTS = ["v.smtcdns.com", "bdcgslb.com"];
-const mediaHop = (host) => mediaReferer(host) || MEDIA_REDIRECTS.some((s) => host.endsWith("." + s));
 const MEDIA_TYPES = /^(video\/|audio\/|application\/octet-stream|binary\/octet-stream)/i;
 const PASS_HEADERS = ["content-type", "content-range", "accept-ranges", "last-modified", "etag"];
 
@@ -223,7 +234,7 @@ async function media(request, url) {
   if (range) headers.Range = range;
   let resp;
   try {
-    resp = await fetchFollowing(ok.target, headers, mediaHop);
+    resp = await fetchFollowing(ok.target, headers);
   } catch (e) {
     return fetchError(e);
   }
