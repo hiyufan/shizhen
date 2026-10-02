@@ -1,6 +1,5 @@
 import re
 
-
 from ..utils import create_async_client
 from .base import BaseParser, VideoAuthor, VideoInfo
 

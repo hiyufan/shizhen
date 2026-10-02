@@ -1,7 +1,6 @@
 import dataclasses
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, List
 
 import fake_useragent
 
@@ -115,7 +114,7 @@ class VideoInfo:
     music_url: str = ""
 
     # 图集图片地址列表
-    images: List[ImgInfo] = dataclasses.field(default_factory=list)
+    images: list[ImgInfo] = dataclasses.field(default_factory=list)
 
     # 视频作者信息
     author: VideoAuthor = dataclasses.field(default_factory=VideoAuthor)
@@ -136,13 +135,13 @@ class VideoInfo:
     height: int = 0
 
     # 需要服务端合并下载的清晰度选项
-    formats: List[FormatInfo] = dataclasses.field(default_factory=list)
+    formats: list[FormatInfo] = dataclasses.field(default_factory=list)
 
     # 直链需要附带的请求头（Referer / Cookie 等）
-    video_headers: Dict[str, str] = dataclasses.field(default_factory=dict)
+    video_headers: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
-_ua_pools: Dict[str, fake_useragent.UserAgent] = {}
+_ua_pools: dict[str, fake_useragent.UserAgent] = {}
 
 # fake_useragent 2.x 的系统名区分大小写。写成 "android" / "windows" 不报错，
 # 只是悄悄退回一个固定的 Windows Chrome UA（日志里一行 "suppressed with fallback"）——
@@ -171,7 +170,7 @@ class BaseParser(ABC):
             cache[os] = _random_ua(os)
         return cache[os]
 
-    def get_default_headers(self) -> Dict[str, str]:
+    def get_default_headers(self) -> dict[str, str]:
         return {"User-Agent": self.ua()}
 
     @abstractmethod

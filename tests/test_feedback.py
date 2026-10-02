@@ -52,7 +52,9 @@ def test_ticket_is_off_when_feature_not_configured(fb, monkeypatch):
 def test_tampered_or_expired_ticket_is_rejected(fb, monkeypatch):
     t = ticket()
     body, sig = t.split(".")
-    forged = feedback._b64(json.dumps({"u": "https://evil.example/", "r": "empty", "p": "x", "m": "", "t": int(time.time())}).encode())
+    forged = feedback._b64(
+        json.dumps({"u": "https://evil.example/", "r": "empty", "p": "x", "m": "", "t": int(time.time())}).encode()
+    )
     assert feedback.read_ticket(f"{forged}.{sig}") is None
     assert feedback.read_ticket("garbage") is None
     monkeypatch.setattr(feedback.time, "time", lambda: time.time_ns() / 1e9 + feedback.TICKET_TTL + 60)
@@ -62,7 +64,7 @@ def test_tampered_or_expired_ticket_is_rejected(fb, monkeypatch):
 def test_email_is_encrypted_at_rest(fb):
     blob = feedback.encrypt_email("someone@example.com")
     assert b"someone" not in blob and feedback.decrypt_email(blob) == "someone@example.com"
-    assert feedback.encrypt_email("a@b.cn") != feedback.encrypt_email("a@b.cn")   # 随机 nonce
+    assert feedback.encrypt_email("a@b.cn") != feedback.encrypt_email("a@b.cn")  # 随机 nonce
 
 
 # --------------------------------------------------------------------------- 接口
@@ -128,7 +130,8 @@ class FakeGitHub:
             self.comments.append((n, body["body"]))
             return httpx.Response(201, json={})
         if request.method == "PATCH":
-            self.issues[n].update(body); self.reopened.append(n)
+            self.issues[n].update(body)
+            self.reopened.append(n)
             return httpx.Response(200, json=self.issues[n])
         return httpx.Response(200, json=self.issues[n])
 
@@ -137,6 +140,7 @@ def run(gh, reparse):
     async def go():
         async with httpx.AsyncClient(transport=httpx.MockTransport(gh.handler)) as c:
             await feedback.run_once(reparse, c)
+
     asyncio.run(go())
 
 
@@ -150,7 +154,8 @@ def report(email=""):
 
 def test_one_issue_per_link_and_no_email_in_github(fb):
     gh = FakeGitHub()
-    report("u@example.com"); report()
+    report("u@example.com")
+    report()
     run(gh, ok)
     assert list(gh.issues) == [1] and len(gh.comments) == 1
     issue = gh.issues[1]
@@ -160,7 +165,8 @@ def test_one_issue_per_link_and_no_email_in_github(fb):
 
 def test_closed_issue_is_retested_then_emailed_and_email_deleted(fb):
     gh = FakeGitHub()
-    report("u@example.com"); report()
+    report("u@example.com")
+    report()
     run(gh, ok)
     gh.issues[1].update(state="closed", state_reason="completed")
     run(gh, ok)
@@ -169,7 +175,7 @@ def test_closed_issue_is_retested_then_emailed_and_email_deleted(fb):
     rows = sqlite3.connect(feedback.DB_PATH).execute("SELECT email, outcome FROM reports").fetchall()
     assert rows == [(None, "fixed"), (None, "fixed")]
     run(gh, ok)
-    assert len(fb) == 1   # 不会重复发
+    assert len(fb) == 1  # 不会重复发
 
 
 def test_closed_but_still_failing_is_reopened_without_email(fb):
@@ -203,12 +209,13 @@ def test_emails_are_purged_after_90_days(fb, monkeypatch):
 
 def test_public_issue_hides_link_params_but_keeps_report_id(fb):
     gh = FakeGitHub()
-    t = feedback.read_ticket(feedback.make_ticket("https://www.xiaohongshu.com/explore/abc?xsec_token=SECRET&x=1",
-                                                  "empty", "redbook", "空"))
+    t = feedback.read_ticket(
+        feedback.make_ticket("https://www.xiaohongshu.com/explore/abc?xsec_token=SECRET&x=1", "empty", "redbook", "空")
+    )
     feedback.add_report(t, "u@example.com", "iphash")
     run(gh, ok)
     body = gh.issues[1]["body"]
     assert "SECRET" not in body + gh.issues[1]["title"]
     assert "https://www.xiaohongshu.com/explore/abc" in body and "反馈编号**：1" in body
     full = sqlite3.connect(feedback.DB_PATH).execute("SELECT link FROM reports WHERE id = 1").fetchone()[0]
-    assert "xsec_token=SECRET" in full   # 完整链接留在本机
+    assert "xsec_token=SECRET" in full  # 完整链接留在本机

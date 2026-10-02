@@ -1,15 +1,15 @@
 import asyncio
 import contextlib
-import logging
-import mimetypes
 import dataclasses
 import functools
+import logging
+import mimetypes
 import os
 import re
 import secrets
+import time
 import uuid
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
@@ -17,22 +17,17 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
+from starlette.middleware.gzip import GZipMiddleware
 
-import time
-
-from parse_video_py import VideoSource, parse_video_id, parse_video_share_url
-from parse_video_py import feedback, stats
-from parse_video_py.parser import detect_source
-from parse_video_py.convert import config as cconfig
-from parse_video_py.convert import ffmpeg, jobs, limits, store, tasks, updater
-from parse_video_py.parser.errors import ParseError, classify
-from parse_video_py.convert import net, relay
-from parse_video_py.convert.net import headers_for, is_safe_url_async, safe_filename
-from parse_video_py.utils import extract_url
+from parse_video_py import VideoSource, feedback, parse_video_id, parse_video_share_url, seo, stats
 from parse_video_py import guides as guides_mod
-from parse_video_py import seo
+from parse_video_py.convert import config as cconfig
+from parse_video_py.convert import ffmpeg, jobs, limits, net, relay, store, tasks, updater
+from parse_video_py.convert.net import headers_for, is_safe_url_async, safe_filename
+from parse_video_py.parser import detect_source
+from parse_video_py.parser.errors import ParseError, classify
+from parse_video_py.utils import extract_url
 
 
 def _get_templates_dir() -> str:
@@ -78,11 +73,15 @@ async def _lifespan(_: FastAPI):
         tasks_.append(asyncio.create_task(updater.loop(cconfig.YTDLP_AUTOUPDATE_DAYS)))
     if feedback.enabled():
         # 反馈：同步 GitHub issue、issue 关了先复测再发邮件。复测直接调解析器，不走接口、不进统计
-        tasks_.append(asyncio.create_task(feedback.loop(
-            lambda link: asyncio.wait_for(parse_video_share_url(extract_url(link) or link), 90))))
+        tasks_.append(
+            asyncio.create_task(
+                feedback.loop(lambda link: asyncio.wait_for(parse_video_share_url(extract_url(link) or link), 90))
+            )
+        )
 
     async def _douyin_browser_warmup():
         from .parser.douyin import warmup_browser
+
         with contextlib.suppress(Exception):
             await warmup_browser()
 
@@ -97,6 +96,7 @@ async def _lifespan(_: FastAPI):
         await net.aclose_pool()
         await relay.aclose_shared()
     from .parser.douyin import aclose_browser
+
     with contextlib.suppress(Exception):
         await aclose_browser()
 
@@ -104,7 +104,8 @@ async def _lifespan(_: FastAPI):
 app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 _CSP = (
-    "default-src 'self'; img-src 'self' data: blob:" + (" " + relay.edge_origin() if relay.edge_img_enabled() else "")
+    "default-src 'self'; img-src 'self' data: blob:"
+    + (" " + relay.edge_origin() if relay.edge_img_enabled() else "")
     + "; media-src 'self' blob:; "
     "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self'; "
     "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
@@ -122,15 +123,20 @@ _BOT_UA = re.compile(r"bot|spider|crawl|slurp|fetch|curl|wget|python|http", re.I
 async def _security_headers(request: Request, call_next):
     # 站长测试设备（/test 开过）和服务器自己的请求不计入统计；要在 call_next 之前设，
     # 接口里起的转换任务会继承这个标记
-    if stats_enabled and (stats.ignored_ip(limits.client_ip(request))
-                          or stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE))):
+    if stats_enabled and (
+        stats.ignored_ip(limits.client_ip(request)) or stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE))
+    ):
         stats.mute()
     response = await call_next(request)
     path = request.url.path
     if path.startswith("/static/"):
         # 静态资源带内容版本号，可以长期缓存
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    elif request.method == "GET" and response.headers.get("content-type", "").startswith("text/html") and not path.startswith("/api"):
+    elif (
+        request.method == "GET"
+        and response.headers.get("content-type", "").startswith("text/html")
+        and not path.startswith("/api")
+    ):
         response.headers.setdefault("Cache-Control", "public, max-age=600")
         is_bot = _BOT_UA.search(request.headers.get("user-agent", ""))
         if response.status_code == 200 and stats_enabled and path not in ("/stats", "/test") and not is_bot:
@@ -142,6 +148,7 @@ async def _security_headers(request: Request, call_next):
     if response.headers.get("content-type", "").startswith("text/html"):
         response.headers.setdefault("Content-Security-Policy", _CSP)
     return response
+
 
 # MCP 是上游的可选功能；公开部署建议 PARSE_VIDEO_MCP=0 关掉，少一个暴露面
 mcp = None
@@ -170,12 +177,8 @@ def _build_auth_dependency() -> list[Depends]:
     security = HTTPBasic()
 
     def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-        correct_username = secrets.compare_digest(
-            credentials.username, basic_auth_username
-        )
-        correct_password = secrets.compare_digest(
-            credentials.password, basic_auth_password
-        )
+        correct_username = secrets.compare_digest(credentials.username, basic_auth_username)
+        correct_password = secrets.compare_digest(credentials.password, basic_auth_password)
         if not (correct_username and correct_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -210,7 +213,7 @@ def _asset_version() -> str:
 _ASSET_V = _asset_version()
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _static_url(name: str) -> str:
     """/static/<name>?v=<这个文件的内容哈希>。/static/ 在 nginx 缓存 30 天、浏览器按 immutable
     缓存一年，换了内容（比如重裁字体子集）URL 不变的话，老访客和 nginx 会一直发旧文件。
@@ -237,8 +240,9 @@ def _critical_css() -> str:
 _CRITICAL_CSS = _critical_css()
 
 
-def _common_context(request: Request, *, title: str, description: str, path: str, keywords: str = "",
-                    json_ld: str = "") -> dict:
+def _common_context(
+    request: Request, *, title: str, description: str, path: str, keywords: str = "", json_ld: str = ""
+) -> dict:
     base = _base_url(request)
     return {
         "title": title,
@@ -258,13 +262,21 @@ def _common_context(request: Request, *, title: str, description: str, path: str
 
 def _render_page(request: Request, page: seo.Page):
     base = _base_url(request)
-    ctx = _common_context(request, title=page.title, description=page.description, path=page.path,
-                          keywords=page.keywords, json_ld=seo.json_ld(page, base))
-    ctx.update({
-        "page": page,
-        "faq": page.all_faq,
-        "related_guides": [guides_mod.GUIDE_BY_SLUG[g] for g in page.guides if g in guides_mod.GUIDE_BY_SLUG],
-    })
+    ctx = _common_context(
+        request,
+        title=page.title,
+        description=page.description,
+        path=page.path,
+        keywords=page.keywords,
+        json_ld=seo.json_ld(page, base),
+    )
+    ctx.update(
+        {
+            "page": page,
+            "faq": page.all_faq,
+            "related_guides": [guides_mod.GUIDE_BY_SLUG[g] for g in page.guides if g in guides_mod.GUIDE_BY_SLUG],
+        }
+    )
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
 
@@ -278,9 +290,11 @@ def _render_404(request: Request):
 async def guides_index(request: Request):
     base = _base_url(request)
     ctx = _common_context(
-        request, title="教程：抖音小红书图片实况保存、视频转 GIF 和实况照片 - 拾帧",
+        request,
+        title="教程：抖音小红书图片实况保存、视频转 GIF 和实况照片 - 拾帧",
         description="拾帧教程：小红书实况图保存到 iPhone、抖音图集原图下载、视频转实况照片、视频转 GIF、YouTube 1080p 下载，每篇两分钟照着做。",
-        path="/guides", keywords="小红书实况图保存,抖音图集下载,视频转实况照片,视频转gif教程",
+        path="/guides",
+        keywords="小红书实况图保存,抖音图集下载,视频转实况照片,视频转gif教程",
         json_ld=seo._dump([seo._crumbs(base, (seo.SITE_NAME, "/"), ("教程", "/guides"))]),
     )
     ctx.update({"page": seo.PAGE_BY_SLUG[""], "guides": guides_mod.GUIDES, "guides_nav": True})
@@ -293,15 +307,23 @@ async def guide_page(request: Request, slug: str):
     if guide is None:
         return _render_404(request)
     base = _base_url(request)
-    ctx = _common_context(request, title=guide.title + " - 拾帧", description=guide.description, path=guide.path,
-                          keywords=guide.keywords, json_ld=seo.guide_json_ld(guide, base))
-    ctx.update({
-        "page": seo.PAGE_BY_SLUG.get(guide.tool) or seo.PAGE_BY_SLUG[""],
-        "guide": guide,
-        "tool_path": seo.PAGE_BY_SLUG[guide.tool].path if guide.tool in seo.PAGE_BY_SLUG else "/",
-        "related": [guides_mod.GUIDE_BY_SLUG[r] for r in guide.related if r in guides_mod.GUIDE_BY_SLUG],
-        "guides_nav": True,
-    })
+    ctx = _common_context(
+        request,
+        title=guide.title + " - 拾帧",
+        description=guide.description,
+        path=guide.path,
+        keywords=guide.keywords,
+        json_ld=seo.guide_json_ld(guide, base),
+    )
+    ctx.update(
+        {
+            "page": seo.PAGE_BY_SLUG.get(guide.tool) or seo.PAGE_BY_SLUG[""],
+            "guide": guide,
+            "tool_path": seo.PAGE_BY_SLUG[guide.tool].path if guide.tool in seo.PAGE_BY_SLUG else "/",
+            "related": [guides_mod.GUIDE_BY_SLUG[r] for r in guide.related if r in guides_mod.GUIDE_BY_SLUG],
+            "guides_nav": True,
+        }
+    )
     return templates.TemplateResponse(request=request, name="guide.html", context=ctx)
 
 
@@ -361,25 +383,25 @@ async def video_id_parse(source: VideoSource, video_id: str):
 
 
 class PrepareRequest(BaseModel):
-    url: str = ""                      # 直链
-    page_url: str = ""                 # yt-dlp 站点的页面地址
-    format_spec: str = ""              # yt-dlp -f 表达式（可选）
+    url: str = ""  # 直链
+    page_url: str = ""  # yt-dlp 站点的页面地址
+    format_spec: str = ""  # yt-dlp -f 表达式（可选）
     headers: dict[str, str] = Field(default_factory=dict)
     title: str = ""
-    sig: str = ""                      # 解析结果里给的签名，证明这个地址是我们解析出来的
+    sig: str = ""  # 解析结果里给的签名，证明这个地址是我们解析出来的
 
 
 class ConvertRequest(BaseModel):
     source_id: str
     format: str = Field(pattern="^(gif|livephoto|motionphoto)$")
     start: float = 0.0
-    end: Optional[float] = None
+    end: float | None = None
     fps: int = 12
     width: int = 480
     dither: str = Field(default="bayer", pattern="^(bayer|sierra2_4a|none)$")
     speed: float = 1.0
-    key_time: Optional[float] = None
-    max_bytes: Optional[int] = Field(default=None, ge=100_000, le=50_000_000)   # GIF 目标体积，超了自动降参数
+    key_time: float | None = None
+    max_bytes: int | None = Field(default=None, ge=100_000, le=50_000_000)  # GIF 目标体积，超了自动降参数
 
 
 class FeedbackRequest(BaseModel):
@@ -412,8 +434,7 @@ def _start_job(job_type: str, fn, ip: str, source_id: str | None = None) -> jobs
     """入队并记到该 IP 的配额上；队列满 / 配额满都返回 429 或 503。"""
     limits.jobs_per_ip.acquire(ip)
     try:
-        return jobs.start(job_type, fn, source_id, owner=ip,
-                          on_release=lambda: limits.jobs_per_ip.release(ip))
+        return jobs.start(job_type, fn, source_id, owner=ip, on_release=lambda: limits.jobs_per_ip.release(ip))
     except jobs.QueueFull as err:
         limits.jobs_per_ip.release(ip)
         raise HTTPException(503, str(err), headers={"Retry-After": "30"})
@@ -440,8 +461,13 @@ def _source_or_404(source_id: str) -> store.Source:
 async def api_health():
     """给负载均衡 / 监控用。"""
     return {
-        "ok": True, "jobs": jobs.stats(), "disk_used": store.disk_usage(), "disk_quota": cconfig.DISK_QUOTA_BYTES,
-        "ytdlp": updater.current_version(), "pot": bool(cconfig.POT_URL), "cache": len(_parse_cache),
+        "ok": True,
+        "jobs": jobs.stats(),
+        "disk_used": store.disk_usage(),
+        "disk_quota": cconfig.DISK_QUOTA_BYTES,
+        "ytdlp": updater.current_version(),
+        "pot": bool(cconfig.POT_URL),
+        "cache": len(_parse_cache),
     }
 
 
@@ -499,8 +525,13 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
         return {"code": 400, "msg": "没有找到链接，请粘贴完整的分享内容", "reason": "unsupported"}
     platform = detect_source(share_url).value
     if cached := _cache_get(share_url):
-        stats.record("parse", _ip, source=(cached.get("data") or {}).get("source") or platform,
-                     ok=cached.get("code") == 200, reason="cache")
+        stats.record(
+            "parse",
+            _ip,
+            source=(cached.get("data") or {}).get("source") or platform,
+            ok=cached.get("code") == 200,
+            reason="cache",
+        )
         return cached
     if not await is_safe_url_async(share_url):
         stats.record("parse", _ip, source=platform, ok=False, reason="unsupported")
@@ -528,18 +559,27 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
             imgs = {data.get("cover_url")} | {i.get("url") for i in data["images"]}
             data["edge"] = {u: e for u in imgs if u and (e := relay.edge_img_url(u, ttl))}
         result = {"code": 200, "msg": "解析成功", "data": data}
-    if result["code"] != 200 and (ticket := feedback.make_ticket(share_url, result.get("reason", ""), platform,
-                                                                str(result.get("msg", "")))):
-        result["feedback"] = ticket   # 修得好的失败才有：页面据此显示「反馈这个问题」
+    if result["code"] != 200 and (
+        ticket := feedback.make_ticket(share_url, result.get("reason", ""), platform, str(result.get("msg", "")))
+    ):
+        result["feedback"] = ticket  # 修得好的失败才有：页面据此显示「反馈这个问题」
     if result["code"] != 200:
         # stats 里只存 reason 不存链接，容器一重建原始日志也没了——失败的
         # 解析把链接和原因落一行，之后"看日志排查"才对得上号
         logging.getLogger("uvicorn.error").warning(
             "解析失败 url=%s reason=%s msg=%s",
-            share_url, result.get("reason"), str(result.get("msg", ""))[:160],
+            share_url,
+            result.get("reason"),
+            str(result.get("msg", ""))[:160],
         )
-    stats.record("parse", _ip, source=(result.get("data") or {}).get("source") or platform,
-                 ok=result["code"] == 200, reason=result.get("reason", ""), ms=(time.monotonic() - t0) * 1000)
+    stats.record(
+        "parse",
+        _ip,
+        source=(result.get("data") or {}).get("source") or platform,
+        ok=result["code"] == 200,
+        reason=result.get("reason", ""),
+        ms=(time.monotonic() - t0) * 1000,
+    )
     _cache_put(share_url, result)
     return result
 
@@ -560,8 +600,14 @@ async def api_feedback(req: FeedbackRequest, ip: str = Depends(limits.feedback_l
 
 
 @app.get("/api/proxy", dependencies=_auth_dependency)
-async def api_proxy(request: Request, url: str, filename: str = "", download: int = 0, sig: str = "",
-                    ip: str = Depends(limits.proxy_limit)):
+async def api_proxy(
+    request: Request,
+    url: str,
+    filename: str = "",
+    download: int = 0,
+    sig: str = "",
+    ip: str = Depends(limits.proxy_limit),
+):
     """把第三方直链转发给浏览器：补 Referer/UA，透传 Range，可选加下载头。
 
     只转发带有效签名的地址（即 /api/parse 返回过的），不做开放代理。
@@ -614,7 +660,17 @@ async def api_proxy(request: Request, url: str, filename: str = "", download: in
     passthrough["cache-control"] = "private, max-age=3600"
     if download:
         ctype = passthrough.get("content-type", "")
-        ext = "mp4" if "video" in ctype else "jpg" if "jpeg" in ctype else "png" if "png" in ctype else "webp" if "webp" in ctype else ""
+        ext = (
+            "mp4"
+            if "video" in ctype
+            else "jpg"
+            if "jpeg" in ctype
+            else "png"
+            if "png" in ctype
+            else "webp"
+            if "webp" in ctype
+            else ""
+        )
         name = filename or safe_filename("media", ext)
         if ext and not name.lower().endswith("." + ext) and "." not in name[-5:]:
             name += "." + ext
@@ -657,8 +713,15 @@ async def api_prepare(req: PrepareRequest, ip: str = Depends(limits.job_limit)):
         return {"ready": False, "job": pending.view(), "source_id": sid}
 
     async def fn(job: jobs.Job) -> None:
-        await tasks.fetch_source(job, source_id=sid, url=req.url, headers=req.headers,
-                                 page_url=req.page_url, format_spec=req.format_spec, title=req.title)
+        await tasks.fetch_source(
+            job,
+            source_id=sid,
+            url=req.url,
+            headers=req.headers,
+            page_url=req.page_url,
+            format_spec=req.format_spec,
+            title=req.title,
+        )
 
     job = _start_job("prepare", fn, ip, sid)
     return {"ready": False, "job": job.view(), "source_id": sid}
@@ -684,10 +747,17 @@ async def api_upload(file: UploadFile = File(...), _ip: str = Depends(limits.upl
     if info.duration <= 0 or info.width <= 0:
         dest.unlink(missing_ok=True)
         raise HTTPException(400, "这个文件不是可识别的视频")
-    src = store.put(store.Source(
-        id=sid, path=str(dest), title=Path(file.filename or "video").stem,
-        duration=info.duration, width=info.width, height=info.height, fps=info.fps,
-    ))
+    src = store.put(
+        store.Source(
+            id=sid,
+            path=str(dest),
+            title=Path(file.filename or "video").stem,
+            duration=info.duration,
+            width=info.width,
+            height=info.height,
+            fps=info.fps,
+        )
+    )
     return {"ready": True, "source": src.view()}
 
 
@@ -712,9 +782,19 @@ async def api_convert(req: ConvertRequest, ip: str = Depends(limits.job_limit)):
     src = _source_or_404(req.source_id)
 
     async def fn(job: jobs.Job) -> None:
-        await tasks.convert(job, src=src, fmt=req.format, start=req.start, end=req.end, fps=req.fps,
-                            width=req.width, dither=req.dither, speed=req.speed, key_time=req.key_time,
-                            max_bytes=req.max_bytes)
+        await tasks.convert(
+            job,
+            src=src,
+            fmt=req.format,
+            start=req.start,
+            end=req.end,
+            fps=req.fps,
+            width=req.width,
+            dither=req.dither,
+            speed=req.speed,
+            key_time=req.key_time,
+            max_bytes=req.max_bytes,
+        )
 
     job = _start_job(req.format, fn, ip, src.id)
     return job.view()
@@ -729,8 +809,9 @@ async def api_download(req: DownloadRequest, ip: str = Depends(limits.job_limit)
         raise HTTPException(400, "无效的页面地址")
 
     async def fn(job: jobs.Job) -> None:
-        await tasks.download_for_user(job, page_url=req.page_url, format_spec=req.format_spec,
-                                      title=req.title, ext=req.ext)
+        await tasks.download_for_user(
+            job, page_url=req.page_url, format_spec=req.format_spec, title=req.title, ext=req.ext
+        )
 
     job = _start_job("download", fn, ip)
     return job.view()
@@ -772,8 +853,12 @@ async def api_job_file(job_id: str, inline: int = 0):
         raise HTTPException(404, "结果还没准备好")
     name = job.filename or Path(job.result_path).name
     media_type = {
-        ".gif": "image/gif", ".jpg": "image/jpeg", ".zip": "application/zip",
-        ".mp4": "video/mp4", ".m4a": "audio/mp4", ".webm": "video/webm",
+        ".gif": "image/gif",
+        ".jpg": "image/jpeg",
+        ".zip": "application/zip",
+        ".mp4": "video/mp4",
+        ".m4a": "audio/mp4",
+        ".webm": "video/webm",
     }.get(Path(job.result_path).suffix.lower(), "application/octet-stream")
     if inline:
         return FileResponse(job.result_path, media_type=media_type)
@@ -817,14 +902,19 @@ def _stats_auth(request: Request, token: str = "") -> None:
 def _test_page(request: Request, *, on: bool, error: str = "", set_on: bool = False, set_off: bool = False):
     ctx = _common_context(request, title="测试模式 - 拾帧", description="", path="/test")
     ctx.update({"page": seo.PAGE_BY_SLUG[""], "test_on": on, "test_error": error})
-    response = templates.TemplateResponse(request=request, name="test.html", context=ctx,
-                                          status_code=403 if error else 200,
-                                          headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+    response = templates.TemplateResponse(
+        request=request,
+        name="test.html",
+        context=ctx,
+        status_code=403 if error else 200,
+        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
+    )
     secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
     if set_on:
         year = 365 * 86400
-        response.set_cookie(stats.TEST_COOKIE, stats.test_cookie_value(), max_age=year, httponly=True,
-                            secure=secure, samesite="lax")
+        response.set_cookie(
+            stats.TEST_COOKIE, stats.test_cookie_value(), max_age=year, httponly=True, secure=secure, samesite="lax"
+        )
         response.set_cookie(stats.TEST_FLAG_COOKIE, "1", max_age=year, secure=secure, samesite="lax")
     if set_off:
         response.delete_cookie(stats.TEST_COOKIE)
@@ -858,10 +948,10 @@ async def api_stats(request: Request, range: str = "24h", token: str = "", tz: i
     """按时间分桶的使用量：浏览 / 解析 / 任务 / 下载 / 人数，以及各平台成功率。"""
     _stats_auth(request, token)
     span, step = _STATS_RANGES.get(range, _STATS_RANGES["24h"])
-    tz_offset = max(-14 * 3600, min(14 * 3600, -tz * 60))   # JS 的 getTimezoneOffset 是"UTC 减本地"的分钟数
+    tz_offset = max(-14 * 3600, min(14 * 3600, -tz * 60))  # JS 的 getTimezoneOffset 是"UTC 减本地"的分钟数
     now = time.time()
     since = now - span
-    since -= (since + tz_offset) % step   # 对齐到桶的起点，最左一格才是完整的
+    since -= (since + tz_offset) % step  # 对齐到桶的起点，最左一格才是完整的
     await asyncio.to_thread(stats.flush)
     data = await asyncio.to_thread(stats.summary, since, now, step, tz_offset)
     data["range"] = range
@@ -873,8 +963,12 @@ async def stats_page(request: Request, token: str = ""):
     _stats_auth(request, token)
     ctx = _common_context(request, title="使用统计 - 拾帧", description="", path="/stats")
     ctx.update({"page": seo.PAGE_BY_SLUG[""], "ranges": list(_STATS_RANGES), "token": token})
-    return templates.TemplateResponse(request=request, name="stats.html", context=ctx,
-                                      headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+    return templates.TemplateResponse(
+        request=request,
+        name="stats.html",
+        context=ctx,
+        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
+    )
 
 
 # 放在最后：/{slug} 是兜底路由，不能抢在 /robots.txt /sitemap.xml 前面

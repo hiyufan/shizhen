@@ -15,18 +15,19 @@ def test_first_steps_cost_little_quality():
 
 
 def test_floors_and_user_settings_are_respected():
-    assert tasks._shrink_gif(160, 8, 64, 0.1) == (160, 8, 64)        # 都到底了
+    assert tasks._shrink_gif(160, 8, 64, 0.1) == (160, 8, 64)  # 都到底了
     w, fps, colors = tasks._shrink_gif(320, 5, 256, 0.3)
-    assert fps == 5                                                  # 用户自己设的 5 fps 不会被抬到 8
-    assert tasks._shrink_gif(120, 12, 256, 0.1)[0] == 120            # 宽度也一样
+    assert fps == 5  # 用户自己设的 5 fps 不会被抬到 8
+    assert tasks._shrink_gif(120, 12, 256, 0.1)[0] == 120  # 宽度也一样
 
 
 def _fake_gif(monkeypatch, tmp_path, calls):
     async def make_gif(src, dst, *, start, duration, fps, width, dither, speed, colors, on_progress=None):
         calls.append((width, fps, colors))
         # 粗略模拟：体积 ∝ 宽^1.7 × 帧率 × 时长 × 颜色系数
-        size = int(width ** 1.7 * fps * duration * {256: 1, 128: .81, 64: .65}[colors] * 0.6)
+        size = int(width**1.7 * fps * duration * {256: 1, 128: 0.81, 64: 0.65}[colors] * 0.6)
         Path(dst).write_bytes(b"\0" * size)
+
     monkeypatch.setattr(ffmpeg, "make_gif", make_gif)
     monkeypatch.setattr(tasks.config, "OUTPUTS_DIR", tmp_path)
 

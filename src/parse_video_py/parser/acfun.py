@@ -36,11 +36,7 @@ class AcFun(BaseParser):
 
         # 解析用户信息
         sel = Selector(response.text)
-        uid = (
-            sel.css("div.up-info > a.info-item1::attr(href)")
-            .get(default="")
-            .replace("/upPage/", "")
-        )
+        uid = sel.css("div.up-info > a.info-item1::attr(href)").get(default="").replace("/upPage/", "")
         name = sel.css("div.up-info span.up-name::text").get(default="")
         avatar = sel.css("div.up-info span.up-avatar > img::attr(src)").get(default="")
 

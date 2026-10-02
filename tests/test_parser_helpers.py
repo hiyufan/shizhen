@@ -15,14 +15,16 @@ def test_av_ids_use_numeric_params():
 
 
 def test_dash_formats_only_above_progressive_height():
-    play = {"dash": {
-        "audio": [{"bandwidth": 64_000}, {"bandwidth": 192_000}],
-        "video": [
-            {"width": 1920, "height": 1080, "bandwidth": 2_000_000},
-            {"width": 1920, "height": 1080, "bandwidth": 3_000_000},
-            {"width": 1280, "height": 720, "bandwidth": 1_000_000},
-        ],
-    }}
+    play = {
+        "dash": {
+            "audio": [{"bandwidth": 64_000}, {"bandwidth": 192_000}],
+            "video": [
+                {"width": 1920, "height": 1080, "bandwidth": 2_000_000},
+                {"width": 1920, "height": 1080, "bandwidth": 3_000_000},
+                {"width": 1280, "height": 720, "bandwidth": 1_000_000},
+            ],
+        }
+    }
     fmts = dash_formats(play, duration=100, above=720)
     assert [f.label for f in fmts] == ["1080p", "仅音频"]
     # 同一高度取码率最高的那条，体积 = (视频 + 最好的音频) × 时长
@@ -56,7 +58,7 @@ def test_douyin_browser_note_lives_from_aweme_info():
     a = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/oAD7QVQrR~tplv-dy-aweme-images:q75.jpeg?x-expires=1"
     b = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/ocG9IGDnA~tplv-dy-aweme-images:q75.jpeg?x-expires=1"
     c = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/ooRQAr9Df~tplv-dy-aweme-images:q75.jpeg?x-expires=1"
-    lives = {"ocG9IGDnA": "https://v/b.mp4", "oAD7QVQrR": "https://v/a.mp4"}   # c 没有实况
+    lives = {"ocG9IGDnA": "https://v/b.mp4", "oAD7QVQrR": "https://v/a.mp4"}  # c 没有实况
     imgs = _note_images({"images": [a, b, c], "lives": lives, "live": "https://v/dom.mp4"})
     assert [i.live_photo_url for i in imgs] == ["https://v/a.mp4", "https://v/b.mp4", ""]
     # awemeInfo 说这张没实况就是没有，不拿 DOM 里的视频去凑

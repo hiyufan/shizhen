@@ -1,14 +1,14 @@
-from .acfun import AcFun
 import asyncio
 import logging
 
 from ..utils import current_source
+from .acfun import AcFun
 from .base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo, VideoSource
-from .errors import ParseError, classify
 from .bilibili import BiliBili
 from .cctv import CCTV
 from .doupai import DouPai
 from .douyin import DouYin
+from .errors import ParseError, classify
 from .haokan import HaoKan
 from .huya import HuYa
 from .kuaishou import KuaiShou

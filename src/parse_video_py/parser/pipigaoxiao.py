@@ -1,6 +1,5 @@
 from urllib.parse import urlparse
 
-
 from ..utils import create_async_client
 from .base import BaseParser, VideoInfo
 

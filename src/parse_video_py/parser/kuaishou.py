@@ -149,8 +149,9 @@ class KuaiShou(BaseParser):
             # 同一清晰度常给 avc / hevc 两份，不标出来就是两个一模一样的"720p"
             codec = "H.265" if rep.get("videoCodec") == "hevc" else ""
             label = (f"{short}p" if short else (rep.get("qualityLabel") or "其他")) + (f" {codec}" if codec else "")
-            formats.append(FormatInfo(label=label, url=url, height=short, filesize=int(rep.get("fileSize") or 0),
-                                      codec=codec))
+            formats.append(
+                FormatInfo(label=label, url=url, height=short, filesize=int(rep.get("fileSize") or 0), codec=codec)
+            )
 
         return VideoInfo(
             # 图集作品的 mainMvUrls 是配乐的视频壳，不是作品本身

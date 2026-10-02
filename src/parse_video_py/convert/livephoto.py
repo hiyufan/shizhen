@@ -6,6 +6,7 @@ with `-movflags use_metadata_tags`), the JPEG carries it in the Apple
 MakerNote, tag 0x0011. Android's Motion Photo is a single JPEG with the MP4
 appended and an XMP block that says where the video starts.
 """
+
 from __future__ import annotations
 
 import struct
@@ -64,9 +65,9 @@ def read_jpeg_identifier(jpeg_path: str | Path) -> str | None:
         return None
     count = struct.unpack(">H", note[14:16])[0]
     for i in range(count):
-        tag, typ, n, off = struct.unpack(">HHII", note[16 + 12 * i:28 + 12 * i])
+        tag, typ, n, off = struct.unpack(">HHII", note[16 + 12 * i : 28 + 12 * i])
         if tag == APPLE_CONTENT_IDENTIFIER and typ == 2:
-            return note[off:off + n].rstrip(b"\x00").decode("ascii", "replace")
+            return note[off : off + n].rstrip(b"\x00").decode("ascii", "replace")
     return None
 
 
@@ -112,13 +113,14 @@ def _split_jpeg_header(data: bytes) -> int:
     assert data[:2] == b"\xff\xd8", "not a JPEG"
     pos = 2
     while pos + 4 <= len(data) and data[pos] == 0xFF and data[pos + 1] in (0xE0, 0xE1):
-        seg_len = struct.unpack(">H", data[pos + 2:pos + 4])[0]
+        seg_len = struct.unpack(">H", data[pos + 2 : pos + 4])[0]
         pos += 2 + seg_len
     return pos
 
 
-def write_motion_photo(jpeg_path: str | Path, mp4_path: str | Path, out_path: str | Path,
-                       presentation_us: int = 0) -> None:
+def write_motion_photo(
+    jpeg_path: str | Path, mp4_path: str | Path, out_path: str | Path, presentation_us: int = 0
+) -> None:
     jpeg = Path(jpeg_path).read_bytes()
     video = Path(mp4_path).read_bytes()
     xmp = _XMP_NS + _motion_photo_xmp(len(video), presentation_us)

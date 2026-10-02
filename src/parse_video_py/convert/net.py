@@ -1,4 +1,5 @@
 """代理 / 下载时的请求头、SSRF 防护和链接签名。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -72,9 +73,15 @@ def _ip_is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if ip in _FAKE_IP:
         return False
     # is_site_local (fec0::/10) 只有 IPv6Address 有, IPv4 上取会抛 AttributeError
-    return (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-            or ip.is_multicast or ip.is_unspecified
-            or (isinstance(ip, ipaddress.IPv6Address) and ip.is_site_local))
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+        or (isinstance(ip, ipaddress.IPv6Address) and ip.is_site_local)
+    )
 
 
 def _check_without_dns(url: str) -> tuple[bool | None, str]:
@@ -206,7 +213,7 @@ class _PooledClient(httpx.AsyncClient):
         # 只能构造完再换回来, 否则 Set-Cookie 会在池化客户端上跨请求累积
         self._cookies = _NoCookies()
 
-    async def __aenter__(self) -> "_PooledClient":
+    async def __aenter__(self) -> _PooledClient:
         return self
 
     async def __aexit__(self, *exc: object) -> None:

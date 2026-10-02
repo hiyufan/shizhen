@@ -23,10 +23,7 @@ class Twitter(BaseParser):
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         token = self._get_token(video_id)
-        api_url = (
-            f"https://cdn.syndication.twimg.com/tweet-result?"
-            f"id={video_id}&token={token}"
-        )
+        api_url = f"https://cdn.syndication.twimg.com/tweet-result?id={video_id}&token={token}"
 
         headers = {
             "User-Agent": (
@@ -42,8 +39,10 @@ class Twitter(BaseParser):
 
         json_data = response.json() if response.status_code == 200 else {}
         # 敏感 / 墓碑 / 需要登录的推文 syndication 拿不到, 换 fxtwitter 试一次
-        if not json_data or json_data.get("__typename") == "TweetTombstone" or not (
-            json_data.get("mediaDetails") or json_data.get("video")
+        if (
+            not json_data
+            or json_data.get("__typename") == "TweetTombstone"
+            or not (json_data.get("mediaDetails") or json_data.get("video"))
         ):
             fx = await self._fetch_fxtwitter(video_id)
             if fx:
@@ -194,8 +193,11 @@ class Twitter(BaseParser):
             duration=duration,
             width=width,
             height=height,
-            author=VideoAuthor(uid=str(author.get("id") or ""), name=author.get("name") or author.get("screen_name") or "",
-                               avatar=author.get("avatar_url") or ""),
+            author=VideoAuthor(
+                uid=str(author.get("id") or ""),
+                name=author.get("name") or author.get("screen_name") or "",
+                avatar=author.get("avatar_url") or "",
+            ),
         )
 
     async def _resolve_tco_url(self, tco_url: str) -> str:
@@ -205,12 +207,7 @@ class Twitter(BaseParser):
         async with create_async_client(follow_redirects=False) as client:
             response = await client.get(
                 tco_url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36"
-                    )
-                },
+                headers={"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")},
             )
             # t.co 会返回 301 重定向
             if response.status_code in (301, 302):

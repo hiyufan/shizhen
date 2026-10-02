@@ -10,8 +10,7 @@ from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 _ORIGINAL_IMAGE = "https://ci.xiaohongshu.com/{key}?imageView2/2/w/0/format/jpg/q/90"
 
 _DESKTOP_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 )
 _MOBILE_UA = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
@@ -30,7 +29,7 @@ class RedBook(BaseParser):
       机房 / 边缘 IP 不要求登录。桌面页被要求登录时自动切过来，之后优先走这条。
     """
 
-    _prefer_mobile = False   # 桌面页撞过一次登录墙后就先走手机页
+    _prefer_mobile = False  # 桌面页撞过一次登录墙后就先走手机页
 
     @staticmethod
     def _mobile_first() -> bool:
@@ -42,6 +41,7 @@ class RedBook(BaseParser):
         桌面页——那条路的视频档位更全。
         """
         from ..convert import relay
+
         return relay.enabled() and not os.getenv("PARSE_VIDEO_XHS_COOKIE")
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
@@ -140,7 +140,13 @@ class RedBook(BaseParser):
         stream = ((data.get("video") or {}).get("media") or {}).get("stream") or {}
         h264 = [s for s in stream.get("h264") or [] if s.get("masterUrl")]
         if h264:
-            h264.sort(key=lambda s: ((s.get("width") or 0) * (s.get("height") or 0), s.get("videoBitrate") or s.get("avgBitrate") or 0), reverse=True)
+            h264.sort(
+                key=lambda s: (
+                    (s.get("width") or 0) * (s.get("height") or 0),
+                    s.get("videoBitrate") or s.get("avgBitrate") or 0,
+                ),
+                reverse=True,
+            )
             best = h264[0]
             video_url = best["masterUrl"]
             width, height = best.get("width") or 0, best.get("height") or 0
@@ -151,12 +157,23 @@ class RedBook(BaseParser):
                 if key in seen:
                     continue
                 seen.add(key)
-                formats.append(FormatInfo(label=f"{min(key)}p", url=s["masterUrl"], height=min(key), filesize=int(s.get("size") or 0)))
+                formats.append(
+                    FormatInfo(
+                        label=f"{min(key)}p", url=s["masterUrl"], height=min(key), filesize=int(s.get("size") or 0)
+                    )
+                )
             for s in stream.get("h265") or []:
                 if s.get("masterUrl"):
                     short = min(s.get("width") or 0, s.get("height") or 0)
-                    formats.append(FormatInfo(label=f"{short}p H.265", url=s["masterUrl"], height=short,
-                                              filesize=int(s.get("size") or 0), codec="H.265"))
+                    formats.append(
+                        FormatInfo(
+                            label=f"{short}p H.265",
+                            url=s["masterUrl"],
+                            height=short,
+                            filesize=int(s.get("size") or 0),
+                            codec="H.265",
+                        )
+                    )
                     break
         if not duration:
             duration = float(((data.get("video") or {}).get("capa") or {}).get("duration") or 0)
@@ -178,7 +195,9 @@ class RedBook(BaseParser):
 
         cover = ""
         if image_list:
-            cover = image_list[0].get(image_url_key) or image_list[0].get("urlDefault") or image_list[0].get("url") or ""
+            cover = (
+                image_list[0].get(image_url_key) or image_list[0].get("urlDefault") or image_list[0].get("url") or ""
+            )
         user = data.get("user") or {}
         return VideoInfo(
             video_url=video_url,
@@ -207,8 +226,10 @@ class RedBook(BaseParser):
             return _LoginWall("小红书要求这个出口登录")
         markers = ("验证", "captcha", "verify", "安全", "网络连接异常", "海外")
         if any(m in html[:20000] or m in title_text for m in markers):
-            return ValueError("小红书对服务器所在网络返回了验证页 (被限流)，海外服务器请配置 "
-                              "PARSE_VIDEO_PROXY_CN / PARSE_VIDEO_RELAY_CN 或 PARSE_VIDEO_XHS_COOKIE")
+            return ValueError(
+                "小红书对服务器所在网络返回了验证页 (被限流)，海外服务器请配置 "
+                "PARSE_VIDEO_PROXY_CN / PARSE_VIDEO_RELAY_CN 或 PARSE_VIDEO_XHS_COOKIE"
+            )
         return ValueError(f"小红书返回了意外页面 (标题: {title_text or '无'}，地址: {final_url[:80]})")
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:

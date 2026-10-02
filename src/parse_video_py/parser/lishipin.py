@@ -1,7 +1,6 @@
 import time
 from urllib.parse import urlparse
 
-
 from ..utils import create_async_client
 from .base import BaseParser, VideoInfo
 
@@ -22,9 +21,7 @@ class LiShiPin(BaseParser):
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         now = int(time.time())
-        req_url = (
-            f"https://www.pearvideo.com/videoStatus.jsp?contId={video_id}&mrd={now}"
-        )
+        req_url = f"https://www.pearvideo.com/videoStatus.jsp?contId={video_id}&mrd={now}"
 
         async with create_async_client() as client:
             headers = {

@@ -3,6 +3,7 @@
 每隔 N 天 `pip install -U yt-dlp`；版本真的变了就等到没有任务在跑时重启进程
 （用 os.execv 原地重启，容器 / systemd 都不用管）。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,13 +25,17 @@ def current_version() -> str:
 def _pip_upgrade() -> str:
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "yt-dlp[default]"],
-        check=False, timeout=600,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        check=False,
+        timeout=600,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     # 新版本要看磁盘上的 dist-info, importlib.metadata 有缓存, 另起解释器查
     out = subprocess.run(
         [sys.executable, "-c", "import importlib.metadata as m;print(m.version('yt-dlp'))"],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     return out.stdout.strip() or current_version()
 

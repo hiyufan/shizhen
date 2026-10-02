@@ -13,10 +13,7 @@ class WeiShi(BaseParser):
         return await self.parse_video_id(video_id)
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
-        req_url = (
-            "https://h5.weishi.qq.com/webapp/json/weishi/WSH5GetPlayPage"
-            f"?feedid={video_id}"
-        )
+        req_url = f"https://h5.weishi.qq.com/webapp/json/weishi/WSH5GetPlayPage?feedid={video_id}"
         async with create_async_client() as client:
             response = await client.get(req_url, headers=self.get_default_headers())
             response.raise_for_status()

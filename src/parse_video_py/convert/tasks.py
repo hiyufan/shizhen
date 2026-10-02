@@ -1,20 +1,19 @@
 """后台任务本体：拉取原视频、服务端下载、GIF / 实况转换。"""
+
 from __future__ import annotations
 
 import asyncio
 import datetime as dt
-import math
 import time
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
+from ..utils import proxy_for
 from . import config, ffmpeg, livephoto, relay, store
 from .jobs import Job
 from .net import headers_for, safe_client, safe_filename
-from ..utils import CN_SOURCES, proxy_for
 
 _MERGE_FORMAT = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
 
@@ -42,7 +41,7 @@ def _run_ytdlp_download(job: Job, page_url: str, format_spec: str, out_dir: Path
     """
     import yt_dlp
 
-    result: dict[str, Optional[str]] = {"path": None}
+    result: dict[str, str | None] = {"path": None}
 
     def hook(d: dict) -> None:
         if job.abort:
@@ -111,8 +110,16 @@ async def _download_direct(job: Job, url: str, headers: dict[str, str], dest: Pa
                 raise
 
 
-async def fetch_source(job: Job, *, source_id: str, url: str = "", headers: dict[str, str] | None = None,
-                       page_url: str = "", format_spec: str = "", title: str = "") -> store.Source:
+async def fetch_source(
+    job: Job,
+    *,
+    source_id: str,
+    url: str = "",
+    headers: dict[str, str] | None = None,
+    page_url: str = "",
+    format_spec: str = "",
+    title: str = "",
+) -> store.Source:
     """把原视频拉到本地并探测时长/尺寸，供转换预览使用。"""
     if existing := store.get(source_id):
         job.set(progress=1.0, message="已就绪")
@@ -137,10 +144,17 @@ async def fetch_source(job: Job, *, source_id: str, url: str = "", headers: dict
     info = await ffmpeg.probe(path)
     if info.duration <= 0 or info.width <= 0:
         raise RuntimeError("下载到的文件不是可用的视频")
-    src = store.put(store.Source(
-        id=source_id, path=str(path), title=title, duration=info.duration,
-        width=info.width, height=info.height, fps=info.fps,
-    ))
+    src = store.put(
+        store.Source(
+            id=source_id,
+            path=str(path),
+            title=title,
+            duration=info.duration,
+            width=info.width,
+            height=info.height,
+            fps=info.fps,
+        )
+    )
     job.extra = src.view()
     return src
 
@@ -154,7 +168,7 @@ async def download_for_user(job: Job, *, page_url: str, format_spec: str, title:
     job.filename = safe_filename(title, path.suffix.lstrip(".") or ext, "video")
 
 
-def _clamp_range(src: store.Source, start: float, end: Optional[float], max_len: float) -> tuple[float, float]:
+def _clamp_range(src: store.Source, start: float, end: float | None, max_len: float) -> tuple[float, float]:
     start = max(0.0, min(float(start or 0.0), max(src.duration - 0.1, 0.0)))
     end = src.duration if end is None else float(end)
     end = max(start + 0.1, min(end, src.duration))
@@ -173,7 +187,7 @@ _COLOR_FACTOR = {128: 0.81, 64: 0.65}
 def _shrink_gif(width: int, fps: int, colors: int, ratio: float) -> tuple[int, int, int]:
     """GIF 超了目标体积（ratio = 目标 / 实际）时，按 _GIF_LADDER 的顺序估出下一组参数，
     尽量一次压进去。只往下降：用户自己设得比下限还低的不会被抬高。"""
-    need = ratio * 0.92   # 估算有误差，留点余量，免得刚好卡在线上又多跑一轮
+    need = ratio * 0.92  # 估算有误差，留点余量，免得刚好卡在线上又多跑一轮
     for knob, floor in _GIF_LADDER:
         if need >= 1:
             break
@@ -190,9 +204,20 @@ def _shrink_gif(width: int, fps: int, colors: int, ratio: float) -> tuple[int, i
     return width, fps, colors
 
 
-async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, end: Optional[float] = None,
-                  fps: int = 12, width: int = 480, dither: str = "bayer", speed: float = 1.0,
-                  key_time: Optional[float] = None, max_bytes: Optional[int] = None) -> None:
+async def convert(
+    job: Job,
+    *,
+    src: store.Source,
+    fmt: str,
+    start: float = 0.0,
+    end: float | None = None,
+    fps: int = 12,
+    width: int = 480,
+    dither: str = "bayer",
+    speed: float = 1.0,
+    key_time: float | None = None,
+    max_bytes: int | None = None,
+) -> None:
     config.ensure_dirs()
     out_dir = config.OUTPUTS_DIR
     stem = safe_filename(src.title, "", "clip")[:40]
@@ -215,8 +240,18 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
             async def step(frac: float, base: float = base) -> None:
                 job.set(progress=base + frac * (0.95 - base))
 
-            await ffmpeg.make_gif(src.path, str(out), start=start, duration=dur, fps=fps, width=width,
-                                  dither=dither, speed=speed, colors=colors, on_progress=step)
+            await ffmpeg.make_gif(
+                src.path,
+                str(out),
+                start=start,
+                duration=dur,
+                fps=fps,
+                width=width,
+                dither=dither,
+                speed=speed,
+                colors=colors,
+                on_progress=step,
+            )
             size = out.stat().st_size
             if not max_bytes or size <= max_bytes:
                 break
@@ -226,8 +261,13 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
                 break
             width, fps, colors = nxt
             job.set(message=f"{size / 1e6:.1f} MB 超了，压小一点重做：宽 {width} px、{fps} fps")
-        job.extra = {"width": width, "fps": fps, "colors": colors, "max_bytes": max_bytes,
-                     "fits": None if not max_bytes else size <= max_bytes}
+        job.extra = {
+            "width": width,
+            "fps": fps,
+            "colors": colors,
+            "max_bytes": max_bytes,
+            "fits": None if not max_bytes else size <= max_bytes,
+        }
         job.result_path = str(out)
         job.filename = f"{stem}.gif"
         job.preview = f"/api/jobs/{job.id}/file?inline=1"
@@ -244,7 +284,11 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
         mov = out_dir / f"{job.id}.MOV"
         jpg = out_dir / f"{job.id}.JPG"
         await ffmpeg.encode_segment(
-            src.path, str(mov), start=start, duration=dur, container="mov",
+            src.path,
+            str(mov),
+            start=start,
+            duration=dur,
+            container="mov",
             extra_metadata={
                 "com.apple.quicktime.content.identifier": ident,
                 "creation_time": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -271,8 +315,9 @@ async def convert(job: Job, *, src: store.Source, fmt: str, start: float = 0.0, 
         mp4 = out_dir / f"{job.id}_mp.mp4"
         jpg = out_dir / f"{job.id}_mp.jpg"
         out = out_dir / f"{job.id}_motion.jpg"
-        await ffmpeg.encode_segment(src.path, str(mp4), start=start, duration=dur, container="mp4",
-                                    on_progress=progress)
+        await ffmpeg.encode_segment(
+            src.path, str(mp4), start=start, duration=dur, container="mp4", on_progress=progress
+        )
         job.set(progress=0.9, message="正在合成动态照片")
         await ffmpeg.extract_frame(src.path, str(jpg), at=still_at)
         livephoto.write_jpeg_identifier(jpg, ident, date=now)
@@ -312,8 +357,15 @@ async def _fetch_bytes(url: str, dest: Path, headers: dict[str, str] | None = No
         await _fetch_once(url, dest, headers, limit, via_relay=True)
 
 
-async def _fetch_once(url: str, dest: Path, headers: dict[str, str] | None, limit: int, *,
-                      via_relay: bool = False, connect_timeout: float = 30) -> None:
+async def _fetch_once(
+    url: str,
+    dest: Path,
+    headers: dict[str, str] | None,
+    limit: int,
+    *,
+    via_relay: bool = False,
+    connect_timeout: float = 30,
+) -> None:
     route = {"transport": relay.shared_transport()} if via_relay else {"for_url": url}
     timeout = httpx.Timeout(30, connect=connect_timeout, read=120)
     async with safe_client(follow_redirects=True, timeout=timeout, **route) as client:
@@ -348,7 +400,7 @@ async def pair_live(job: Job, *, items: list[dict], fmt: str, title: str) -> Non
     stem = safe_filename(title, "", "live")[:40]
     work = out_dir / f"{job.id}_work"
     work.mkdir(exist_ok=True)
-    results: list[tuple[Path, Optional[Path]]] = []   # (jpg, mov/None)
+    results: list[tuple[Path, Path | None]] = []  # (jpg, mov/None)
     total = max(1, len(items))
     for i, item in enumerate(items):
         job.set(progress=i / total, message=f"正在处理第 {i + 1}/{total} 张")
@@ -368,8 +420,13 @@ async def pair_live(job: Job, *, items: list[dict], fmt: str, title: str) -> Non
             except RuntimeError:
                 # 少数不是 H.264 的, 重编码一次
                 info = await ffmpeg.probe(vid)
-                await ffmpeg.encode_segment(str(vid), str(mov), start=0, duration=info.duration or 3,
-                                            extra_metadata={"com.apple.quicktime.content.identifier": ident})
+                await ffmpeg.encode_segment(
+                    str(vid),
+                    str(mov),
+                    start=0,
+                    duration=info.duration or 3,
+                    extra_metadata={"com.apple.quicktime.content.identifier": ident},
+                )
             if not livephoto.mov_has_identifier(mov, ident):
                 raise RuntimeError("实况元数据写入失败")
             results.append((jpg, mov))

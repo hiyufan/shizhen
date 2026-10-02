@@ -6,7 +6,7 @@ YouTube / TikTok / Instagram 以及其它没有专用解析器的站点, 统一�
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..convert import config as convert_config
 from ..convert.ffmpeg import ffmpeg_dir
@@ -27,7 +27,7 @@ class YtDlp(BaseParser):
 
     # ------------------------------------------------------------------ helpers
     @staticmethod
-    def _extract(url: str) -> Dict[str, Any]:
+    def _extract(url: str) -> dict[str, Any]:
         import yt_dlp
 
         opts = {
@@ -54,24 +54,24 @@ class YtDlp(BaseParser):
         return info
 
     @classmethod
-    def _to_video_info(cls, info: Dict[str, Any], share_url: str) -> VideoInfo:
-        formats: List[Dict[str, Any]] = [f for f in (info.get("formats") or []) if f.get("url")]
+    def _to_video_info(cls, info: dict[str, Any], share_url: str) -> VideoInfo:
+        formats: list[dict[str, Any]] = [f for f in (info.get("formats") or []) if f.get("url")]
 
-        def is_video(f: Dict[str, Any]) -> bool:
+        def is_video(f: dict[str, Any]) -> bool:
             return f.get("vcodec") not in (None, "none")
 
-        def is_audio(f: Dict[str, Any]) -> bool:
+        def is_audio(f: dict[str, Any]) -> bool:
             return f.get("acodec") not in (None, "none")
 
-        def is_http(f: Dict[str, Any]) -> bool:
+        def is_http(f: dict[str, Any]) -> bool:
             return (f.get("protocol") or "https").startswith("http") and not f.get("manifest_url")
 
         progressive = [f for f in formats if is_video(f) and is_audio(f) and is_http(f)]
         progressive.sort(key=lambda f: ((f.get("ext") == "mp4"), f.get("height") or 0, f.get("tbr") or 0))
-        best_direct: Optional[Dict[str, Any]] = progressive[-1] if progressive else None
+        best_direct: dict[str, Any] | None = progressive[-1] if progressive else None
 
         video_url = ""
-        headers: Dict[str, str] = {}
+        headers: dict[str, str] = {}
         width = height = 0
         if best_direct:
             video_url = best_direct["url"]
@@ -83,7 +83,7 @@ class YtDlp(BaseParser):
             width, height = info.get("width") or 0, info.get("height") or 0
 
         # 更高清晰度: 视频轨最大高度 > 直链高度的, 给出合并选项
-        merged: List[FormatInfo] = []
+        merged: list[FormatInfo] = []
         video_heights = sorted({f.get("height") or 0 for f in formats if is_video(f)}, reverse=True)
         top = video_heights[0] if video_heights else 0
         if top and top > height:
@@ -95,22 +95,27 @@ class YtDlp(BaseParser):
                     continue
                 seen.add(h)
                 approx = max(
-                    ((f.get("filesize") or f.get("filesize_approx") or 0) for f in formats
-                     if is_video(f) and (f.get("height") or 0) == h),
+                    (
+                        (f.get("filesize") or f.get("filesize_approx") or 0)
+                        for f in formats
+                        if is_video(f) and (f.get("height") or 0) == h
+                    ),
                     default=0,
                 )
-                merged.append(FormatInfo(
-                    label=f"{h}p",
-                    format_spec=f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]",
-                    ext="mp4",
-                    height=h,
-                    filesize=int(approx),
-                ))
+                merged.append(
+                    FormatInfo(
+                        label=f"{h}p",
+                        format_spec=f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]",
+                        ext="mp4",
+                        height=h,
+                        filesize=int(approx),
+                    )
+                )
         if any(is_audio(f) and not is_video(f) for f in formats):
             merged.append(FormatInfo(label="仅音频", format_spec="ba[ext=m4a]/ba", ext="m4a", height=0))
 
         # 图片: yt-dlp 把纯图片帖当 thumbnails 或 formats(ext=jpg) 返回
-        images: List[ImgInfo] = []
+        images: list[ImgInfo] = []
         for f in formats:
             if f.get("ext") in ("jpg", "jpeg", "png", "webp") and not is_video(f):
                 images.append(ImgInfo(url=f["url"]))
