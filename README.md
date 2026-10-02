@@ -200,6 +200,8 @@ PARSE_VIDEO_RELAY_TOKEN=<同一个 TOKEN>
 
 再设 `PARSE_VIDEO_EDGE_IMG=1`，国内平台（小红书 / 抖音 / 快手 / B站 / 微博）的图片就由浏览器直接从边缘节点的 `/img` 取，不再走「国内 CDN → 海外服务器 → 国内用户」跨两次太平洋；边缘取不到时自动回退到服务器转发。`/img` 只认服务器签过名、未过期的地址，只转白名单里的图片 CDN、只回 `image/*`，不会变成通用代理。
 
+再设 `PARSE_VIDEO_EDGE_MEDIA=1`，视频和音频（预览、拖进度条、下载、iPhone 存相册）也从边缘节点的 `/media` 取。这部分原来占全站流量的六成，都要跨两次太平洋；边缘播不了时页面自动退回服务器转发。`/media` 同样只认签过名的地址，只转白名单里的音视频 CDN，只回音视频。这部分流量会算在 ESA 上，开之前看一眼套餐额度。服务器到中继走 HTTP/2，一次解析里并发的几个请求共用一条焐热的连接。
+
 局限：中继只是 HTTP 转发，不是真正的代理，yt-dlp 走不了它，所以 B站 只有上游解析器的 480p 直链，1080p 合并下载仍取决于服务器自身出口。
 
 **3. 贴登录 Cookie**
@@ -293,6 +295,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 | `PARSE_VIDEO_PROXY_CN_MEDIA` | `0` | 设 `1` 时视频 / 图片本体的转发也走 `PROXY_CN`（CDN 被 403 时才需要，会吃代理带宽） |
 | `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | 边缘函数中继地址与口令（`scripts/esa-relay.js`） |
 | `PARSE_VIDEO_EDGE_IMG` | `0` | 设 `1` 时国内平台的图片由浏览器直接从中继边缘节点取（需部署带 `/img` 的 `esa-relay.js`） |
+| `PARSE_VIDEO_EDGE_MEDIA` | `0` | 设 `1` 时国内平台的视频 / 音频由浏览器直接从中继边缘节点取（需部署带 `/media` 的 `esa-relay.js`；流量算在 ESA 上） |
 | `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` / `PARSE_VIDEO_DOUYIN_COOKIE` | – | 小红书 / B站 / 抖音 的登录 Cookie 字符串，海外服务器被拦时用；抖音不配也有无痕浏览器兜底，配了图文才有实况视频 |
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | yt-dlp 用的 Netscape 格式 cookies |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | 直接从浏览器读 cookies：`firefox` / `edge` / `chrome` |
