@@ -1,0 +1,16 @@
+# 镜像只需要 pyproject.toml、README.md、LICENSE、main.py 和 src/。其余不进构建上下文：
+# data/ 里有签名密钥、统计和反馈数据库，绝不能进镜像
+data/
+.git/
+.github/
+.codegraph/
+.venv/
+**/__pycache__/
+*.pyc
+fonts/
+docs/
+tests/
+scripts/
+docker-compose*.yml
+Caddyfile
+*.bak*
