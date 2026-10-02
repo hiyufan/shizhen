@@ -337,6 +337,9 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PARSE_VIDEO_STATS_TOKEN` | – | 设了才开始记录；打开 `/stats?token=<它>` 看每小时 / 每天有多少人在用、各平台成功率、失败原因、任务耗时 |
+| `PARSE_VIDEO_STATS_IGNORE_IPS` | – | 不计入统计的 IP（逗号分隔），填服务器自己的公网地址；本机 / 内网地址本来就不计。站长自己的设备打开 `/test` 用统计口令开一次测试模式 |
+| `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | 解析失败反馈：建 issue 的私有仓库、只给它 Issues 读写的 fine-grained token、加密反馈邮箱的 32 字节密钥（base64）。和下面的 SMTP 四样都填了才显示「反馈这个问题」 |
+| `PARSE_VIDEO_SMTP_USER` / `_PASS` / `_HOST` / `_PORT` | – / – / `smtp.qq.com` / `465` | 反馈修好后发通知邮件的发件邮箱和 SMTP 授权码 |
 | `PARSE_VIDEO_STATS_DAYS` | `90` | 明细保留天数 |
 
 数据在 `data/stats.db`（SQLite）。只记事件不记内容：链接不存，IP 经密钥 HMAC 后只留 12 位，能数出人数还原不出是谁。`/api/stats?range=7d&token=…` 直接拿 JSON。

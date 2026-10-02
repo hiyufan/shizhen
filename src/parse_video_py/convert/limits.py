@@ -110,6 +110,7 @@ def _env_int(name: str, default: int) -> int:
 parse_limit = RateLimit("parse", _env_int("PARSE_VIDEO_RL_PARSE", 30), 60)         # 每分钟 30 次解析
 job_limit = RateLimit("job", _env_int("PARSE_VIDEO_RL_JOB", 20), 600)             # 每 10 分钟 20 个任务
 upload_limit = RateLimit("upload", _env_int("PARSE_VIDEO_RL_UPLOAD", 10), 3600)    # 每小时 10 次上传
+feedback_limit = RateLimit("feedback", _env_int("PARSE_VIDEO_RL_FEEDBACK", 5), 3600)  # 每小时 5 次反馈
 proxy_limit = RateLimit("proxy", _env_int("PARSE_VIDEO_RL_PROXY", 240), 60)        # 每分钟 240 次代理请求（含 Range 分段、图文笔记的十几张图）
 proxy_streams = Concurrency("下载", _env_int("PARSE_VIDEO_MAX_STREAMS_PER_IP", 4))
 jobs_per_ip = Concurrency("任务", _env_int("PARSE_VIDEO_MAX_JOBS_PER_IP", 2))
