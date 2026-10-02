@@ -1,8 +1,15 @@
 import dataclasses
+import json
+import re
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Any
 
 import fake_useragent
+import httpx
+
+from ..utils import create_async_client
+from .errors import ParseError
 
 
 class VideoSource(Enum):
@@ -141,6 +148,14 @@ class VideoInfo:
     video_headers: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
+def json_in_html(html: str, pattern: str, what: str) -> Any:
+    """页面里内嵌的 JSON（pattern 的第一个分组）；找不到就是页面结构变了。"""
+    match = re.search(pattern, html, re.S)
+    if not match or not match.group(1).strip():
+        raise ParseError("parse", f"页面里没找到{what}")
+    return json.loads(match.group(1).strip())
+
+
 _ua_pools: dict[str, fake_useragent.UserAgent] = {}
 
 # fake_useragent 2.x 的系统名区分大小写。写成 "android" / "windows" 不报错，
@@ -173,20 +188,36 @@ class BaseParser(ABC):
     def get_default_headers(self) -> dict[str, str]:
         return {"User-Agent": self.ua()}
 
+    # ------------------------------------------------------------------ 请求的公用写法
+
+    async def fetch(
+        self, method: str, url: str, *, headers: dict[str, str] | None = None, follow_redirects: bool = False, **kw
+    ) -> httpx.Response:
+        """发一个请求并检查状态码（4xx / 5xx 抛 httpx.HTTPStatusError）。headers 不给就用默认的随机 UA。"""
+        async with create_async_client(follow_redirects=follow_redirects) as client:
+            response = await client.request(method, url, headers=headers or self.get_default_headers(), **kw)
+        response.raise_for_status()
+        return response
+
+    async def get_json(self, url: str, **kw) -> Any:
+        return (await self.fetch("GET", url, **kw)).json()
+
+    async def post_json(self, url: str, **kw) -> Any:
+        return (await self.fetch("POST", url, **kw)).json()
+
+    async def get_text(self, url: str, **kw) -> str:
+        return (await self.fetch("GET", url, **kw)).text
+
+    async def redirect_target(self, url: str, headers: dict[str, str] | None = None) -> str:
+        """短链跳到哪儿（不跟跳转，读 Location）；没跳转返回空串。"""
+        async with create_async_client(follow_redirects=False) as client:
+            response = await client.get(url, headers=headers or self.get_default_headers())
+        return response.headers.get("location", "")
+
     @abstractmethod
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        """
-        解析分享链接, 获取视频信息
-        :param share_url: 视频分享链接
-        :return: VideoInfo
-        """
-        pass
+        """解析分享链接，获取视频信息"""
 
     @abstractmethod
     async def parse_video_id(self, video_id: str) -> VideoInfo:
-        """
-        解析视频ID, 获取视频信息
-        :param video_id: 视频ID
-        :return:
-        """
-        pass
+        """按作品 ID 解析，获取视频信息"""
