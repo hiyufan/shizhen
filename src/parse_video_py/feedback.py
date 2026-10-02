@@ -194,7 +194,13 @@ class GitHub:
         return r.json() if r.content else {}
 
     async def create_issue(self, title: str, body: str, labels: list[str]) -> int:
-        return (await self.call("POST", "/issues", json={"title": title, "body": body, "labels": labels}))["number"]
+        try:
+            return (await self.call("POST", "/issues", json={"title": title, "body": body, "labels": labels}))["number"]
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code != 422:
+                raise
+            # 标签建不了（令牌没权限 / 名字不合规）就不带标签建，issue 本身最要紧
+            return (await self.call("POST", "/issues", json={"title": title, "body": body}))["number"]
 
     async def comment(self, number: int, body: str) -> None:
         await self.call("POST", f"/issues/{number}/comments", json={"body": body})
@@ -211,18 +217,27 @@ def _when(ts: float) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
 
 
+def public_link(url: str) -> str:
+    """issue 在公开仓库里：链接去掉 ? 和 # 后面的部分（小红书这类分享链接里带着访问令牌）。
+    完整链接只在本机 feedback.db 里，按反馈编号取。"""
+    return re.split(r"[?#]", url, maxsplit=1)[0]
+
+
 def _issue_text(row: sqlite3.Row) -> tuple[str, str, list[str]]:
     plat = PLATFORM_NAMES.get(row["platform"], row["platform"] or "未知平台")
     reason = REASON_NAMES.get(row["reason"], row["reason"])
-    short = re.sub(r"^https?://", "", row["link"])[:60]
+    link = public_link(row["link"])
+    trimmed = link != row["link"]
     body = (
         f"**平台**：{plat}\n**原因**：{reason}（`{row['reason']}`）\n**报错**：{row['msg'] or '无'}\n"
-        f"**链接**：{row['link']}\n**反馈时间**：{_when(row['created'])}\n\n"
-        f"在线复现：{SITE_URL}/?url={quote(row['link'], safe='')}\n\n"
-        "修好后在提交信息里写 `Fixes " + REPO + "#<编号>`，issue 关闭后服务器会先自己再解析一次，"
-        "确认能用了才给留了邮箱的人发邮件。"
+        f"**链接**：{link}" + ("（参数已去掉，完整链接在服务器上）" if trimmed else "") + "\n"
+        f"**反馈编号**：{row['id']}（服务器 `data/feedback.db` 里按编号查完整链接）\n"
+        f"**反馈时间**：{_when(row['created'])}\n\n"
+        + ("" if trimmed else f"在线复现：{SITE_URL}/?url={quote(link, safe='')}\n\n")
+        + "这条 issue 由 ynvan.com 用户在解析失败后反馈自动创建。修好后提交信息里写 `Fixes #<编号>`；"
+        "issue 关闭后服务器会先自己再解析一次，确认能用了才给留了邮箱的人发邮件（邮箱不在这里，只加密存在服务器上）。"
     )
-    return f"[{plat}] {reason}：{short}", body, [plat, reason]
+    return f"[{plat}] {reason}：{re.sub(r'^https?://', '', link)[:60]}", body, ["用户反馈", plat, reason]
 
 
 async def _sync_issues(gh: GitHub) -> None:
