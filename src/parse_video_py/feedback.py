@@ -302,7 +302,7 @@ def _issue_text(row: sqlite3.Row) -> tuple[str, str, list[str]]:
         f"**链接**：{link}" + ("（参数已去掉，完整链接在服务器上）" if trimmed else "") + "\n"
         f"**反馈编号**：{row['id']}（服务器 `data/feedback.db` 里按编号查完整链接）\n"
         f"**反馈时间**：{_when(row['created'])}\n\n"
-        + ("" if trimmed else f"在线复现：{SITE_URL}/?url={quote(link, safe='')}\n\n")
+        + ("" if trimmed else f"在线复现：{SITE_URL}/?url={quote(link, safe='')}&src=issue\n\n")
         + "这条 issue 由 ynvan.com 用户在解析失败后反馈自动创建。修好后提交信息里写 `Fixes #<编号>`；"
         "issue 关闭后服务器会先自己再解析一次，确认能用了才给留了邮箱的人发邮件（邮箱不在这里，只加密存在服务器上）。"
     )
