@@ -156,9 +156,8 @@ async function img(url) {
   try {
     resp = await fetchFollowing(ok.target, upstream, imgReferer);
   } catch (e) {
-    return new Response("fetch failed", { status: 502 });
+    return fetchError(e);
   }
-  if (!resp) return new Response("redirect not allowed", { status: 502 });
   const ctype = resp.headers.get("content-type") || "";
   if (!resp.ok || !ctype.startsWith("image/")) return new Response("upstream " + resp.status, { status: 502 });
   const headers = {
@@ -174,7 +173,10 @@ async function img(url) {
 }
 
 // 跳转自己跟：每一跳先查白名单再请求。以前让 fetch 自动跟、拿到结果再查，名单外的地址已经被请求过了。
-// 跳出白名单或跳太多次返回 null。allow(host) 返回真值才算在白名单里
+// 跳出白名单或跳太多次抛 Blocked，错误信息里带上跳去的域名（平台换了调度域名时一眼看出该加哪个）。
+// allow(host) 返回真值才算在白名单里
+class Blocked extends Error {}
+
 async function fetchFollowing(target, headers, allow) {
   let current = target;
   for (let hop = 0; hop < 4; hop++) {
@@ -182,10 +184,13 @@ async function fetchFollowing(target, headers, allow) {
     const location = resp.status >= 300 && resp.status < 400 && resp.headers.get("location");
     if (!location) return resp;
     current = new URL(location, current).href;
-    if (!/^https?:/i.test(current) || !allow(new URL(current).hostname)) return null;
+    const host = new URL(current).hostname;
+    if (!/^https?:/i.test(current) || !allow(host)) throw new Blocked("redirect not allowed: " + host);
   }
-  return null;
+  throw new Blocked("too many redirects");
 }
+
+const fetchError = (e) => new Response(e instanceof Blocked ? e.message : "fetch failed", { status: 502 });
 
 // /media?url=&e=&s=[&dl=1&name=]  浏览器直接从这里看 / 下载国内平台的视频和音频：以前要「国内 CDN → 海外服务器 →
 // 国内用户」跨两次太平洋，视频是全站流量的六成。只接受签过名的地址、只转白名单里的音视频 CDN、只回音视频，
@@ -202,6 +207,11 @@ const MEDIA_REFERERS = [
   ["weibocdn.com", "https://weibo.com/"],
 ];
 const mediaReferer = (host) => (MEDIA_REFERERS.find(([s]) => host === s || host.endsWith("." + s)) || [])[1];
+// 只许当跳转目标、不签名的：抖音的 365yg.com 时不时 302 到调度域名——腾讯云的 xxx.v.smtcdns.com、
+// 字节自己的 xxx.bdcgslb.com（2026-10-02 实测四成抖音视频会跳）。不放行的话抖音视频播不了
+// （退回服务器转发，跨两次太平洋）、下载直接失败
+const MEDIA_REDIRECTS = ["v.smtcdns.com", "bdcgslb.com"];
+const mediaHop = (host) => mediaReferer(host) || MEDIA_REDIRECTS.some((s) => host.endsWith("." + s));
 const MEDIA_TYPES = /^(video\/|audio\/|application\/octet-stream|binary\/octet-stream)/i;
 const PASS_HEADERS = ["content-type", "content-range", "accept-ranges", "last-modified", "etag"];
 
@@ -213,11 +223,10 @@ async function media(request, url) {
   if (range) headers.Range = range;
   let resp;
   try {
-    resp = await fetchFollowing(ok.target, headers, mediaReferer);
+    resp = await fetchFollowing(ok.target, headers, mediaHop);
   } catch (e) {
-    return new Response("fetch failed", { status: 502 });
+    return fetchError(e);
   }
-  if (!resp) return new Response("redirect not allowed", { status: 502 });
   if (![200, 206].includes(resp.status) || !MEDIA_TYPES.test(resp.headers.get("content-type") || "")) {
     return new Response("upstream " + resp.status, { status: 502 });
   }
