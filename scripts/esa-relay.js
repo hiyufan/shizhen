@@ -2,7 +2,8 @@
  * 阿里云 ESA 边缘函数 / 边缘 Pages 函数：给拾帧当"国内出口"。
  *
  * 一个文件两个用途：
- *   /probe?xhs=<小红书分享链接>   探测：这个边缘节点的出口 IP、B站 API 状态、小红书页面是否有笔记数据
+ *   /probe?token=<TOKEN>&xhs=<小红书分享链接>
+ *                                  探测：这个边缘节点的出口 IP、B站 API 状态、小红书页面是否有笔记数据（要带口令）
  *   /relay?url=<目标地址>          中继：拾帧把国内平台的解析请求发到这里，由边缘节点代为访问
  *   /img?url=&e=&s=                图片：浏览器直接从国内边缘节点取国内平台的图（拾帧设 PARSE_VIDEO_EDGE_IMG=1 才会用）
  *
@@ -35,8 +36,13 @@ async function handle(request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith("/relay")) return relay(request, url);
   if (url.pathname.endsWith("/img")) return img(url);
-  // 其它路径（含根路径）都当探测用，直接打开函数地址就能看结果
-  return probe(url);
+  // 探测要带口令。以前任何路径都当探测：爬虫扫一次就让出口 IP 去打一次 B站 API（B站 风控的正是这个 IP），
+  // 出口 IP 也公开了，?xhs= 还能让边缘节点替任何人抓任意网址
+  if (url.pathname.endsWith("/probe")) {
+    if (!sameString(url.searchParams.get("token") || "", TOKEN)) return new Response("forbidden", { status: 403 });
+    return probe(url);
+  }
+  return new Response("not found", { status: 404 });
 }
 
 // UTF-8 安全的 base64
@@ -95,9 +101,11 @@ const IMG_REFERERS = [
 
 const imgReferer = (host) => (IMG_REFERERS.find(([s]) => host === s || host.endsWith("." + s)) || [])[1];
 
+let hmacKey; // 导入一次留着用，不必每张图都 importKey
+
 async function hmacHex(message) {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(TOKEN), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+  hmacKey ||= crypto.subtle.importKey("raw", new TextEncoder().encode(TOKEN), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", await hmacKey, new TextEncoder().encode(message)));
   return Array.from(mac, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -120,18 +128,35 @@ async function img(url) {
 
   let resp;
   try {
-    resp = await fetch(target, { headers: { "User-Agent": UA, Referer: ref, Accept: "image/avif,image/webp,image/*,*/*;q=0.8" } });
+    resp = await fetchImage(target, ref);
   } catch (e) {
     return new Response("fetch failed", { status: 502 });
   }
+  if (!resp) return new Response("redirect not allowed", { status: 502 });
   const ctype = resp.headers.get("content-type") || "";
-  // 跳转之后也得还在白名单里
-  let finalOk = true;
-  try { finalOk = !resp.url || !!imgReferer(new URL(resp.url).hostname); } catch (e) {}
-  if (!resp.ok || !ctype.startsWith("image/") || !finalOk) return new Response("upstream " + resp.status, { status: 502 });
+  if (!resp.ok || !ctype.startsWith("image/")) return new Response("upstream " + resp.status, { status: 502 });
   const headers = { "content-type": ctype, "cache-control": "public, max-age=86400", "x-content-type-options": "nosniff" };
-  if (resp.headers.get("content-length")) headers["content-length"] = resp.headers.get("content-length");
+  // fetch 会自动解压：上游带了 content-encoding 时它的长度是压缩后的，和正文对不上，浏览器会截断或一直等
+  const len = resp.headers.get("content-length");
+  if (len && !resp.headers.get("content-encoding")) headers["content-length"] = len;
   return new Response(resp.body, { headers });
+}
+
+// 跳转自己跟：每一跳先查白名单再请求。以前让 fetch 自动跟、拿到结果再查，名单外的地址已经被请求过了。
+// 跳出白名单或跳太多次返回 null
+async function fetchImage(target, ref) {
+  let current = target;
+  for (let hop = 0; hop < 4; hop++) {
+    const resp = await fetch(current, {
+      headers: { "User-Agent": UA, Referer: ref, Accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
+      redirect: "manual",
+    });
+    const location = resp.status >= 300 && resp.status < 400 && resp.headers.get("location");
+    if (!location) return resp;
+    current = new URL(location, current).href;
+    if (!/^https?:/i.test(current) || !imgReferer(new URL(current).hostname)) return null;
+  }
+  return null;
 }
 
 async function probe(url) {

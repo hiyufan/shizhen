@@ -73,10 +73,14 @@ def cn_media_cdn(url: str) -> str:
 
 
 def edge_img_url(url: str, ttl: int) -> str | None:
-    """白名单里的图片 CDN 才给边缘地址, 签名带过期时间, 过期后边缘节点拒绝。"""
+    """白名单里的图片 CDN 才给边缘地址, 签名带过期时间, 过期后边缘节点拒绝。
+
+    过期时间取到整点再加 ttl（至少还有 ttl 秒）：同一张图一小时内地址不变, 浏览器缓存才用得上。
+    以前按秒算, 每次解析出来的地址都不一样, 重新解析同一条作品图片要全部重新下载。
+    """
     if not is_cn_image(url):
         return None
-    exp = int(time.time()) + ttl
+    exp = (int(time.time()) // 3600 + 1) * 3600 + ttl
     sig = hmac.new(RELAY_TOKEN.encode(), f"img\n{exp}\n{url}".encode(), hashlib.sha256).hexdigest()[:32]
     return str(httpx.URL(RELAY_URL[: -len("/relay")] + "/img", params={"url": url, "e": exp, "s": sig}))
 
