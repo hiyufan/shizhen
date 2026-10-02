@@ -1,5 +1,12 @@
 """快手落地页 INIT_STATE → VideoInfo：视频、多图图集、单图作品。数据按真实页面裁剪，不碰网络。"""
 
+import asyncio
+
+import httpx
+import pytest
+
+from parse_video_py.parser import kuaishou
+from parse_video_py.parser.errors import ParseError
 from parse_video_py.parser.kuaishou import KuaiShou
 
 
@@ -88,3 +95,74 @@ def test_web_and_landing_links_are_routed_to_kuaishou_by_photo_id():
         assert _PHOTO_ID.search(url).group(1) == pid, url
     assert detect_source("https://v.kuaishou.com/JSZcf5hc") == VideoSource.KuaiShou
     assert _PHOTO_ID.search("https://www.kuaishou.com/new-reco") is None
+
+
+class _Redirects:
+    """假客户端：按地址回放 302；记下请求过的地址。"""
+
+    def __init__(self, hops, seen):
+        self.hops, self.seen = hops, seen
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def get(self, url, **kw):
+        self.seen.append(url)
+        location = self.hops.get(url)
+        status = 302 if location else 200
+        return httpx.Response(
+            status, headers={"location": location} if location else {}, request=httpx.Request("GET", url)
+        )
+
+
+def _resolve(monkeypatch, url, hops):
+    seen = []
+    monkeypatch.setattr(kuaishou, "create_async_client", lambda **kw: _Redirects(hops, seen))
+    return asyncio.run(KuaiShou()._photo_id(url, {})), seen
+
+
+def test_web_short_link_is_followed_to_the_photo_id(monkeypatch):
+    hops = {
+        "https://www.kuaishou.com/f/X-abc": "https://www.kuaishou.com/short-video/3x7ryeb59738de4?fid=1",
+    }
+    photo_id, seen = _resolve(monkeypatch, "https://www.kuaishou.com/f/X-abc", hops)
+    assert photo_id == "3x7ryeb59738de4" and seen == ["https://www.kuaishou.com/f/X-abc"]
+
+
+def test_relative_and_multi_hop_redirects(monkeypatch):
+    hops = {
+        "https://www.kuaishou.com/f/X-abc": "/s/abc",
+        "https://www.kuaishou.com/s/abc": "https://v.m.chenzhongtech.com/fw/photo/3xabcdefghij?x=1",
+    }
+    assert _resolve(monkeypatch, "https://www.kuaishou.com/f/X-abc", hops)[0] == "3xabcdefghij"
+
+
+def test_link_with_photo_id_needs_no_request(monkeypatch):
+    photo_id, seen = _resolve(monkeypatch, "https://www.kuaishou.com/short-video/3xabcdefghij", {})
+    assert photo_id == "3xabcdefghij" and seen == []
+
+
+def test_expired_short_link_says_so(monkeypatch):
+    hops = {"https://www.kuaishou.com/f/X-old": "https://kuaishou.com/"}
+    with pytest.raises(ParseError) as exc:
+        _resolve(monkeypatch, "https://www.kuaishou.com/f/X-old", hops)
+    assert exc.value.reason == "deleted"
+
+
+def test_profile_link_is_unsupported_without_following(monkeypatch):
+    seen = []
+    monkeypatch.setattr(kuaishou, "create_async_client", lambda **kw: _Redirects({}, seen))
+    with pytest.raises(ParseError) as exc:
+        asyncio.run(KuaiShou()._photo_id("https://www.kuaishou.com/profile/3xuser", {}))
+    assert exc.value.reason == "unsupported" and seen == []
+
+
+def test_short_link_that_lands_elsewhere_is_reported_for_fixing(monkeypatch):
+    # 跳到了既不是作品页也不是首页的地方：多半是快手改了跳转，归到「解析出错」，用户能反馈
+    hops = {"https://www.kuaishou.com/f/X-new": "https://www.kuaishou.com/some-new-page/abc"}
+    with pytest.raises(ParseError) as exc:
+        _resolve(monkeypatch, "https://www.kuaishou.com/f/X-new", hops)
+    assert exc.value.reason == "parse"
