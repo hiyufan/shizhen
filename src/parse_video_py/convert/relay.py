@@ -51,6 +51,32 @@ def edge_img_enabled() -> bool:
     return EDGE_IMG and enabled() and RELAY_URL.endswith("/relay")
 
 
+# 视频 / 音频也让浏览器直接找国内边缘节点（/media）：以前经服务器转发，国内 CDN -> 海外 -> 国内跨两次太平洋，
+# 是全站流量的六成。同样默认关：esa-relay.js 要先部署带 /media 的新版
+EDGE_MEDIA = os.environ.get("PARSE_VIDEO_EDGE_MEDIA", "0") == "1"
+
+# 和 esa-relay.js 的 MEDIA_REFERERS 保持一致
+_EDGE_MEDIA_HOSTS = (
+    "douyinvod.com",
+    "365yg.com",
+    "zjcdn.com",
+    "douyinstatic.com",
+    "xhscdn.com",
+    "xiaohongshu.com",
+    "kwimgs.com",
+    "kwaicdn.com",
+    "ndcimgs.com",
+    "yximgs.com",
+    "bilivideo.com",
+    "bilivideo.cn",
+    "weibocdn.com",
+)
+
+
+def edge_media_enabled() -> bool:
+    return EDGE_MEDIA and enabled() and RELAY_URL.endswith("/relay")
+
+
 def edge_origin() -> str:
     """给 CSP img-src 用。"""
     u = httpx.URL(RELAY_URL)
@@ -76,17 +102,25 @@ def cn_media_cdn(url: str) -> str:
     return _cdn_of(url, _RELAY_MEDIA_HOSTS)
 
 
-def edge_img_url(url: str, ttl: int) -> str | None:
-    """白名单里的图片 CDN 才给边缘地址, 签名带过期时间, 过期后边缘节点拒绝。
+def _edge_url(kind: str, url: str, ttl: int) -> str:
+    """签名带过期时间, 过期后边缘节点拒绝。kind 是边缘的路径（img / media），也写进签名里，图片的签名拿不去取视频。
 
-    过期时间取到整点再加 ttl（至少还有 ttl 秒）：同一张图一小时内地址不变, 浏览器缓存才用得上。
+    过期时间取到整点再加 ttl（至少还有 ttl 秒）：同一个文件一小时内地址不变, 浏览器缓存才用得上。
     以前按秒算, 每次解析出来的地址都不一样, 重新解析同一条作品图片要全部重新下载。
     """
-    if not is_cn_image(url):
-        return None
     exp = (int(time.time()) // 3600 + 1) * 3600 + ttl
-    sig = hmac.new(RELAY_TOKEN.encode(), f"img\n{exp}\n{url}".encode(), hashlib.sha256).hexdigest()[:32]
-    return str(httpx.URL(RELAY_URL[: -len("/relay")] + "/img", params={"url": url, "e": exp, "s": sig}))
+    sig = hmac.new(RELAY_TOKEN.encode(), f"{kind}\n{exp}\n{url}".encode(), hashlib.sha256).hexdigest()[:32]
+    return str(httpx.URL(f"{RELAY_URL[: -len('/relay')]}/{kind}", params={"url": url, "e": exp, "s": sig}))
+
+
+def edge_img_url(url: str, ttl: int) -> str | None:
+    """白名单里的图片 CDN 才给边缘地址。"""
+    return _edge_url("img", url, ttl) if is_cn_image(url) else None
+
+
+def edge_media_url(url: str, ttl: int) -> str | None:
+    """白名单里的音视频 CDN 才给边缘地址。下载时页面在后面加 &dl=1&name=<文件名>（不在签名里，边缘会清洗）。"""
+    return _edge_url("media", url, ttl) if _cdn_of(url, _EDGE_MEDIA_HOSTS) else None
 
 
 class RelayTransport(httpx.AsyncBaseTransport):
@@ -95,9 +129,12 @@ class RelayTransport(httpx.AsyncBaseTransport):
         self.token = token
         # 中继地址是固定的一个域名, 连接留着重复用。httpx 默认 keepalive 只保 5 秒,
         # 解析请求零零散散地来, 5 秒一过连接就没了, 每次都要重做 DNS+TCP+TLS(实测 642ms)
+        # HTTP/2：一次解析里并发的几个请求（B站 一次 2 个）共用这一条连接。HTTP/1.1 时第二个请求只能
+        # 另开一条，保活只焐着第一条，第二条每次都是冷的：跨洋 TCP+TLS 握手，B站 解析多 1~2 秒（2026-10 实测）
         self._client = httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=False,
+            http2=True,
             limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=300.0),
         )
 
