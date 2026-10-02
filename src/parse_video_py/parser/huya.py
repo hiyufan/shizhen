@@ -1,46 +1,31 @@
 import re
 
-from ..utils import create_async_client
 from .base import BaseParser, VideoAuthor, VideoInfo
+from .errors import ParseError
+
+_VIDEO_ID = re.compile(r"/(\d+)\.html")
 
 
 class HuYa(BaseParser):
-    """
-    虎牙
-    """
+    """虎牙"""
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        re_pattern = r"\/(\d+).html"
-        re_result = re.search(re_pattern, share_url)
-
-        if not re_result:
-            raise Exception("parse video_id from share url fail")
-
-        video_id = re_result.group(1)
-        return await self.parse_video_id(video_id)
+        match = _VIDEO_ID.search(share_url)
+        if not match:
+            raise ParseError("unsupported", "链接里没有虎牙视频 ID")
+        return await self.parse_video_id(match.group(1))
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
-        req_url = f"https://liveapi.huya.com/moment/getMomentContent?videoId={video_id}"
-        async with create_async_client() as client:
-            headers = {
-                "User-Agent": self.ua("windows"),
-                "Referer": "https://v.huya.com/",
-            }
-            response = await client.get(req_url, headers=headers)
-            response.raise_for_status()
-
-        json_data = response.json()
-        data = json_data["data"]["moment"]["videoInfo"]
-        if data["uid"] == 0:
-            raise Exception("video not found")
-
+        body = await self.get_json(
+            f"https://liveapi.huya.com/moment/getMomentContent?videoId={video_id}",
+            headers={"User-Agent": self.ua("windows"), "Referer": "https://v.huya.com/"},
+        )
+        video = body["data"]["moment"]["videoInfo"]
+        if video["uid"] == 0:
+            raise ParseError("deleted", "虎牙返回空视频")
         return VideoInfo(
-            video_url=data["definitions"][0]["url"],
-            cover_url=data["videoCover"],
-            title=data["videoTitle"],
-            author=VideoAuthor(
-                uid=str(data["uid"]),
-                name=data["actorNick"],
-                avatar=data["actorAvatarUrl"],
-            ),
+            video_url=video["definitions"][0]["url"],
+            cover_url=video["videoCover"],
+            title=video["videoTitle"],
+            author=VideoAuthor(uid=str(video["uid"]), name=video["actorNick"], avatar=video["actorAvatarUrl"]),
         )
