@@ -64,7 +64,11 @@ def _is_html(response: Response) -> bool:
 
 
 def _excluded_from_stats(request: Request) -> bool:
-    """站长测试设备（/test 开过）和服务器自己的请求不计入统计。"""
+    """不计入统计的：站长测试设备（/test 开过）、服务器自己的请求，以及从 GitHub issue 里
+    「在线复现」点进来的（src=issue）——issue 是公开的，通知邮件的链接扫描、爬虫都会打开它，
+    2026-10-02 一条测试反馈就这样被不认识的 IP 打开了 4 次，统计里快手成功率直接成了 0。"""
+    if request.query_params.get("src") == "issue":
+        return True
     return stats.ignored_ip(limits.client_ip(request)) or stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE))
 
 
