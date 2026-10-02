@@ -42,6 +42,9 @@
 </head>
 <body{% block body_class %}{% endblock %}>
 <div class="progress" id="progress" aria-hidden="true"></div>
+{# 站长开了 /test 的浏览器：左下角标一下，免得忘了自己在测试模式里（判断在服务端，这个 cookie 只管显示） #}
+<a class="test-badge" id="test-badge" href="/test" hidden>测试模式 · 不计入统计</a>
+<script>try { if (/(^|;\s*)sz_t=1/.test(document.cookie)) document.getElementById('test-badge').hidden = false; } catch (_) {}</script>
 
 <nav class="nav">
   <a class="brand" href="/" aria-label="拾帧 首页">
