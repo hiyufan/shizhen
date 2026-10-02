@@ -98,6 +98,25 @@ def record(kind: str, ip: str, *, source: str = "", ok: bool = True, reason: str
         _buf.append(row)
 
 
+# 同一个人同一个文件，这么久之内只算一次下载
+DOWNLOAD_DEDUPE_SECONDS = 600
+_recent_downloads: dict[tuple[str, str], float] = {}
+
+
+def record_download(ip: str, url: str, *, source: str = "") -> None:
+    """下载器（IDM 之类）会把一个文件切成几十段并发拉，断了还重试，每段都记的话
+    1 次下载能记成 30 次（2026-10-02 一个 1GB 的抖音视频就是这样）。这里按 IP + 地址去重。"""
+    now = time.monotonic()
+    with _lock:
+        if now - _recent_downloads.get((ip, url), -DOWNLOAD_DEDUPE_SECONDS) < DOWNLOAD_DEDUPE_SECONDS:
+            return
+        if len(_recent_downloads) > 1000:  # 顺手清掉过期的，别越攒越多
+            for key in [k for k, t in _recent_downloads.items() if now - t >= DOWNLOAD_DEDUPE_SECONDS]:
+                del _recent_downloads[key]
+        _recent_downloads[(ip, url)] = now
+    record("download", ip, source=source)
+
+
 def flush() -> int:
     with _lock:
         rows, _buf[:] = list(_buf), []

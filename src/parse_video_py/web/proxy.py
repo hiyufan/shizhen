@@ -118,7 +118,7 @@ async def api_proxy(
     headers = _response_headers(resp)
     if download:
         headers["content-disposition"] = _attachment(filename, headers.get("content-type", ""))
-        stats.record("download", ip, source=_cdn_name(url))
+        stats.record_download(ip, url, source=_cdn_name(url))
     return StreamingResponse(_relay_body(resp, slot), status_code=resp.status_code, headers=headers)
 
 
@@ -132,5 +132,5 @@ async def api_download_hit(hit: DownloadHit, ip: str = Depends(limits.proxy_limi
     """视频 / 音频从国内边缘节点下载时不经过这台服务器，页面单独报一声，使用统计里的「下载」才不会少。
     只认解析结果里签过名的地址，别人随便刷也只能刷到自己解析过的东西。"""
     if net.verify(hit.url, hit.sig):
-        stats.record("download", ip, source=_cdn_name(hit.url))
+        stats.record_download(ip, hit.url, source=_cdn_name(hit.url))
     return {"ok": True}
