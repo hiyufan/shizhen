@@ -21,6 +21,7 @@ from parse_video_py.parser.base import FormatInfo, ImgInfo, VideoAuthor, VideoIn
 from parse_video_py.parser.errors import ParseError
 from parse_video_py.web import limits
 from parse_video_py.web import parse as parse_api
+from parse_video_py.web import proxy as proxy_api
 
 SHARE = "https://v.douyin.com/abc123/"
 
@@ -74,6 +75,7 @@ def client(monkeypatch):
     parse_api.cache.clear()
     for rl in (limits.parse_limit, limits.proxy_limit, limits.job_limit):
         monkeypatch.setattr(rl, "_buckets", {})
+    monkeypatch.setattr(stats, "_recent_downloads", {})
     # 不进 with 块就不跑 lifespan：不起清理任务，也不预热抖音的 Chromium
     return TestClient(web.app)
 
@@ -257,3 +259,25 @@ def test_download_hit_counts_only_signed_urls(client, recorded):
     client.post("/api/download-hit", json={"url": url, "sig": "bad"})
     client.post("/api/download-hit", json={"url": url, "sig": net.sign(url)})
     assert recorded == [("download", {"source": "douyinvod.com"})]
+
+
+def test_segmented_download_counts_once(client, recorded, monkeypatch):
+    # 下载器把一个文件切成多段 Range 请求，每段都带 download=1：只算一次下载
+    async def upstream(url, headers):
+        return httpx.Response(206, stream=httpx.ByteStream(b"x"), headers={"content-type": "video/mp4"})
+
+    async def always_safe(url):
+        return True
+
+    monkeypatch.setattr(proxy_api, "_open_upstream", upstream)
+    monkeypatch.setattr(proxy_api, "is_safe_url_async", always_safe)
+    url = "https://v3-web.douyinvod.com/play/1.mp4"
+    params = {"url": url, "sig": net.sign(url), "download": 1}
+    for start in (0, 1 << 20, 2 << 20):
+        assert client.get("/api/proxy", params=params, headers={"range": f"bytes={start}-"}).status_code == 206
+    client.post("/api/download-hit", json={"url": url, "sig": net.sign(url)})
+    assert recorded == [("download", {"source": "douyinvod.com"})]
+    # 换一个文件照常算
+    other = "https://v3-web.douyinvod.com/play/2.mp4"
+    client.post("/api/download-hit", json={"url": other, "sig": net.sign(other)})
+    assert len(recorded) == 2
