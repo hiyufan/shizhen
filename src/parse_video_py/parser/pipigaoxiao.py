@@ -41,9 +41,8 @@ class PiPiGaoXiao(BaseParser):
         video_url = data["videos"][str(img_id)]["url"]
         cover_url = f"https://file.ippzone.com/img/view/id/{img_id}"
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=video_url,
             cover_url=cover_url,
             title=data["content"],
         )
-        return video_info

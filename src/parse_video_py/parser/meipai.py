@@ -23,7 +23,7 @@ class MeiPai(BaseParser):
         video_bs64 = sel.css("#shareMediaBtn::attr(data-video)").get(default="")
         video_url = self.parse_video_bs64(video_bs64)
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=video_url,
             cover_url=sel.css("#detailVideo img::attr(src)").get(default=""),
             title=sel.css(".detail-cover-title::text").get(default="").strip(),
@@ -33,7 +33,6 @@ class MeiPai(BaseParser):
                 avatar="https:" + sel.css(".detail-avatar::attr(src)").get(default=""),
             ),
         )
-        return video_info
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         req_url = f"https://www.meipai.com/video/{video_id}"
@@ -46,8 +45,7 @@ class MeiPai(BaseParser):
         p_val = self.get_pos(d_val, dec_val["tail"])
         kk_val = self.sub_str(d_val, p_val)
         decode_bs64 = base64.b64decode(kk_val)
-        video_url = "https:" + decode_bs64.decode("utf-8")
-        return video_url
+        return "https:" + decode_bs64.decode("utf-8")
 
     def get_hex(self, s: str) -> dict[str, str]:
         hex_val = s[:4]

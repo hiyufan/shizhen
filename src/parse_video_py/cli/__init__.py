@@ -1,5 +1,7 @@
 """parse-video-py CLI 工具"""
 
+from importlib import metadata
+
 import typer
 
 app = typer.Typer(
@@ -17,7 +19,7 @@ def main():
 @app.command()
 def version():
     """显示版本信息"""
-    typer.echo("parse-video-py 0.0.3")
+    typer.echo(f"parse-video-py {metadata.version('parse-video-py')}")
 
 
 @app.command()
@@ -42,11 +44,8 @@ def serve(
     try:
         import uvicorn
     except ImportError:
-        typer.echo(
-            "错误: uvicorn 未安装。请使用 parse-video-py[web] 安装 Web 服务依赖",
-            err=True,
-        )
-        raise typer.Exit(code=1)
+        typer.echo("错误: uvicorn 未安装。请使用 parse-video-py[web] 安装 Web 服务依赖", err=True)
+        raise typer.Exit(code=1) from None
     uvicorn.run(
         "parse_video_py.web:app",
         host=host,

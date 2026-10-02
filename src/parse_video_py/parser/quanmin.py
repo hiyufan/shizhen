@@ -1,5 +1,4 @@
-from parse_video_py.utils import create_async_client, get_val_from_url_by_query_key
-
+from ..utils import create_async_client, get_val_from_url_by_query_key
 from .base import BaseParser, VideoAuthor, VideoInfo
 
 
@@ -35,7 +34,7 @@ class QuanMin(BaseParser):
         if len(video_title) == 0:
             video_title = data["shareInfo"]["title"]
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=data["meta"]["video_info"]["clarityUrl"][1]["url"],
             cover_url=data["meta"]["image"],
             title=video_title,
@@ -45,4 +44,3 @@ class QuanMin(BaseParser):
                 avatar=data["author"]["icon"],
             ),
         )
-        return video_info

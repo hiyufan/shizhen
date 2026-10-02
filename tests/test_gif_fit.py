@@ -35,7 +35,7 @@ def _fake_gif(monkeypatch, tmp_path, calls):
 def _run(duration, **kw):
     src = store.Source(id="s", path="/x.mp4", title="t", duration=duration, width=1280, height=720)
     job = jobs.Job(id="j", type="gif")
-    asyncio.run(tasks.convert(job, src=src, fmt="gif", **kw))
+    asyncio.run(tasks.convert(job, src=src, fmt="gif", opts=tasks.ConvertOptions(**kw)))
     return job, Path(job.result_path).stat().st_size
 
 

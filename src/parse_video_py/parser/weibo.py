@@ -50,7 +50,7 @@ class WeiBo(BaseParser):
             _, first_mp4_url = next(iter(data["urls"].items()))
             video_url = f"https:{first_mp4_url}"
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=video_url,
             cover_url="https:" + data["cover_image"],
             title=data["title"],
@@ -60,7 +60,6 @@ class WeiBo(BaseParser):
                 avatar="https:" + data["avatar"],
             ),
         )
-        return video_info
 
     async def parse_post_url(self, post_id: str, original_url: str) -> VideoInfo:
         """
@@ -121,7 +120,7 @@ class WeiBo(BaseParser):
             if large_pic_url:
                 images.append(ImgInfo(url=large_pic_url))
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url="",  # Regular posts don't have videos
             cover_url="",
             title=self._clean_text(title),
@@ -131,7 +130,6 @@ class WeiBo(BaseParser):
                 avatar=author_avatar,
             ),
         )
-        return video_info
 
     async def _parse_html_page(self, html_content: str) -> VideoInfo:
         """
@@ -169,7 +167,7 @@ class WeiBo(BaseParser):
             if large_pic_url:
                 images.append(ImgInfo(url=large_pic_url))
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url="",  # Regular posts don't have videos
             cover_url="",
             title=self._clean_text(title),
@@ -179,7 +177,6 @@ class WeiBo(BaseParser):
                 avatar=author_avatar,
             ),
         )
-        return video_info
 
     def _clean_text(self, text: str) -> str:
         """

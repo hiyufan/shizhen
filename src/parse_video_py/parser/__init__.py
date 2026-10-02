@@ -3,7 +3,7 @@ import logging
 
 from ..utils import current_source
 from .acfun import AcFun
-from .base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo, VideoSource
+from .base import VideoInfo, VideoSource
 from .bilibili import BiliBili
 from .cctv import CCTV
 from .doupai import DouPai
@@ -204,34 +204,29 @@ def detect_source(share_url: str) -> VideoSource:
     return VideoSource.YtDlp
 
 
-async def parse_video_share_url(share_url: str) -> VideoInfo:
-    """
-    解析分享链接, 获取视频信息; 失败时抛 ParseError (带 reason)
-    :param share_url: 视频分享链接
-    :return:
-    """
-    source = detect_source(share_url)
-    url_parser = video_source_info_mapping[source]["parser"]
-    if not url_parser:
-        raise ValueError(f"source {source} has no video parser")
+async def _run_parser(source: VideoSource, share_url: str) -> VideoInfo:
+    parser = video_source_info_mapping[source]["parser"]()
+    if source not in _FALLBACK_TO_YTDLP:
+        return await parser.parse_share_url(share_url)
+    try:
+        return await parser.parse_share_url(share_url)
+    except Exception as exc:  # noqa: BLE001
+        # 内容删了 / 链接不对：换 yt-dlp 也是一样的结果，别让用户多等几秒
+        if classify(exc).reason in ("deleted", "unsupported"):
+            raise
+        extra = await _ytdlp_extra(share_url)
+        if extra is None or not (extra.formats or extra.video_url):
+            raise
+        extra.source = source.value
+        return extra
 
-    _obj = url_parser()
+
+async def parse_video_share_url(share_url: str) -> VideoInfo:
+    """解析分享链接，获取视频信息；失败时抛 ParseError（带 reason）。"""
+    source = detect_source(share_url)
     token = current_source.set(source.value)
     try:
-        if source in _FALLBACK_TO_YTDLP:
-            try:
-                video_info = await _obj.parse_share_url(share_url)
-            except Exception as exc:  # noqa: BLE001
-                # 内容删了 / 链接不对：换 yt-dlp 也是一样的结果，别让用户多等几秒
-                if classify(exc).reason in ("deleted", "unsupported"):
-                    raise
-                extra = await _ytdlp_extra(share_url)
-                if extra is None or not (extra.formats or extra.video_url):
-                    raise
-                video_info = extra
-                video_info.source = source.value
-        else:
-            video_info = await _obj.parse_share_url(share_url)
+        video_info = await _run_parser(source, share_url)
     except Exception as exc:  # noqa: BLE001 - 统一归类
         err = classify(exc)
         if err.reason == "parse" and not isinstance(exc, ParseError):
@@ -241,31 +236,15 @@ async def parse_video_share_url(share_url: str) -> VideoInfo:
         raise err from exc
     finally:
         current_source.reset(token)
-    if not video_info.source:
-        video_info.source = source.value
-    if not video_info.page_url:
-        video_info.page_url = share_url
-    if not video_info.video_url and not video_info.images and not video_info.music_url and not video_info.formats:
+    video_info.source = video_info.source or source.value
+    video_info.page_url = video_info.page_url or share_url
+    if not (video_info.video_url or video_info.images or video_info.music_url or video_info.formats):
         raise ParseError("empty")
-
     return video_info
 
 
 async def parse_video_id(source: VideoSource, video_id: str) -> VideoInfo:
-    """
-    解析视频ID, 获取视频信息
-    :param source: 视频来源
-    :param video_id: 视频id
-    :return:
-    """
+    """按平台 + 作品 ID 解析（上游的老接口）。"""
     if not video_id or not source:
         raise ValueError("video_id or source is empty")
-
-    id_parser = video_source_info_mapping[source]["parser"]
-    if not id_parser:
-        raise ValueError(f"source {source} has no video parser")
-
-    _obj = id_parser()
-    video_info = await _obj.parse_video_id(video_id)
-
-    return video_info
+    return await video_source_info_mapping[source]["parser"]().parse_video_id(video_id)

@@ -26,7 +26,7 @@ class ZuiYou(BaseParser):
         data = json_data["data"]["post"]
         video_key = str(data["imgs"][0]["id"])
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=data["videos"][video_key]["url"],
             cover_url="",
             title=data["content"],
@@ -36,4 +36,3 @@ class ZuiYou(BaseParser):
                 avatar=data["member"]["avatar_urls"]["origin"]["urls"][0],
             ),
         )
-        return video_info

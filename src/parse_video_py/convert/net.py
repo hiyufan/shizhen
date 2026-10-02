@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import hashlib
 import hmac
 import ipaddress
@@ -16,6 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from ..utils import is_cn_url
 from . import config
 
 # 各家 CDN 直链需要带的 Referer，缺了会 403
@@ -169,17 +171,13 @@ async def _ssrf_request_hook(request: httpx.Request) -> None:
         raise UnsafeURL(f"blocked: {request.url.host}", request=request)
 
 
-_CN_REFERERS = ("bilibili", "xiaohongshu", "douyin", "kuaishou", "weibo", "pipix", "ixigua", "acfun")
-
-
 def proxy_for_url(url: str) -> str | None:
     """拉 CDN 直链（视频 / 图片本体）时选代理。
 
     默认不走 PARSE_VIDEO_PROXY_CN：国内平台的 CDN 对海外 IP 一般放行，而视频流量大，
     别把家里宽带 / 小 VPS 的国内出口占满。确实被 CDN 403 时设 PARSE_VIDEO_PROXY_CN_MEDIA=1。
     """
-    ref = referer_for(url) or ""
-    cn = any(k in ref for k in _CN_REFERERS)
+    cn = is_cn_url(referer_for(url) or "")
     if cn and os.environ.get("PARSE_VIDEO_PROXY_CN") and os.environ.get("PARSE_VIDEO_PROXY_CN_MEDIA", "0") == "1":
         return os.environ["PARSE_VIDEO_PROXY_CN"]
     return os.environ.get("PARSE_VIDEO_PROXY") or None
@@ -240,9 +238,8 @@ def safe_client(for_url: str = "", **kwargs) -> httpx.AsyncClient:
     """
     hooks = kwargs.pop("event_hooks", {}) or {}
     hooks.setdefault("request", []).append(_ssrf_request_hook)
-    if for_url and "proxy" not in kwargs:
-        if proxy := proxy_for_url(for_url):
-            kwargs["proxy"] = proxy
+    if for_url and "proxy" not in kwargs and (proxy := proxy_for_url(for_url)):
+        kwargs["proxy"] = proxy
 
     # 带了池化管不了的参数(比如自定义 event_hooks), 就退回一次性客户端
     if hooks.get("request", []) != [_ssrf_request_hook] or set(kwargs) - _POOLABLE:
@@ -282,27 +279,22 @@ async def aclose_pool() -> None:
 
 # ------------------------------------------------------------------ 链接签名: 代理只转发我们自己解析出来的地址
 
-_SECRET: bytes | None = None
 
-
-def _secret() -> bytes:
-    global _SECRET
-    if _SECRET:
-        return _SECRET
-    env = os.environ.get("PARSE_VIDEO_SECRET")
-    if env:
-        _SECRET = env.encode()
-        return _SECRET
+@functools.cache
+def secret_key() -> bytes:
+    """签名用的密钥：PARSE_VIDEO_SECRET，没配就用 data/secret.key（第一次用时生成）。
+    链接签名、统计里的 IP 摘要、反馈凭证都从它派生。"""
+    if env := os.environ.get("PARSE_VIDEO_SECRET"):
+        return env.encode()
     config.ensure_dirs()
     key_file = config.DATA_DIR / "secret.key"
     if not key_file.exists():
         key_file.write_text(secrets.token_hex(32), encoding="utf-8")
-    _SECRET = key_file.read_text(encoding="utf-8").strip().encode()
-    return _SECRET
+    return key_file.read_text(encoding="utf-8").strip().encode()
 
 
 def sign(url: str) -> str:
-    return hmac.new(_secret(), url.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+    return hmac.new(secret_key(), url.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
 
 
 def verify(url: str, sig: str | None) -> bool:

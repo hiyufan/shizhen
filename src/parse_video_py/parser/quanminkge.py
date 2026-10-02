@@ -1,8 +1,7 @@
 import json
 import re
 
-from parse_video_py.utils import create_async_client, get_val_from_url_by_query_key
-
+from ..utils import create_async_client, get_val_from_url_by_query_key
 from .base import BaseParser, VideoAuthor, VideoInfo
 
 
@@ -34,7 +33,7 @@ class QuanMinKGe(BaseParser):
         json_data = json.loads(json_text)
         data = json_data["detail"]
 
-        video_info = VideoInfo(
+        return VideoInfo(
             video_url=data["playurl_video"],
             cover_url=data["cover"],
             title=data["content"],
@@ -44,4 +43,3 @@ class QuanMinKGe(BaseParser):
                 avatar=data["avatar"],
             ),
         )
-        return video_info

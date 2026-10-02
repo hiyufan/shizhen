@@ -11,8 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from parse_video_py import feedback, web
-from parse_video_py.convert import limits
 from parse_video_py.parser.errors import ParseError
+from parse_video_py.web import limits
+from parse_video_py.web import parse as parse_api
 
 LINK = "https://v.kuaishou.com/n86DkRPN"
 
@@ -72,7 +73,7 @@ def test_email_is_encrypted_at_rest(fb):
 
 @pytest.fixture
 def client(fb, monkeypatch):
-    web._parse_cache.clear()
+    parse_api.cache.clear()
     monkeypatch.setattr(limits.parse_limit, "_buckets", {})
 
     async def fail(url):
@@ -81,8 +82,8 @@ def client(fb, monkeypatch):
     async def always_safe(url):
         return True
 
-    monkeypatch.setattr(web, "parse_video_share_url", fail)
-    monkeypatch.setattr(web, "is_safe_url_async", always_safe)
+    monkeypatch.setattr(parse_api, "parse_video_share_url", fail)
+    monkeypatch.setattr(parse_api, "is_safe_url_async", always_safe)
     return TestClient(web.app)
 
 
