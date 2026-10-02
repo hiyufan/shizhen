@@ -40,3 +40,19 @@ def test_plain_video_is_unchanged():
         "coverUrls": [{"url": COVER}], "duration": 12000,
     }))
     assert info.video_url == "https://v.kwaicdn.com/1.mp4" and info.images == [] and info.music_url == ""
+
+
+def test_web_and_landing_links_are_routed_to_kuaishou_by_photo_id():
+
+    from parse_video_py.parser import VideoSource, detect_source
+    from parse_video_py.parser.kuaishou import _PHOTO_ID
+
+    pid = "3x7ryeb59738de4"
+    for url in (f"https://www.kuaishou.com/short-video/{pid}?authorId=x",
+                f"https://live.kuaishou.com/u/mayang9yc9/{pid}",
+                f"https://c.kuaishou.com/fw/photo/{pid}?fid=1&cc=share_copylink",
+                f"https://v.m.chenzhongtech.com/fw/long-video/{pid}"):
+        assert detect_source(url) == VideoSource.KuaiShou, url
+        assert _PHOTO_ID.search(url).group(1) == pid, url
+    assert detect_source("https://v.kuaishou.com/JSZcf5hc") == VideoSource.KuaiShou
+    assert _PHOTO_ID.search("https://www.kuaishou.com/new-reco") is None
