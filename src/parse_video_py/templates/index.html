@@ -268,12 +268,12 @@ const PHOTOS = IOS && (() => {
   try { return !!navigator.canShare && navigator.canShare({ files: [new File([new Uint8Array(1)], 'a.jpg', { type: 'image/jpeg' })] }); }
   catch (_) { return false; }
 })();
-// iPhone 上实况的出路：视频存相册后用视频转实况的 App 转一下；有 Mac 的话 zip 拖进「照片」
+// iPhone 上实况的出路：视频存相册后用剪映（大多数人装着）或视频转实况的 App 转一下；有 Mac 的话 zip 拖进「照片」
 const LIVE_APP = 'https://apps.apple.com/cn/app/id6738693561';   // 一键实况：免费，只做视频转实况
 // 三行小字：先说是 iOS 的限制（不然用户以为是网站做得不行），再给两条出路。btn / zip 是本处按钮上的叫法
 const IPHONE_LIVE_HINT = (btn, zip = '实况包') => el('div', { class: 'fine' },
   el('p', {}, el('b', {}, '受 iOS 限制，网页无法直接把会动的实况存进相册'), '，只有 App 能写。'),
-  el('p', {}, '做法：先点「' + btn + '」，再用', el('a', { href: LIVE_APP, target: '_blank', rel: 'noopener' }, '「一键实况」'), '这类 App 把视频转成实况。'),
+  el('p', {}, '做法：先点「' + btn + '」，再用剪映或', el('a', { href: LIVE_APP, target: '_blank', rel: 'noopener' }, '「一键实况」'), '把视频转成实况。'),
   el('p', {}, '有 Mac：下载' + zip + '，把 JPG 和 MOV 一起拖进「照片」App 就是实况，开了 iCloud 照片会同步到 iPhone。'));
 const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov' };
 
@@ -818,7 +818,7 @@ function buildConverter(conv, src, format) {
     optGif.hidden = key !== 'gif';
     optLive.hidden = key === 'gif';
     liveHint.innerHTML = key === 'livephoto'
-      ? (PHOTOS ? '最长 10 秒。iPhone 上网页存不成实况：生成后把这段视频存到相册，再用视频转实况 App 转一下；或者下载 zip 拖进 Mac 的「照片」。'
+      ? (PHOTOS ? '最长 10 秒。iPhone 上网页存不成实况：生成后把这段视频存到相册，再用剪映或视频转实况 App 转一下；或者下载 zip 拖进 Mac 的「照片」。'
         : '会得到一个 zip，里面是配对好的 JPG + MOV（最长 10 秒）。把两个文件一起拖进 Mac 的「照片」App 就是实况，开了 iCloud 照片会同步到 iPhone。')
       : '会得到一张内嵌视频的 JPG（最长 10 秒）。保存到安卓相册就会显示为动态照片。';
     setRange(state.start, Math.min(state.end, state.start + LIMITS[key]), 'start');
