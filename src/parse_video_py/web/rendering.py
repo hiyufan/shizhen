@@ -36,6 +36,45 @@ def static_url(name: str) -> str:
 templates.env.globals["static_url"] = static_url
 
 
+# --------------------------------------------------------------------------- 前端脚本
+# static/js/ 下是浏览器原生 ES 模块，模块之间用相对路径 import（'./dom.js'）。相对路径没法各带
+# 各的 ?v=，所以整个目录按内容哈希换一个路径前缀：/js/<版本>/app.js 里 import './dom.js'
+# 解析出来就是 /js/<版本>/dom.js。改了任何一个文件版本号都会变，浏览器和 nginx 不会拿旧缓存。
+
+JS_DIR = STATIC_DIR / "js"
+_JS_IMPORT = re.compile(r"""^import\s[^;]*?\sfrom\s+['"]\./([\w-]+\.js)['"]""", re.M)
+
+
+@functools.cache
+def js_version() -> str:
+    digest = hashlib.sha1()
+    for path in sorted(JS_DIR.glob("*.js")):
+        digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    return digest.hexdigest()[:10]
+
+
+def js_url(name: str) -> str:
+    return f"/js/{js_version()}/{name}"
+
+
+@functools.cache
+def js_preloads(entry: str) -> tuple[str, ...]:
+    """入口模块直接和间接 import 的所有模块。页面上 <link rel="modulepreload"> 一次列全，
+    浏览器并行下载，不用等一层层解析 import（跨境一次往返几百毫秒）。"""
+    seen: list[str] = []
+    pending = [entry]
+    while pending:
+        name = pending.pop()
+        for dep in _JS_IMPORT.findall((JS_DIR / name).read_text(encoding="utf-8")):
+            if dep not in seen and dep != entry:
+                seen.append(dep)
+                pending.append(dep)
+    return tuple(js_url(name) for name in sorted(seen))
+
+
+templates.env.globals.update(js_url=js_url, js_preloads=js_preloads)
+
+
 def _critical_css() -> str:
     """fonts.css + site.css 原文，内联进 <head>：省掉首屏两个渲染阻塞请求。
     跨境访问一次 RTT 就是几百毫秒，且 @font-face 随 HTML 到达后 woff2 才能开始
