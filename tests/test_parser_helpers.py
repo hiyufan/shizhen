@@ -2,6 +2,7 @@
 
 import json
 
+from parse_video_py.parser import VideoSource, detect_source
 from parse_video_py.parser.bilibili import dash_formats, guest_params, id_param
 from parse_video_py.parser.douyin import _looks_like_note, _note_images
 
@@ -45,6 +46,22 @@ def test_guest_params_shape():
     inter = json.loads(p["dm_img_inter"])
     assert set(inter) == {"ds", "wh", "of"}
     assert " " not in p["dm_img_inter"], "B 站要紧凑 JSON"
+
+
+def test_detect_source_matches_host_not_substring():
+    # 以前在整个链接里找子串：pinterest.com / reddit.com 里有 "t.co"，pipix.com 里有 "x.com"
+    assert detect_source("https://www.pinterest.com/pin/123") == VideoSource.YtDlp
+    assert detect_source("https://www.reddit.com/r/a/comments/1") == VideoSource.YtDlp
+    assert detect_source("https://www.youtube.com/watch?v=1&ref=t.co") == VideoSource.YtDlp
+    assert detect_source("https://h5.pipix.com/item/1") == VideoSource.PiPiXia
+    assert detect_source("https://example.com/?u=https://v.douyin.com/x/") == VideoSource.YtDlp
+    # 本身和子域名都认，大小写不敏感
+    assert detect_source("https://t.co/abc") == VideoSource.Twitter
+    assert detect_source("https://X.com/a/status/1") == VideoSource.Twitter
+    assert detect_source("https://mobile.twitter.com/a/status/1") == VideoSource.Twitter
+    assert detect_source("https://m.weibo.cn/status/1") == VideoSource.LvZhou
+    assert detect_source("https://v.douyin.com/irXxc3GY/") == VideoSource.DouYin
+    assert detect_source("not a url") == VideoSource.YtDlp
 
 
 def test_douyin_note_urls():
