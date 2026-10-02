@@ -2,30 +2,51 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import re
 
 from fastapi import Request, Response
 
-from .. import stats
+from .. import seo, stats
 from ..convert import relay
 from . import limits
 
-_IMG_SRC = "img-src 'self' data: blob:" + (f" {relay.edge_origin()}" if relay.edge_img_enabled() else "")
-CSP = "; ".join(
-    (
-        "default-src 'self'",
-        _IMG_SRC,
-        "media-src 'self' blob:",
-        "style-src 'self' 'unsafe-inline'",
-        "script-src 'self' 'unsafe-inline'",
-        "font-src 'self'",
-        "connect-src 'self'",
-        "object-src 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-        "frame-ancestors 'none'",
+_INLINE_SCRIPT = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
+_SCRIPT_ORIGIN = re.compile(r"<script\b[^>]*\bsrc=[\"']?(https://[^/\"'\s>]+)", re.I)
+
+
+def _inline_hash(body: str) -> str:
+    return "'sha256-" + base64.b64encode(hashlib.sha256(body.encode()).digest()).decode() + "'"
+
+
+def build_csp(analytics_html: str = "", edge_origin: str = "") -> str:
+    """页面上我们自己的脚本都是 /js/ 下的外部文件，不许跑任何内联脚本（XSS 注入进来也执行不了）。
+    站长配的统计代码（PARSE_VIDEO_ANALYTICS）是唯一的例外：里面的内联脚本按内容哈希放行，
+    它引用的外部统计域名可以加载脚本、发图片打点和请求。JSON-LD 是数据块，浏览器不执行，不受影响。"""
+    hashes = [_inline_hash(body) for body in _INLINE_SCRIPT.findall(analytics_html) if body.strip()]
+    origins = sorted(set(_SCRIPT_ORIGIN.findall(analytics_html)))
+    third_party = "".join(" " + item for item in hashes + origins)
+    hosts = "".join(" " + origin for origin in origins)
+    edge = f" {edge_origin}" if edge_origin else ""
+    return "; ".join(
+        (
+            "default-src 'self'",
+            f"img-src 'self' data: blob:{edge}{hosts}",
+            "media-src 'self' blob:",
+            "style-src 'self' 'unsafe-inline'",  # 首屏 CSS 是内联的，元素上也有 style 属性
+            f"script-src 'self'{third_party}",
+            "font-src 'self'",
+            f"connect-src 'self'{hosts}",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        )
     )
-)
+
+
+CSP = build_csp(seo.ANALYTICS_HTML, relay.edge_origin() if relay.edge_img_enabled() else "")
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
