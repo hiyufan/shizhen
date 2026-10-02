@@ -6,6 +6,9 @@ from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
 
 _TITLE = re.compile(r"<title>(.*?)</title>", re.S)
+# 网页版 / 落地页链接里的作品 ID：www.kuaishou.com/short-video/<id>、live.kuaishou.com/u/<用户>/<id>、
+# c.kuaishou.com 或 v.m.chenzhongtech.com 的 /fw/photo/<id>、/fw/long-video/<id>
+_PHOTO_ID = re.compile(r"/(?:short-video|fw/photo|fw/long-video|u/[^/?#]+|profile/[^/?#]+)/([0-9A-Za-z]{10,})")
 _BLOCK_MARKERS = ("验证", "captcha", "滑块", "安全", "访问频繁")
 # 只替换处在"值"位置上的 undefined（冒号 / 逗号 / 左方括号之后），不碰字符串里的同名文字
 _UNDEFINED = re.compile(r"(?<=[:,\[])\s*undefined(?=\s*[,\]}])")
@@ -57,6 +60,14 @@ class KuaiShou(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         headers = {"User-Agent": self.ua("iOS"), "Referer": "https://v.kuaishou.com/"}
 
+        if "v.kuaishou.com" not in share_url:
+            # 网页版 / 落地页的作品链接：直接拿作品 ID 请求手机落地页，不带分享参数和 cookie 也能拿到
+            # （www.kuaishou.com 从海外服务器连不上，所以不去请求原链接）
+            m = _PHOTO_ID.search(share_url)
+            if not m:
+                raise ParseError("unsupported", "快手链接里没有作品 ID，请用 App 里「分享 → 复制链接」的链接")
+            return await self._landing(f"https://c.kuaishou.com/fw/photo/{m.group(1)}", headers, None)
+
         # 短链不跟跳转：要拿 Location 和快手种下的第一份 cookie
         async with create_async_client(follow_redirects=False) as client:
             share_response = await client.get(share_url, headers=headers)
@@ -67,7 +78,9 @@ class KuaiShou(BaseParser):
 
         # /fw/long-video/ 返回结果不一样, 统一替换为 /fw/photo/ 请求
         location_url = location_url.replace("/fw/long-video/", "/fw/photo/")
+        return await self._landing(location_url, headers, share_response.cookies)
 
+    async def _landing(self, location_url: str, headers: dict, cookies) -> VideoInfo:
         # 同一个 UA、带上 Referer 和那份 cookie 去请求落地页——快手拿 cookie 认会话，
         # 少了它落地页会返回空壳。以前这里把第一跳的*响应头*原样当请求头发出去了
         # （content-type / location / set-cookie ...），UA 和 Referer 反而都没带
@@ -75,7 +88,7 @@ class KuaiShou(BaseParser):
         # 马上再要一次就正常。验证页不重试，那是真被限流了
         for attempt in range(2):
             async with create_async_client(follow_redirects=True) as client:
-                response = await client.get(location_url, headers=headers, cookies=share_response.cookies)
+                response = await client.get(location_url, headers=headers, cookies=cookies)
             html = response.text
             state = _json_after(html, "window.INIT_STATE")
             if isinstance(state, dict):
