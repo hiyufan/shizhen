@@ -15,7 +15,7 @@
  *     PARSE_VIDEO_RELAY_CN=https://你的函数域名/relay
  *     PARSE_VIDEO_RELAY_TOKEN=和下面 TOKEN 一样的字符串
  *
- * 中继只用于解析请求（网页 / API，几十 KB），视频本体仍由服务器直连 CDN。
+ * 中继只用于解析请求（网页 / API，几十到一两百 KB），视频本体仍由服务器直连 CDN。
  * Cloudflare Workers 也能原样跑这份代码（同样是 export default { fetch }），但它的出口在海外，B站 会 412，别用。
  */
 
@@ -76,15 +76,27 @@ async function relay(request, url) {
   } else if (resp.headers.get("set-cookie")) {
     pairs.push(["set-cookie", resp.headers.get("set-cookie")]);
   }
-  const body = await resp.arrayBuffer();
-  return new Response(body, {
-    status: 200,
-    headers: {
-      "content-type": "application/octet-stream",
-      "x-relay-status": String(resp.status),
-      "x-relay-headers": b64e(JSON.stringify(pairs)),
-    },
-  });
+  const out = {
+    "content-type": "application/octet-stream",
+    "x-relay-status": String(resp.status),
+    "x-relay-headers": b64e(JSON.stringify(pairs)),
+  };
+  const gzip = shouldGzip(request, resp);
+  if (gzip) out["x-relay-encoding"] = "gzip";
+  const body = gzip ? resp.body.pipeThrough(new CompressionStream("gzip")) : await resp.arrayBuffer();
+  return new Response(body, { status: 200, headers: out });
+}
+
+// 回程压缩：fetch 拿到的是解压后的正文，原样回去要按原始大小跨一次太平洋（小红书笔记页 149KB，
+// gzip 后 24KB）。不用标准的 content-encoding 头：各家边缘运行时对它有自己的处理（有的见了会自己再压一遍），
+// 用自己的 x-relay-encoding；服务器带了 x-relay-accept: gzip 才压，新旧两边先后部署都不会坏
+const COMPRESSIBLE = /^(text\/|application\/(json|javascript|x-javascript|xml|[\w.-]+\+(json|xml))\b)/i;
+
+function shouldGzip(request, resp) {
+  if (typeof CompressionStream !== "function" || !resp.body) return false;
+  if (!/\bgzip\b/i.test(request.headers.get("x-relay-accept") || "")) return false;
+  const len = Number(resp.headers.get("content-length") || 0);
+  return COMPRESSIBLE.test(resp.headers.get("content-type") || "") && !(len > 0 && len < 1024);
 }
 
 // /img?url=&e=&s=  浏览器直接从这里取国内平台的图片，不用绕海外服务器跨两次太平洋。

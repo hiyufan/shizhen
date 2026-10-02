@@ -3,7 +3,9 @@
 协议（和 scripts/esa-relay.js 对应）：
     POST {RELAY}?url=<目标地址>
     x-relay-token / x-relay-method / x-relay-headers(base64 JSON)   body = 原请求体
+    x-relay-accept: gzip   回程可以压缩
   ← 200, body = 目标响应体, x-relay-status = 目标状态码, x-relay-headers = base64 JSON [[k, v], ...]
+    x-relay-encoding: gzip   body 是 gzip 过的（只对网页 / JSON 这类文本，老版本中继不会压）
 
 做成 httpx 的 transport，解析器代码一行不用改；跳转由 httpx 在本地处理，每一跳都过 SSRF 检查。
 """
@@ -14,6 +16,7 @@ import asyncio
 import base64
 import contextlib
 import functools
+import gzip
 import hashlib
 import hmac
 import json
@@ -104,6 +107,7 @@ class RelayTransport(httpx.AsyncBaseTransport):
             "x-relay-token": self.token,
             "x-relay-method": request.method,
             "x-relay-headers": base64.b64encode(json.dumps(headers, ensure_ascii=False).encode("utf-8")).decode(),
+            "x-relay-accept": "gzip",
             "content-type": "application/octet-stream",
         }
         resp = await self._client.post(
@@ -118,7 +122,7 @@ class RelayTransport(httpx.AsyncBaseTransport):
             pairs = json.loads(base64.b64decode(resp.headers.get("x-relay-headers", "e30=")).decode("utf-8"))
         except Exception:  # noqa: BLE001
             pairs = []
-        return httpx.Response(status, headers=[(k, v) for k, v in pairs], content=resp.content, request=request)
+        return httpx.Response(status, headers=[(k, v) for k, v in pairs], content=_body(resp, request), request=request)
 
     async def ping(self) -> None:
         """戳一下中继本身，不产生任何出站请求。
@@ -135,6 +139,16 @@ class RelayTransport(httpx.AsyncBaseTransport):
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+def _body(resp: httpx.Response, request: httpx.Request) -> bytes:
+    """中继回程压过的（x-relay-encoding: gzip）在这里解开。中继是边收边压边发的，上游断在半路时 gzip 不完整。"""
+    if resp.headers.get("x-relay-encoding") != "gzip":
+        return resp.content
+    try:
+        return gzip.decompress(resp.content)
+    except (OSError, EOFError) as err:
+        raise httpx.ReadError(f"中继返回的数据不完整: {err}", request=request) from err
 
 
 @functools.cache
