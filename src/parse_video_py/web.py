@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 import time
 
 from parse_video_py import VideoSource, parse_video_id, parse_video_share_url
-from parse_video_py import stats
+from parse_video_py import feedback, stats
 from parse_video_py.parser import detect_source
 from parse_video_py.convert import config as cconfig
 from parse_video_py.convert import ffmpeg, jobs, limits, store, tasks, updater
@@ -76,6 +76,10 @@ async def _lifespan(_: FastAPI):
         tasks_.append(asyncio.create_task(stats.flusher()))
     if cconfig.YTDLP_AUTOUPDATE_DAYS > 0:
         tasks_.append(asyncio.create_task(updater.loop(cconfig.YTDLP_AUTOUPDATE_DAYS)))
+    if feedback.enabled():
+        # 反馈：同步 GitHub issue、issue 关了先复测再发邮件。复测直接调解析器，不走接口、不进统计
+        tasks_.append(asyncio.create_task(feedback.loop(
+            lambda link: asyncio.wait_for(parse_video_share_url(extract_url(link) or link), 90))))
 
     async def _douyin_browser_warmup():
         from .parser.douyin import warmup_browser
@@ -378,6 +382,11 @@ class ConvertRequest(BaseModel):
     max_bytes: Optional[int] = Field(default=None, ge=100_000, le=50_000_000)   # GIF 目标体积，超了自动降参数
 
 
+class FeedbackRequest(BaseModel):
+    ticket: str = Field(max_length=4000)
+    email: str = Field(default="", max_length=254)
+
+
 class DownloadRequest(BaseModel):
     page_url: str
     format_spec: str
@@ -519,6 +528,9 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
             imgs = {data.get("cover_url")} | {i.get("url") for i in data["images"]}
             data["edge"] = {u: e for u in imgs if u and (e := relay.edge_img_url(u, ttl))}
         result = {"code": 200, "msg": "解析成功", "data": data}
+    if result["code"] != 200 and (ticket := feedback.make_ticket(share_url, result.get("reason", ""), platform,
+                                                                str(result.get("msg", "")))):
+        result["feedback"] = ticket   # 修得好的失败才有：页面据此显示「反馈这个问题」
     if result["code"] != 200:
         # stats 里只存 reason 不存链接，容器一重建原始日志也没了——失败的
         # 解析把链接和原因落一行，之后"看日志排查"才对得上号
@@ -530,6 +542,21 @@ async def api_parse(url: str, _ip: str = Depends(limits.parse_limit)):
                  ok=result["code"] == 200, reason=result.get("reason", ""), ms=(time.monotonic() - t0) * 1000)
     _cache_put(share_url, result)
     return result
+
+
+@app.post("/api/feedback", dependencies=_auth_dependency)
+async def api_feedback(req: FeedbackRequest, ip: str = Depends(limits.feedback_limit)):
+    """解析失败后用户点「反馈这个问题」：凭证证明这条链接确实在我们这儿失败过；邮箱选填，加密存本机。"""
+    if not feedback.enabled():
+        raise HTTPException(404, "Not Found")
+    ticket = feedback.read_ticket(req.ticket)
+    if ticket is None:
+        raise HTTPException(400, "反馈凭证无效或已过期，重新解析一次再反馈")
+    email = req.email.strip()
+    if email and not feedback.valid_email(email):
+        raise HTTPException(400, "邮箱格式不对")
+    dup = await asyncio.to_thread(feedback.add_report, ticket, email, stats._hash_ip(ip))
+    return {"ok": True, "duplicate": dup, "email": bool(email)}
 
 
 @app.get("/api/proxy", dependencies=_auth_dependency)
