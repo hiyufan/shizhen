@@ -25,6 +25,7 @@ import os
 import re
 import smtplib
 import sqlite3
+import ssl
 import time
 from collections.abc import Awaitable, Callable
 from email.message import EmailMessage
@@ -42,8 +43,10 @@ REPO = os.environ.get("PARSE_VIDEO_FEEDBACK_REPO", "").strip()  # owner/name
 GH_TOKEN = os.environ.get("PARSE_VIDEO_FEEDBACK_GH_TOKEN", "").strip()  # 只给这个仓库 Issues 读写
 SMTP_HOST = os.environ.get("PARSE_VIDEO_SMTP_HOST", "smtp.qq.com").strip()
 SMTP_PORT = int(os.environ.get("PARSE_VIDEO_SMTP_PORT", "465") or 465)
-SMTP_USER = os.environ.get("PARSE_VIDEO_SMTP_USER", "").strip()  # 发件邮箱
-SMTP_PASS = os.environ.get("PARSE_VIDEO_SMTP_PASS", "").strip()  # QQ 邮箱的 SMTP 授权码
+SMTP_USER = os.environ.get("PARSE_VIDEO_SMTP_USER", "").strip()  # SMTP 登录名（QQ 邮箱就是邮箱地址）
+SMTP_PASS = os.environ.get("PARSE_VIDEO_SMTP_PASS", "").strip()  # SMTP 密码 / 授权码
+# 发件人地址。QQ 邮箱和登录名是同一个，不用填；Brevo 这类中继登录名是 xxx@smtp-brevo.com，要另填
+SMTP_FROM = os.environ.get("PARSE_VIDEO_SMTP_FROM", "").strip() or SMTP_USER
 _KEY_B64 = os.environ.get("PARSE_VIDEO_FEEDBACK_KEY", "").strip()  # 32 字节，base64
 SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "https://ynvan.com").rstrip("/")
 
@@ -326,13 +329,26 @@ async def _sync_issues(gh: GitHub) -> None:
 
 def _send_mail(to: str, subject: str, text: str) -> None:
     msg = EmailMessage()
-    msg["From"] = formataddr(("求原图", SMTP_USER))
+    msg["From"] = formataddr(("求原图", SMTP_FROM))
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(text)
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as s:
+    with _smtp_connect() as s:
         s.login(SMTP_USER, SMTP_PASS)
         s.send_message(msg)
+
+
+def _smtp_connect() -> smtplib.SMTP:
+    """465 一上来就是 TLS（QQ 邮箱）；587 等其它端口先明文连上再 STARTTLS（Brevo），升级不了就别发。"""
+    if SMTP_PORT == 465:
+        return smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30)
+    s = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
+    try:
+        s.starttls(context=ssl.create_default_context())
+    except BaseException:
+        s.close()
+        raise
+    return s
 
 
 def fixed_mail(link: str) -> tuple[str, str]:
