@@ -169,7 +169,7 @@ uv.lock
 # codex
 .codex
 
-# 拾帧 运行时文件
+# 求原图 运行时文件
 data/
 cookies.txt
 fonts/

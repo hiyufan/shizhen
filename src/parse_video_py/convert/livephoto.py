@@ -47,7 +47,7 @@ def write_jpeg_identifier(jpeg_path: str | Path, identifier: str, *, date: str |
     exif.setdefault("0th", {})
     exif.setdefault("Exif", {})
     exif["0th"][piexif.ImageIFD.Make] = b"Apple"
-    exif["0th"][piexif.ImageIFD.Software] = b"ShiZhen"
+    exif["0th"][piexif.ImageIFD.Software] = b"QiuYuanTu"
     exif["Exif"][piexif.ExifIFD.MakerNote] = build_apple_makernote(identifier)
     if date:
         exif["Exif"][piexif.ExifIFD.DateTimeOriginal] = date.encode()
@@ -78,7 +78,7 @@ _XMP_NS = b"http://ns.adobe.com/xap/1.0/\x00"
 
 def _motion_photo_xmp(video_len: int, presentation_us: int) -> bytes:
     xml = f"""<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
-<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="ShiZhen">
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="QiuYuanTu">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
   <rdf:Description rdf:about=""
     xmlns:GCamera="http://ns.google.com/photos/1.0/camera/"

@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 PKG = os.path.join(ROOT, "src", "parse_video_py")
-BRAND = "拾帧"
+BRAND = "求原图"
 # 标点和 ASCII 一律带上，标题里随手加个符号不至于掉字
 _ALWAYS = set("0123456789+-–—·…（）()[]{}“”‘’、。，：；！？%×") | {chr(c) for c in range(0x20, 0x7F)}
 

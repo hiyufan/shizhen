@@ -14,7 +14,7 @@ _spec.loader.exec_module(subset_fonts)
 
 def test_heading_font_covers_every_h1():
     text = subset_fonts.heading_text()
-    assert "拾帧" in text and "谁在什么时候用" in text  # 品牌名、模板里写死的 h1 都收到了
+    assert "求原图" in text and "谁在什么时候用" in text  # 品牌名、模板里写死的 h1 都收到了
     cmap = TTFont(ROOT / "src/parse_video_py/static/noto-serif-sc-900.woff2").getBestCmap()
     missing = sorted({ch for ch in text if ch.strip() and ord(ch) not in cmap})
     assert not missing, f"900 字重缺字 {''.join(missing)}，跑一下 scripts/subset_fonts.py --weight 900"

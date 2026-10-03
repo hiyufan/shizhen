@@ -172,7 +172,7 @@ def test_closed_issue_is_retested_then_emailed_and_email_deleted(fb):
     run(gh, ok)
     gh.issues[1].update(state="closed", state_reason="completed")
     run(gh, ok)
-    assert [(to, subj) for to, subj, _ in fb] == [("u@example.com", "你在拾帧反馈的链接已经能解析了")]
+    assert [(to, subj) for to, subj, _ in fb] == [("u@example.com", "你在求原图反馈的链接已经能解析了")]
     assert LINK in fb[0][2]
     rows = sqlite3.connect(feedback.DB_PATH).execute("SELECT email, outcome FROM reports").fetchall()
     assert rows == [(None, "fixed"), (None, "fixed")]
@@ -200,7 +200,7 @@ def test_wontfix_sends_explanation(fb):
     run(gh, ok)
     gh.issues[1].update(state="closed", state_reason="not_planned")
     run(gh, ok)
-    assert [subj for _, subj, _ in fb] == ["关于你在拾帧反馈的链接"]
+    assert [subj for _, subj, _ in fb] == ["关于你在求原图反馈的链接"]
 
 
 def test_emails_are_purged_after_90_days(fb, monkeypatch):
