@@ -326,7 +326,7 @@ async def _sync_issues(gh: GitHub) -> None:
 
 def _send_mail(to: str, subject: str, text: str) -> None:
     msg = EmailMessage()
-    msg["From"] = formataddr(("拾帧", SMTP_USER))
+    msg["From"] = formataddr(("求原图", SMTP_USER))
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(text)
@@ -337,25 +337,25 @@ def _send_mail(to: str, subject: str, text: str) -> None:
 
 def fixed_mail(link: str) -> tuple[str, str]:
     return (
-        "你在拾帧反馈的链接已经能解析了",
+        "你在求原图反馈的链接已经能解析了",
         (
             "你好，\n\n"
-            f"你之前在拾帧（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
+            f"你之前在求原图（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
             "这个问题已经修好了，我们刚刚又解析了一次，确认可以用。点这里直接打开：\n"
             f"{SITE_URL}/?url={quote(link, safe='')}\n\n"
-            "谢谢你的反馈。这是一封一次性通知，你的邮箱在邮件发出后已经删除，之后不会再收到我们的邮件。\n\n— 拾帧"
+            "谢谢你的反馈。这是一封一次性通知，你的邮箱在邮件发出后已经删除，之后不会再收到我们的邮件。\n\n— 求原图"
         ),
     )
 
 
 def wontfix_mail(link: str) -> tuple[str, str]:
     return (
-        "关于你在拾帧反馈的链接",
+        "关于你在求原图反馈的链接",
         (
             "你好，\n\n"
-            f"你之前在拾帧（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
+            f"你之前在求原图（{SITE_URL}）反馈过一条解析失败的链接：\n{link}\n\n"
             "我们看过了，这个问题暂时没法解决，多半是平台那边限制了这类内容。抱歉没能帮上忙。\n\n"
-            "这是一封一次性通知，你的邮箱在邮件发出后已经删除。\n\n— 拾帧"
+            "这是一封一次性通知，你的邮箱在邮件发出后已经删除。\n\n— 求原图"
         ),
     )
 

@@ -62,7 +62,7 @@ async def api_stats(range: str = "24h", tz: int = 0):  # noqa: A002 - 查询参�
 
 @router.get("/stats", response_class=HTMLResponse, dependencies=[Depends(require_stats_token)])
 async def stats_page(request: Request, token: str = ""):
-    ctx = page_context(request, title="使用统计 - 拾帧", path="/stats")
+    ctx = page_context(request, title="使用统计 - 求原图", path="/stats")
     ctx.update({"ranges": list(STATS_RANGES), "token": token})
     return render(request, "stats.html", ctx, headers=PRIVATE_PAGE_HEADERS)
 
@@ -75,7 +75,7 @@ def _secure_cookie(request: Request) -> bool:
 
 
 def _test_page(request: Request, *, on: bool, error: str = ""):
-    ctx = page_context(request, title="测试模式 - 拾帧", path="/test")
+    ctx = page_context(request, title="测试模式 - 求原图", path="/test")
     ctx.update({"test_on": on, "test_error": error})
     return render(request, "test.html", ctx, status_code=403 if error else 200, headers=PRIVATE_PAGE_HEADERS)
 
