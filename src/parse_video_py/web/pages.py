@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 
 from .. import guides, seo
 from .auth import SITE_AUTH
-from .rendering import JS_DIR, base_url, js_version, page_context, render, render_404, render_tool_page
+from .rendering import JS_DIR, STATIC_DIR, base_url, js_version, page_context, render, render_404, render_tool_page
 
 router = APIRouter()
 
@@ -27,14 +27,28 @@ _ROBOTS = (
 )
 _BAIDU_VERIFY = "codeva-vdJztHZWcG"
 _JS_NAME = re.compile(r"^[\w-]+\.js$")
+# 搜索结果里的站点图标从根路径读（百度只认 /favicon.ico），文件由 scripts/make_icons.py 生成
+_ROOT_ICONS = {"favicon.ico": "image/x-icon", "favicon.svg": "image/svg+xml", "apple-touch-icon.png": "image/png"}
+# 这个域名以前是 Halo 博客，搜索引擎还记着它的地址（/about、/tags/...、/upload/...），隔几天回来抓一次。
+# 回 410 让它们尽快删掉，404 会被当成「可能暂时没了」反复重试。以后要用这些路径做新页面，先从这里删掉
+_OLD_BLOG = (
+    "about", "nav", "wishes", "photos", "moments", "footprints", "archives",
+    "categories", "tags", "links", "upload", "themes", "plugins", "rss.xml",
+)  # fmt: skip
 
 
-@router.get("/", response_class=HTMLResponse, dependencies=SITE_AUTH)
+def page_route(path: str, **kwargs):
+    """页面类的路由同时接 HEAD：有的爬虫、链接检查先发 HEAD 探一下，405 会被当成页面坏了。
+    响应体 uvicorn 遇到 HEAD 自己会丢掉。页面不进 OpenAPI（MCP 照着它生成工具，页面不该是工具）。"""
+    return router.api_route(path, methods=["GET", "HEAD"], include_in_schema=False, **kwargs)
+
+
+@page_route("/", response_class=HTMLResponse, dependencies=SITE_AUTH)
 async def home(request: Request):
     return render_tool_page(request, seo.PAGE_BY_SLUG[""])
 
 
-@router.get("/guides", response_class=HTMLResponse, dependencies=SITE_AUTH)
+@page_route("/guides", response_class=HTMLResponse, dependencies=SITE_AUTH)
 async def guides_index(request: Request):
     ctx = page_context(
         request,
@@ -51,7 +65,7 @@ async def guides_index(request: Request):
     return render(request, "guides.html", ctx)
 
 
-@router.get("/guide/{slug}", response_class=HTMLResponse, dependencies=SITE_AUTH)
+@page_route("/guide/{slug}", response_class=HTMLResponse, dependencies=SITE_AUTH)
 async def guide_page(request: Request, slug: str):
     guide = guides.GUIDE_BY_SLUG.get(slug)
     if guide is None:
@@ -77,29 +91,29 @@ async def guide_page(request: Request, slug: str):
     return render(request, "guide.html", ctx)
 
 
-@router.get("/sitemap.xml")
+@page_route("/sitemap.xml")
 async def sitemap(request: Request):
     return Response(seo.sitemap_xml(base_url(request)), media_type="application/xml")
 
 
-@router.get("/robots.txt", response_class=PlainTextResponse)
+@page_route("/robots.txt", response_class=PlainTextResponse)
 async def robots(request: Request):
     return _ROBOTS.format(sitemap=seo.absolute(base_url(request), "/sitemap.xml"))
 
 
-@router.get(f"/{seo.INDEXNOW_KEY}.txt", response_class=PlainTextResponse)
+@page_route(f"/{seo.INDEXNOW_KEY}.txt", response_class=PlainTextResponse)
 async def indexnow_key():
     # IndexNow 的验证文件：URL 路径含 key，响应体也必须是 key 本身
     return seo.INDEXNOW_KEY
 
 
-@router.get(f"/baidu_verify_{_BAIDU_VERIFY}.html", response_class=PlainTextResponse)
+@page_route(f"/baidu_verify_{_BAIDU_VERIFY}.html", response_class=PlainTextResponse)
 async def baidu_site_verify():
     # 百度站长平台的文件验证：内容就是验证码字符串，与下载的验证文件一致
     return _BAIDU_VERIFY
 
 
-@router.get("/js/{version}/{name}")
+@page_route("/js/{version}/{name}")
 async def js_module(version: str, name: str):
     """前端模块（见 rendering.js_url）。版本号对得上才长期缓存；对不上的多半是部署前缓存的老页面，
     照样给当前的文件，但别让它被当成那个老版本缓存下来。"""
@@ -111,7 +125,28 @@ async def js_module(version: str, name: str):
     return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": cache})
 
 
-@router.get("/{slug}", response_class=HTMLResponse, dependencies=SITE_AUTH)
+def _root_icon(name: str, media_type: str):
+    async def icon():
+        return FileResponse(
+            STATIC_DIR / name, media_type=media_type, headers={"Cache-Control": "public, max-age=604800"}
+        )
+
+    return icon
+
+
+async def _old_blog_page(request: Request):
+    return render_404(request, status_code=410)
+
+
+for _name, _type in _ROOT_ICONS.items():
+    page_route(f"/{_name}")(_root_icon(_name, _type))
+for _prefix in _OLD_BLOG:
+    page_route(f"/{_prefix}")(_old_blog_page)
+    page_route(f"/{_prefix}/{{rest:path}}")(_old_blog_page)
+
+
+# 兜底路由，必须在最后
+@page_route("/{slug}", response_class=HTMLResponse, dependencies=SITE_AUTH)
 async def landing_page(request: Request, slug: str):
     """SEO 落地页：/douyin /xiaohongshu /gif /live-photo ... 同一个工具，不同的标题和文案。"""
     page = seo.PAGE_BY_SLUG.get(slug)
