@@ -8,6 +8,8 @@
 
 支持抖音、小红书、快手、YouTube、X、B站等 30 多个平台。自部署，免费，不用登录。
 
+<sub>原名「拾帧」，2026 年 10 月更名为「求原图」。仓库地址不变。</sub>
+
 [![License](https://img.shields.io/badge/license-MIT-1a1815.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-6BAFDF.svg)](pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-async-4DB899.svg)](https://fastapi.tiangolo.com/)
