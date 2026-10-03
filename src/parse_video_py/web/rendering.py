@@ -139,6 +139,7 @@ def render_tool_page(request: Request, page: seo.Page):
     return render(request, "index.html", ctx)
 
 
-def render_404(request: Request):
+def render_404(request: Request, status_code: int = 404):
+    """status_code=410：以前有、以后也不会再有的页面（旧博客的地址），页面长得一样。"""
     ctx = page_context(request, title="页面不存在 - 拾帧", description="这一页不存在。", path=request.url.path)
-    return render(request, "404.html", ctx, status_code=404)
+    return render(request, "404.html", ctx, status_code=status_code)
