@@ -1,21 +1,21 @@
 /**
- * 阿里云 ESA 边缘函数 / 边缘 Pages 函数：给拾帧当"国内出口"。
+ * 阿里云 ESA 边缘函数 / 边缘 Pages 函数：给求原图当"国内出口"。
  *
  * 一个文件两个用途：
  *   /probe?token=<PROBE_TOKEN>&xhs=<小红书分享链接>
  *                                  探测：这个边缘节点的出口 IP、B站 API 状态、小红书页面是否有笔记数据。
  *                                  用单独的 PROBE_TOKEN（留空 = 关闭探测）：它会出现在浏览器地址栏和访问日志里，
  *                                  不能是下面那个同时管中继和图片签名的 TOKEN
- *   /relay?url=<目标地址>          中继：拾帧把国内平台的解析请求发到这里，由边缘节点代为访问
- *   /img?url=&e=&s=                图片：浏览器直接从国内边缘节点取国内平台的图（拾帧设 PARSE_VIDEO_EDGE_IMG=1 才会用）
- *   /media?url=&e=&s=[&dl=1&name=] 视频 / 音频：同上，支持拖进度条（Range）；dl=1 时带下载头（拾帧设 PARSE_VIDEO_EDGE_MEDIA=1 才会用）
+ *   /relay?url=<目标地址>          中继：求原图把国内平台的解析请求发到这里，由边缘节点代为访问
+ *   /img?url=&e=&s=                图片：浏览器直接从国内边缘节点取国内平台的图（求原图设 PARSE_VIDEO_EDGE_IMG=1 才会用）
+ *   /media?url=&e=&s=[&dl=1&name=] 视频 / 音频：同上，支持拖进度条（Range）；dl=1 时带下载头（求原图设 PARSE_VIDEO_EDGE_MEDIA=1 才会用）
  *
  * 部署（边缘函数）：ESA 控制台 → 边缘函数 → 新建 → 把本文件贴进去 → 改 TOKEN（要探测再填 PROBE_TOKEN）→
  *     部署后在「版本管理」里发布到生产环境（只点部署只到测试环境，绑定的域名还是旧版本）→ 绑定域名。
  * 部署（边缘 Pages）：把本文件放到项目的 functions/[[path]].js，把末尾的 export default 换成
  *     export function onRequest({ request }) { return handle(request); }
  *
- * 拾帧侧配置（服务器环境变量）：
+ * 求原图侧配置（服务器环境变量）：
  *     PARSE_VIDEO_RELAY_CN=https://你的函数域名/relay
  *     PARSE_VIDEO_RELAY_TOKEN=和下面 TOKEN 一样的字符串
  *
@@ -67,7 +67,7 @@ async function relay(request, url) {
   for (const k of Object.keys(headers)) if (DROP_REQ.has(k.toLowerCase())) delete headers[k];
   if (!headers["user-agent"] && !headers["User-Agent"]) headers["User-Agent"] = UA;
 
-  const init = { method, headers, redirect: "manual" };   // 跳转交回给拾帧那边的 httpx 处理，每一跳都过它的 SSRF 检查
+  const init = { method, headers, redirect: "manual" };   // 跳转交回给求原图那边的 httpx 处理，每一跳都过它的 SSRF 检查
   if (!["GET", "HEAD"].includes(method)) init.body = await request.arrayBuffer();
 
   let resp;
@@ -107,7 +107,7 @@ function shouldGzip(request, resp) {
 }
 
 // /img?url=&e=&s=  浏览器直接从这里取国内平台的图片，不用绕海外服务器跨两次太平洋。
-// 只接受拾帧签过名、没过期的地址，只转白名单里的图片 CDN，只回 image/*，免得被当成通用代理 / 视频带宽。
+// 只接受求原图签过名、没过期的地址，只转白名单里的图片 CDN，只回 image/*，免得被当成通用代理 / 视频带宽。
 // 白名单和服务器端 convert/relay.py 的 _EDGE_IMG_HOSTS 保持一致
 const IMG_REFERERS = [
   ["xhscdn.com", "https://www.xiaohongshu.com/"],
@@ -297,9 +297,9 @@ async function probe(url) {
       const loginWall = r.url.includes("/login");
       out.xhs = { status: r.status, finalUrl: r.url.slice(0, 120), title, withCookie: !!cookie, loginWall,
                   hasNote: html.includes("noteDetailMap") && !r.url.includes("/404") && !loginWall };
-      if (loginWall && !cookie) out.xhs.hint = "桌面页要求登录；拾帧实际用的是下面的手机分享页，看 xhsMobile";
+      if (loginWall && !cookie) out.xhs.hint = "桌面页要求登录；求原图实际用的是下面的手机分享页，看 xhsMobile";
     } catch (e) { out.xhs = { error: String(e) }; }
-    // 拾帧在机房 / 边缘出口上走的是手机分享页（不要求登录），这个才是关键
+    // 求原图在机房 / 边缘出口上走的是手机分享页（不要求登录），这个才是关键
     try {
       const headers = { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
                         Accept: "text/html,application/xhtml+xml", "Accept-Language": "zh-CN,zh;q=0.9" };

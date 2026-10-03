@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from .guides import GUIDES, Guide
 
-SITE_NAME = "拾帧"
+SITE_NAME = "求原图"
 SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "").rstrip("/")  # 如 https://example.com；不填就按请求地址
 UPDATED = "2026-09-20"
 
@@ -90,18 +90,18 @@ ALL_COMMON = list(COMMON_FAQ)
 PAGES: list[Page] = [
     Page(
         slug="",
-        title="拾帧 - 把视频定格成 GIF 和实况照片，抖音小红书无水印提取",
+        title="求原图 - 抖音小红书原图和无水印视频提取，视频转 GIF 和实况照片",
         description="粘贴抖音、小红书、快手、YouTube、X 的分享链接，免费提取无水印视频和原图，把喜欢的瞬间定格成 GIF、iPhone 实况照片或安卓动态照片。不用登录。",
         h1="把视频定格成 <em>GIF</em>、<br>实况与原图。",
         lead="抖音、小红书、快手、YouTube、X 里复制的整段分享文字直接贴进来就行。视频没有水印，图片是原图。",
-        keywords="视频提取,图片提取,去水印,视频转GIF,视频转实况照片,视频定格,定格,抖音,小红书,快手,YouTube,推特",
+        keywords="求原图,原图下载,视频提取,图片提取,去水印,视频转GIF,视频转实况照片,视频定格,定格,抖音,小红书,快手,YouTube,推特",
         nav_label="首页",
         common=ALL_COMMON,  # 首页承载完整问答，落地页各挑最相关的 3 条
         guides=["xiaohongshu-live-photo-iphone", "video-to-gif", "video-to-live-photo"],
     ),
     Page(
         slug="douyin",
-        title="抖音去水印下载_图集原图_实况图提取 - 拾帧",
+        title="抖音去水印下载_图集原图_实况图提取 - 求原图",
         description="在线解析抖音分享链接：无水印视频（含 H.265 高清档）、图集无水印原图、实况图打包成 iPhone 实况或安卓动态照片、背景音乐。免费不用登录。",
         h1="抖音去水印，<br>图集与实况一键拿走。",
         lead="打开抖音，点分享 → 复制链接，把整段文字贴进来。视频无水印，图集是无水印原图，实况图可以直接打包成 iPhone 实况。",
@@ -137,7 +137,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="xiaohongshu",
-        title="小红书图片原图下载_视频去水印_实况图保存 - 拾帧",
+        title="小红书图片原图下载_视频去水印_实况图保存 - 求原图",
         description="粘贴小红书分享链接，取出笔记原图（原始分辨率）、无水印视频和实况图。实况图可打包成 iPhone 实况照片或安卓动态照片。免费不用登录。",
         h1="小红书原图、视频与实况，<br>整篇取出来。",
         lead="小红书 App 里点分享 → 复制链接，贴进来就行。图片是原始分辨率，视频无水印，实况图直接打包。",
@@ -173,7 +173,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="kuaishou",
-        title="快手视频去水印下载_图集提取 - 拾帧",
+        title="快手视频去水印下载_图集提取 - 求原图",
         description="粘贴快手分享链接，在线下载无水印视频和图集原图，可截一段转 GIF 或实况照片。免费不用登录。",
         h1="快手去水印，<br>视频图集直接存。",
         lead="快手 App 里点分享 → 复制链接，把整段文字贴进来。",
@@ -209,7 +209,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="youtube",
-        title="YouTube 视频下载_1080p 4K_仅音频 - 拾帧",
+        title="YouTube 视频下载_1080p 4K_仅音频 - 求原图",
         description="粘贴 YouTube 链接，在线下载 1080p、1440p、4K 视频或仅音频 m4a，还能截一段做 GIF 或实况照片。免费不用登录。",
         h1="<em>YouTube</em> 下载，<br>1080p 到 4K 都能选。",
         lead="把 YouTube 视频链接贴进来，清晰度列表里选一个，服务器合并音视频后给你一个完整的 MP4。",
@@ -237,7 +237,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="x",
-        title="X (Twitter) 视频下载_推文图片原图 - 拾帧",
+        title="X (Twitter) 视频下载_推文图片原图 - 求原图",
         description="粘贴 X / Twitter 推文链接，在线下载推文里的视频（最高码率）和图片原图，可转 GIF 或实况照片。免费不用登录。",
         h1="<em>X</em> 推文里的视频与图片，<br>直接保存。",
         lead="复制推文链接（x.com 或 twitter.com 都行）贴进来。视频取最高码率的 MP4，图片是原图。",
@@ -273,7 +273,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="bilibili",
-        title="B站视频下载_1080p 高清_仅音频 - 拾帧",
+        title="B站视频下载_1080p 高清_仅音频 - 求原图",
         description="粘贴 B站 视频链接，在线下载 1080p / 720p 视频或仅音频，可截一段做 GIF 或实况照片。b23.tv 短链也支持。免费不用登录。",
         h1="B站视频下载，<br>1080p 高清直接选。",
         lead="把 B站 链接（bilibili.com 或 b23.tv）贴进来，清晰度列表里选一档。",
@@ -309,7 +309,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="gif",
-        title="视频转 GIF 在线工具_抖音小红书链接直接转 - 拾帧",
+        title="视频转 GIF 在线工具_抖音小红书链接直接转 - 求原图",
         description="在线把视频转成 GIF：粘贴抖音、小红书、YouTube 链接或上传本地视频，拖缩略图条选段，可调帧率、宽度、速度和抖动。免费不用登录。",
         h1="视频转 <em>GIF</em>，<br>选一段就好。",
         lead="贴一个视频链接，或者上传本地视频。在缩略图条上拖出要的那几秒，帧率、宽度、速度都能调。",
@@ -337,7 +337,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="live-photo",
-        title="视频转实况照片_Live Photo 动态照片在线制作 - 拾帧",
+        title="视频转实况照片_Live Photo 动态照片在线制作 - 求原图",
         description="在线把视频片段做成 iPhone 实况照片（配对好的 JPG + MOV）或安卓动态照片（内嵌视频的 JPG），支持抖音、小红书链接和本地视频，可选封面帧。",
         h1="视频做成 <em>Live Photo</em>，<br>iPhone 与安卓都行。",
         lead="贴链接或上传视频，选最多 10 秒，挑一帧做封面。iPhone 得到配对好的 JPG + MOV，安卓得到一张会动的 JPG。",

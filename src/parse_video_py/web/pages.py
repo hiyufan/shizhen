@@ -52,9 +52,9 @@ async def home(request: Request):
 async def guides_index(request: Request):
     ctx = page_context(
         request,
-        title="教程：抖音小红书图片实况保存、视频转 GIF 和实况照片 - 拾帧",
+        title="教程：抖音小红书图片实况保存、视频转 GIF 和实况照片 - 求原图",
         description=(
-            "拾帧教程：小红书实况图保存到 iPhone、抖音图集原图下载、视频转实况照片、视频转 GIF、"
+            "求原图教程：小红书实况图保存到 iPhone、抖音图集原图下载、视频转实况照片、视频转 GIF、"
             "YouTube 1080p 下载，每篇两分钟照着做。"
         ),
         path="/guides",
@@ -73,7 +73,7 @@ async def guide_page(request: Request, slug: str):
     tool = seo.PAGE_BY_SLUG.get(guide.tool)
     ctx = page_context(
         request,
-        title=f"{guide.title} - 拾帧",
+        title=f"{guide.title} - 求原图",
         description=guide.description,
         path=guide.path,
         keywords=guide.keywords,

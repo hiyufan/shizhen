@@ -1,7 +1,7 @@
 [project]
 name = "parse-video-py"
 version = "0.1.0"
-description = "拾帧：抖音 / 小红书 / 快手 / YouTube / X 等平台视频图片提取，一键转 GIF 与实况照片（基于 parse-video-py）"
+description = "求原图：抖音 / 小红书 / 快手 / YouTube / X 等平台视频图片提取，一键转 GIF 与实况照片（基于 parse-video-py）"
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = [

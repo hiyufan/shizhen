@@ -110,7 +110,7 @@ def page_context(
         "pages": seo.PAGES,
         "page": page or seo.PAGE_BY_SLUG[""],
         "canonical": seo.absolute(base, path),
-        "og_image": seo.absolute(base, "/static/og.png"),
+        "og_image": seo.absolute(base, static_url("og.png")),  # 带版本：分享卡片的抓取方和 nginx 都会长期缓存
         "json_ld": json_ld,
         "site_name": seo.SITE_NAME,
         "site_verification": seo.SITE_VERIFICATION_HTML,
@@ -141,5 +141,5 @@ def render_tool_page(request: Request, page: seo.Page):
 
 def render_404(request: Request, status_code: int = 404):
     """status_code=410：以前有、以后也不会再有的页面（旧博客的地址），页面长得一样。"""
-    ctx = page_context(request, title="页面不存在 - 拾帧", description="这一页不存在。", path=request.url.path)
+    ctx = page_context(request, title="页面不存在 - 求原图", description="这一页不存在。", path=request.url.path)
     return render(request, "404.html", ctx, status_code=status_code)
