@@ -221,3 +221,57 @@ def test_public_issue_hides_link_params_but_keeps_report_id(fb):
     assert "https://www.xiaohongshu.com/explore/abc" in body and "反馈编号**：1" in body
     full = sqlite3.connect(feedback.DB_PATH).execute("SELECT link FROM reports WHERE id = 1").fetchone()[0]
     assert "xsec_token=SECRET" in full  # 完整链接留在本机
+
+
+class _FakeSMTP:
+    log: list = []
+
+    def __init__(self, host, port, timeout=None):
+        self.log.append(("connect", type(self).__name__, host, port))
+
+    def starttls(self, context=None):
+        self.log.append(("starttls",))
+
+    def login(self, user, password):
+        self.log.append(("login", user))
+
+    def send_message(self, msg):
+        self.log.append(("send", msg["From"], msg["To"]))
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeSMTPSSL(_FakeSMTP):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("port", "expected"),
+    [
+        (465, [("connect", "_FakeSMTPSSL", "smtp.qq.com", 465)]),  # QQ 邮箱：一上来就是 TLS
+        (587, [("connect", "_FakeSMTP", "smtp.qq.com", 587), ("starttls",)]),  # Brevo：先连上再升级
+    ],
+)
+def test_smtp_connection_by_port(monkeypatch, port, expected):
+    _FakeSMTP.log = []
+    monkeypatch.setattr(feedback.smtplib, "SMTP", _FakeSMTP)
+    monkeypatch.setattr(feedback.smtplib, "SMTP_SSL", _FakeSMTPSSL)
+    monkeypatch.setattr(feedback, "SMTP_HOST", "smtp.qq.com")
+    monkeypatch.setattr(feedback, "SMTP_PORT", port)
+    monkeypatch.setattr(feedback, "SMTP_USER", "login@smtp-relay.example")
+    monkeypatch.setattr(feedback, "SMTP_PASS", "secret")
+    monkeypatch.setattr(feedback, "SMTP_FROM", "admin@example.com")
+    feedback._send_mail("u@example.com", "主题", "正文")
+    # 登录用登录名，发件人用 SMTP_FROM（中继服务两者不同）
+    assert _FakeSMTP.log == [
+        *expected,
+        ("login", "login@smtp-relay.example"),
+        ("send", "求原图 <admin@example.com>", "u@example.com"),
+    ]
