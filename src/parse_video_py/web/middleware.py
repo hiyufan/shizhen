@@ -7,6 +7,7 @@ import hashlib
 import re
 
 from fastapi import Request, Response
+from fastapi.responses import RedirectResponse
 
 from .. import seo, stats
 from ..convert import relay
@@ -88,20 +89,30 @@ def _record_page_view(request: Request, response: Response) -> None:
     stats.record("view", limits.client_ip(request), source=path)
 
 
+def _strip_trailing_slash(request: Request) -> Response | None:
+    """/douyin/ → /douyin 用 301。框架自带的是 307（临时跳转），搜索引擎不会把两个地址并成一个。
+    开头的多个斜杠也收成一个：//evil.com/ 不能跳成 //evil.com（那是跳去别的网站）。"""
+    path = request.url.path
+    if request.method not in ("GET", "HEAD") or path == "/" or not path.endswith("/"):
+        return None
+    query = request.url.query
+    return RedirectResponse("/" + path.strip("/") + (f"?{query}" if query else ""), status_code=301)
+
+
 async def site_headers(request: Request, call_next) -> Response:
     # 要在 call_next 之前设：接口里起的转换任务会继承这个「不计入」标记
     if stats.enabled() and _excluded_from_stats(request):
         stats.mute()
 
-    response = await call_next(request)
+    response = _strip_trailing_slash(request) or await call_next(request)
     path = request.url.path
-    is_page = request.method == "GET" and _is_html(response) and not path.startswith("/api")
+    is_page = request.method in ("GET", "HEAD") and _is_html(response) and not path.startswith("/api")
     if path.startswith("/static/"):
         # 静态资源带内容版本号，可以长期缓存
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     elif is_page:
         response.headers.setdefault("Cache-Control", "public, max-age=600")
-        if stats.enabled():
+        if stats.enabled() and request.method == "GET":
             _record_page_view(request, response)
 
     for name, value in SECURITY_HEADERS.items():
