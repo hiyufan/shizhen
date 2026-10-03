@@ -16,7 +16,7 @@ from .guides import GUIDES, Guide
 
 SITE_NAME = "求原图"
 SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "").rstrip("/")  # 如 https://example.com；不填就按请求地址
-UPDATED = "2026-09-20"
+UPDATED = "2026-10-03"
 
 # 站长验证 / 统计代码：直接贴 <meta> 或 <script> 片段
 SITE_VERIFICATION_HTML = os.environ.get("PARSE_VIDEO_SITE_VERIFICATION", "")
