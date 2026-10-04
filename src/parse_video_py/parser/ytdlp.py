@@ -9,6 +9,7 @@ import asyncio
 from typing import Any
 
 from ..convert import config as convert_config
+from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
 from ..utils import proxy_for
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
@@ -41,7 +42,8 @@ class YtDlp(BaseParser):
         }
         if proxy := proxy_for():
             opts["proxy"] = proxy
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        # yt-dlp 自己跟跳转、抓页面里嵌的地址，httpx 的 SSRF 钩子管不到，在 socket 层拦
+        with net.public_only(), yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         # 播放列表 / 多图帖只取第一条
         while info and info.get("_type") in ("playlist", "multi_video") and info.get("entries"):
