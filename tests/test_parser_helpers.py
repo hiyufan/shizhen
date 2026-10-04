@@ -92,3 +92,13 @@ def test_douyin_browser_note_dom_fallback_only_for_single_image():
     assert [i.live_photo_url for i in imgs] == ["", ""]
     (img,) = _note_images({"images": ["https://p3/a"], "live": ""})
     assert img.live_photo_url == ""
+
+
+def test_douyin_browser_note_prefers_jpeg_from_aweme_info():
+    # 网页显示 q75 webp；awemeInfo 里同一张图有原尺寸 JPEG，按 id 换过去，没有的保留 webp
+    a = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/oAD7QVQrR~tplv-dy-aweme-images:q75.webp?x-expires=1"
+    b = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/ocG9IGDnA~tplv-dy-aweme-images:q75.webp?x-expires=1"
+    jpeg_a = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/oAD7QVQrR~tplv-dy-aweme-images:q75.jpeg?x-expires=2"
+    imgs = _note_images({"images": [a, b], "lives": {"oAD7QVQrR": "https://v/a.mp4"}, "jpegs": {"oAD7QVQrR": jpeg_a}})
+    assert [i.url for i in imgs] == [jpeg_a, b]
+    assert imgs[0].live_photo_url == "https://v/a.mp4"  # 换了地址实况照样配得上
