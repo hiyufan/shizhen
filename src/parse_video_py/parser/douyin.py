@@ -239,6 +239,13 @@ _NOTE_DOM_EXTRACT = """
 _PC_HOSTS = ("www.iesdouyin.com", "www.douyin.com")
 _ROUTER_DATA = re.compile(r"window\._ROUTER_DATA\s*=\s*(.*?)</script>", re.DOTALL)
 _SSR_PAGE_KEYS = ("video_(id)/page", "note_(id)/page")
+# 页面上取不到正文时用的是 <meta name="description">，抖音在后面拼了一段 SEO 文字：
+# 「不好 是台风 - 今日有雪223于20260711发布在抖音，已经收获了2281.9万个喜欢，来抖音，记录美好生活！」
+_META_DESC_TAIL = re.compile(r"\s+-\s+[^\n]*?于\d{8}发布在抖音[\s\S]*$")
+
+
+def _note_title(desc: str) -> str:
+    return _META_DESC_TAIL.sub("", desc).strip()
 
 
 def _first(urls: list | None) -> str:
@@ -586,7 +593,7 @@ class DouYin(BaseParser):
         return VideoInfo(
             video_url="",
             cover_url="",
-            title=dom.get("desc") or "",
+            title=_note_title(dom.get("desc") or ""),
             music_url=dom.get("music") or "",
             images=images,
             author=VideoAuthor(uid=dom.get("uid") or "", name=dom.get("author") or ""),
