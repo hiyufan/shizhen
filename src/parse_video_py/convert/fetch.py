@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 
 from ..utils import is_cn_url, proxy_for
-from . import config, ffmpeg, relay
+from . import config, ffmpeg, net, relay
 from .net import headers_for, safe_client
 
 # (已下载字节, 总字节；不知道总大小时为 0)
@@ -196,7 +196,7 @@ def ytdlp_download(
     opts = _ytdlp_opts(page_url, format_spec, out_dir, stem)
     opts.update(progress_hooks=[hooks.progress], postprocessor_hooks=[hooks.postprocessor])
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with net.public_only(), yt_dlp.YoutubeDL(opts) as ydl:  # SSRF：见 net.public_only
             info = ydl.extract_info(page_url, download=True)
     except Exception:
         # 半截的 .part / .ytdl 别留着占磁盘

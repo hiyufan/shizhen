@@ -12,6 +12,7 @@ import os
 import re
 import secrets
 import socket
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -163,6 +164,48 @@ def _dns_store(host: str, infos: list) -> bool:
 
 class UnsafeURL(httpx.RequestError):
     pass
+
+
+# ---------- 自带网络栈的第三方库（yt-dlp）的 SSRF 防线
+# httpx 的钩子管不到 yt-dlp：它自己跟跳转、自己抓页面里嵌的地址。2026-10-04 实测，解析
+# https://httpbin.org/redirect-to?url=http://127.0.0.1:8000/... 时 yt-dlp 跟着跳转打到了本机。
+# 所以在 socket 解析地址这一层拦：真连之前每次都会走到这里，跳转、嵌入地址、DNS 重绑定
+# （检查时公网、连接时内网）都过不去。只对 public_only() 里的线程生效，别的代码不受影响。
+_real_getaddrinfo = socket.getaddrinfo
+_outbound = threading.local()
+
+
+def _trusted_hosts() -> set[str]:
+    """配置里写死的内网服务可以连：YouTube PO Token 服务（bgutil）、代理。"""
+    urls = (config.POT_URL, os.getenv("PARSE_VIDEO_PROXY"), os.getenv("PARSE_VIDEO_PROXY_CN"))
+    return {host.lower() for url in urls if url and (host := urlparse(url).hostname)}
+
+
+def _guarded_getaddrinfo(host, port, *args, **kwargs):
+    infos = _real_getaddrinfo(host, port, *args, **kwargs)
+    if not getattr(_outbound, "public_only", False) or host is None:
+        return infos
+    name = (host.decode() if isinstance(host, bytes) else str(host)).lower()
+    if name in _trusted_hosts():
+        return infos
+    # IPv6 带 scope 的地址形如 fe80::1%eth0
+    if any(_ip_is_internal(ipaddress.ip_address(info[4][0].split("%")[0])) for info in infos):
+        raise socket.gaierror(socket.EAI_NONAME, f"blocked internal address: {name}")
+    return infos
+
+
+socket.getaddrinfo = _guarded_getaddrinfo
+
+
+@contextlib.contextmanager
+def public_only():
+    """这个线程里所有 socket 连接只许去公网（_trusted_hosts 除外）。yt-dlp 的解析和下载都包在这里面。"""
+    previous = getattr(_outbound, "public_only", False)
+    _outbound.public_only = True
+    try:
+        yield
+    finally:
+        _outbound.public_only = previous
 
 
 async def _ssrf_request_hook(request: httpx.Request) -> None:
