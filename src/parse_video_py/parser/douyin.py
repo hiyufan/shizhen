@@ -113,18 +113,24 @@ async def aclose_browser() -> None:
 
 
 def _note_images(dom: dict) -> list[ImgInfo]:
-    """浏览器兜底取到的图配上实况。
+    """浏览器兜底取到的图换成 JPEG、配上实况。
+
+    图的张数和顺序以 DOM 为准（稳定）；网页显示的是 q75 webp，awemeInfo 里有同一张图
+    原尺寸、无水印的 JPEG（2026-10-04 实测同为 2160×2884，webp 229KB / JPEG 564KB），
+    按 id 换过去，没有就用 webp。q75 是抖音能给的上限：地址带签名，改质量参数就 403。
 
     lives 是页面 awemeInfo 里 {图片 uri 末段: 实况地址}，按 id 出现在图片地址里来配；
     awemeInfo 说没有实况就是没有。lives 为 None（没找到 awemeInfo）时退回 DOM：
     只有一张图时播放器里那段视频必定是它的；多张时页面只留前后几页的 <video>，
     硬配会张冠李戴，宁可不给。"""
     lives = dom.get("lives")
+    jpegs = dom.get("jpegs") or {}
     images = []
     for u in dom.get("images") or []:
         path = u.split("?")[0]
         live = next((src for img_id, src in (lives or {}).items() if img_id in path), "")
-        images.append(ImgInfo(url=u, live_photo_url=live))
+        jpeg = next((src for img_id, src in jpegs.items() if img_id in path), "")
+        images.append(ImgInfo(url=jpeg or u, live_photo_url=live))
     if lives is None and len(images) == 1 and dom.get("live"):
         images[0].live_photo_url = dom["live"]
     return images
@@ -184,7 +190,9 @@ _NOTE_DOM_EXTRACT = """
   // images[i].video.playAddr 就是每张图的实况，按图片 uri 末段和 DOM 里的图对上。
   // 多张实况的轮播 DOM 只留前后三页的 <video>，靠 DOM 配不全，只能走这里
   // total 是 awemeInfo 里的总张数，轮询时据此判断图齐了没有（见 _extract_note_dom）
-  let lives = null, total = null;   // null = 没找到 awemeInfo；{} = 找到了但没有实况
+  // jpegs：{图片 uri 末段: 同尺寸的 JPEG}。网页 <img> 显示的是 q75 的 webp，awemeInfo 的 urlList
+  // 里同一张图还有 JPEG（同样原尺寸、无水印），给用户这个（见 _note_images）
+  let lives = null, total = null, jpegs = {};   // lives：null = 没找到 awemeInfo；{} = 找到了但没有实况
   try {
     const fk = Object.keys(root).find(k => k.startsWith('__reactFiber$'));
     for (let f = fk && root[fk], up = 0; f && up < 30; f = f.return, up++) {
@@ -197,6 +205,9 @@ _NOTE_DOM_EXTRACT = """
         if (src.startsWith('//')) src = 'https:' + src;
         const id = ((im && im.uri) || '').split('/').pop();
         if (src && id) lives[id] = src;
+        let jpeg = ((im && im.urlList) || []).find(u => /\\.jpe?g$/.test((u || '').split('?')[0])) || '';
+        if (jpeg.startsWith('//')) jpeg = 'https:' + jpeg;
+        if (jpeg && id) jpegs[id] = jpeg;
       }
       break;
     }
@@ -231,7 +242,7 @@ _NOTE_DOM_EXTRACT = """
     const m = metadesc.match(/([^\\s，。]{1,30})于\\d{8}发布在抖音/);
     if (m) author = m[1];
   }
-  return { images: Object.values(seen), music, lives, live, total, detail: !!detail, desc, author, uid };
+  return { images: Object.values(seen), music, lives, jpegs, live, total, detail: !!detail, desc, author, uid };
 }
 """
 
