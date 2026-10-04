@@ -22,7 +22,7 @@ export async function openConverter(req, format) {
   const box = $('#converter');
   const jobsBox = el('div', { class: 'jobs', style: 'margin-top:10px;max-width:420px' });
   const status = el('div', {},
-    el('p', { class: 'hint' }, el('span', { class: 'spin' }), ' 正在准备原视频，视频越长等得越久…'), jobsBox);
+    el('p', { class: 'hint' }, el('span', { class: 'spin' }), ' 正在把原视频搬上服务器，片子越长搬得越久…'), jobsBox);
   const conv = el('div', { class: 'conv' }, el('div', { class: 'conv-head' }, el('h2', {}, FORMAT_NAMES[format])), status);
   box.replaceChildren(conv);
   box.hidden = false;
