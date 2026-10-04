@@ -101,6 +101,8 @@ def _mount_mcp(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    # 进程里任何库（yt-dlp、httpx……）都连不到内网，见 net.install_ssrf_guard
+    net.install_ssrf_guard()
     # 去掉结尾斜杠的跳转由 middleware 用 301 做（框架自带的是 307）
     app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.add_middleware(GZipMiddleware, minimum_size=1024)

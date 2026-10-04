@@ -12,7 +12,6 @@ import os
 import re
 import secrets
 import socket
-import threading
 import time
 from urllib.parse import urlparse
 
@@ -166,13 +165,15 @@ class UnsafeURL(httpx.RequestError):
     pass
 
 
-# ---------- 自带网络栈的第三方库（yt-dlp）的 SSRF 防线
-# httpx 的钩子管不到 yt-dlp：它自己跟跳转、自己抓页面里嵌的地址。2026-10-04 实测，解析
-# https://httpbin.org/redirect-to?url=http://127.0.0.1:8000/... 时 yt-dlp 跟着跳转打到了本机。
-# 所以在 socket 解析地址这一层拦：真连之前每次都会走到这里，跳转、嵌入地址、DNS 重绑定
-# （检查时公网、连接时内网）都过不去。只对 public_only() 里的线程生效，别的代码不受影响。
+# ---------- 最后一道 SSRF 防线：整个进程连不到内网
+# 上面的检查是「先解析一次看看」，真正连接时库会再解析一次，两次之间管不住：
+# - yt-dlp 自带网络栈，自己跟跳转、抓页面里嵌的地址，httpx 的钩子根本看不到。2026-10-04 实测，解析
+#   https://httpbin.org/redirect-to?url=http://127.0.0.1:8000/... 时 yt-dlp 跟着跳转打到了本机；
+# - DNS 重绑定：检查时解析到公网，连接时解析到 127.0.0.1，/api/proxy 会把内网的响应原样转出去。
+# 所以把 socket.getaddrinfo 换成带检查的：任何库真连之前都要走到这里，解析出内网地址就拒绝。
+# 例外：监听端口时的解析（AI_PASSIVE，uvicorn 绑 0.0.0.0）、配置里写死的内网服务（bgutil、代理）。
 _real_getaddrinfo = socket.getaddrinfo
-_outbound = threading.local()
+_GUARD = os.environ.get("PARSE_VIDEO_SSRF_GUARD", "1") == "1"
 
 
 def _trusted_hosts() -> set[str]:
@@ -181,9 +182,9 @@ def _trusted_hosts() -> set[str]:
     return {host.lower() for url in urls if url and (host := urlparse(url).hostname)}
 
 
-def _guarded_getaddrinfo(host, port, *args, **kwargs):
-    infos = _real_getaddrinfo(host, port, *args, **kwargs)
-    if not getattr(_outbound, "public_only", False) or host is None:
+def _guarded_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):  # noqa: A002 - 和 socket 的签名一致
+    infos = _real_getaddrinfo(host, port, family, type, proto, flags)
+    if host is None or flags & socket.AI_PASSIVE:
         return infos
     name = (host.decode() if isinstance(host, bytes) else str(host)).lower()
     if name in _trusted_hosts():
@@ -194,18 +195,10 @@ def _guarded_getaddrinfo(host, port, *args, **kwargs):
     return infos
 
 
-socket.getaddrinfo = _guarded_getaddrinfo
-
-
-@contextlib.contextmanager
-def public_only():
-    """这个线程里所有 socket 连接只许去公网（_trusted_hosts 除外）。yt-dlp 的解析和下载都包在这里面。"""
-    previous = getattr(_outbound, "public_only", False)
-    _outbound.public_only = True
-    try:
-        yield
-    finally:
-        _outbound.public_only = previous
+def install_ssrf_guard() -> None:
+    """Web 服务启动时装上（web/app.py）。命令行工具是本机自己用，不装。"""
+    if _GUARD:
+        socket.getaddrinfo = _guarded_getaddrinfo
 
 
 async def _ssrf_request_hook(request: httpx.Request) -> None:
