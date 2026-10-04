@@ -16,7 +16,7 @@ from .guides import GUIDES, Guide
 
 SITE_NAME = "求原图"
 SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "").rstrip("/")  # 如 https://example.com；不填就按请求地址
-UPDATED = "2026-10-03"
+UPDATED = "2026-10-04"
 
 # 站长验证 / 统计代码：直接贴 <meta> 或 <script> 片段
 SITE_VERIFICATION_HTML = os.environ.get("PARSE_VIDEO_SITE_VERIFICATION", "")
@@ -133,7 +133,7 @@ PAGES: list[Page] = [
             ),
         ],
         common=["watermark", "iphone", "free"],
-        guides=["douyin-no-watermark", "douyin-image-post-original", "video-to-gif"],
+        guides=["douyin-no-watermark", "douyin-image-post-original", "douyin-live-photo", "douyin-long-video-h265"],
     ),
     Page(
         slug="xiaohongshu",
@@ -161,7 +161,7 @@ PAGES: list[Page] = [
             ),
             (
                 "链接必须是新鲜的",
-                "小红书的分享链接带一个几小时内有效的 xsec_token，过期就打不开。请在 App 里现复制现贴，不要用几天前保存的链接。xhslink.com 短链和网页版分享出来的长链接都可以。",
+                "小红书的分享链接带一个 xsec_token，缺了或者过期就打不开。几天内复制的链接实测多半还能用，失败了就回 App 重新复制一次，整段文字贴进来。xhslink.com 短链和网页版分享出来的长链接都可以。",
             ),
             (
                 "和 App 内保存的区别",
@@ -205,7 +205,7 @@ PAGES: list[Page] = [
             ),
         ],
         common=["watermark", "links", "free"],
-        guides=["video-to-gif", "video-to-live-photo"],
+        guides=["kuaishou-download", "video-to-gif", "video-to-live-photo"],
     ),
     Page(
         slug="youtube",
@@ -305,7 +305,7 @@ PAGES: list[Page] = [
             ),
         ],
         common=["free", "ratelimit", "links"],
-        guides=["video-to-gif", "video-to-live-photo"],
+        guides=["bilibili-video-download", "video-to-gif", "video-to-live-photo"],
     ),
     Page(
         slug="gif",
@@ -333,7 +333,7 @@ PAGES: list[Page] = [
             ),
         ],
         common=["gifsize", "ratelimit", "free"],
-        guides=["video-to-gif", "douyin-no-watermark"],
+        guides=["video-to-gif", "wechat-gif-1mb", "douyin-no-watermark"],
     ),
     Page(
         slug="live-photo",
@@ -361,7 +361,7 @@ PAGES: list[Page] = [
             ),
         ],
         common=["iphone", "android", "free"],
-        guides=["video-to-live-photo", "xiaohongshu-live-photo-iphone", "douyin-image-post-original"],
+        guides=["video-to-live-photo", "android-motion-photo", "xiaohongshu-live-photo-iphone", "douyin-live-photo"],
     ),
 ]
 
@@ -453,7 +453,7 @@ def guide_json_ld(guide: Guide, base: str) -> str:
             "headline": guide.title,
             "description": guide.description,
             "inLanguage": "zh-CN",
-            "datePublished": guide.updated,
+            "datePublished": guide.published,
             "dateModified": guide.updated,
             "author": {"@type": "Organization", "name": SITE_NAME, "url": absolute(base, "/")},
             "publisher": {"@type": "Organization", "name": SITE_NAME},
@@ -470,15 +470,15 @@ def guides_index_json_ld(base: str) -> str:
 
 
 def sitemap_xml(base: str) -> str:
-    def url(path: str, priority: str, freq: str = "weekly") -> str:
+    def url(path: str, priority: str, freq: str = "weekly", lastmod: str = UPDATED) -> str:
         return (
-            f"<url><loc>{absolute(base, path)}</loc><lastmod>{UPDATED}</lastmod>"
+            f"<url><loc>{absolute(base, path)}</loc><lastmod>{lastmod}</lastmod>"
             f"<changefreq>{freq}</changefreq><priority>{priority}</priority></url>"
         )
 
     items = [url(p.path, "1.0" if not p.slug else "0.8") for p in PAGES]
     items.append(url("/guides", "0.7"))
-    items += [url(g.path, "0.7", "monthly") for g in GUIDES]
+    items += [url(g.path, "0.7", "monthly", g.updated) for g in GUIDES]
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + "".join(items) + "</urlset>"

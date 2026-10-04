@@ -307,6 +307,13 @@ img.failed { opacity: .35; cursor: pointer; }
 .howto h3 { font-size: 18px; font-weight: 700; }
 .howto p { grid-column: 2; margin: 4px 0 0; font-size: 15px; color: var(--ink-2); }
 .cta { margin: 22px 0 0; }
+.tbl { overflow-x: auto; margin: 4px 0 18px; border: 1px solid var(--line); border-radius: 14px; }
+.tbl table { width: 100%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
+.tbl th, .tbl td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+.tbl th { font-weight: 600; background: var(--card); }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl td.n { font-family: var(--mono); font-size: 13px; }
+.article .note { font-size: 13px; color: var(--ink-3); margin-top: -8px; }
 .related { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .related a { display: block; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; text-decoration: none; font-weight: 600; background: var(--card); }
 .related a:hover { border-color: var(--sky); color: var(--sky); }
