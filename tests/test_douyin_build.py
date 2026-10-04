@@ -172,3 +172,40 @@ def test_unusable_urls(url, message):
 )
 def test_note_title_drops_meta_description_tail(desc, title):
     assert douyin._note_title(desc) == title
+
+
+_FULL = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/oAD~tplv-dy-aweme-images:q75.webp?x=1"
+_SMALL = "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/oAD~tplv-dy-aweme-images-v2:1440:1922:q75.webp?x=1"
+
+
+@pytest.mark.parametrize(
+    ("pages", "renewed", "expected", "opened"),
+    [
+        ([{"images": [_SMALL]}, {"images": [_FULL]}], True, _FULL, 2),  # 换会话重抽到原尺寸
+        ([{"images": [_SMALL]}, {"images": [_FULL]}], False, _SMALL, 1),  # 冷却期内不换，就用缩小版
+        ([{"images": [_SMALL]}, {}], True, _SMALL, 2),  # 重抽那次页面出错，退回缩小版
+        ([{"images": [_FULL]}], True, _FULL, 1),  # 本来就是原尺寸，不折腾
+    ],
+)
+async def test_note_renews_session_when_images_are_downscaled(monkeypatch, pages, renewed, expected, opened):
+    calls = []
+
+    async def open_note(self, video_id, page_url, attempt):
+        calls.append(attempt)
+        return pages[attempt]
+
+    async def renew():
+        return renewed
+
+    monkeypatch.setattr(DouYin, "_open_note", open_note)
+    monkeypatch.setattr(douyin._warm_browser, "renew_context", renew)
+    info = await DouYin()._note_via_browser("1")
+    assert [i.url for i in info.images] == [expected] and len(calls) == opened
+
+
+async def test_renew_context_respects_cooldown():
+    browser = douyin._WarmBrowser(1)
+    assert await browser.renew_context() is False  # 浏览器还没起来
+    browser._browser = object()
+    browser._renewed_at = douyin.time.monotonic()
+    assert await browser.renew_context() is False  # 刚换过
