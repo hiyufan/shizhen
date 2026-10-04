@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 
 from .guides import GUIDES, Guide
@@ -465,6 +466,10 @@ def guide_json_ld(guide: Guide, base: str) -> str:
     return _dump(data)
 
 
+def status_json_ld(base: str, faq: list[tuple[str, str]]) -> str:
+    return _dump([_faq_ld(faq), _crumbs(base, (SITE_NAME, "/"), ("解析状态", "/status"))])
+
+
 def guides_index_json_ld(base: str) -> str:
     return _dump([_crumbs(base, (SITE_NAME, "/"), ("教程", "/guides"))])
 
@@ -479,6 +484,8 @@ def sitemap_xml(base: str) -> str:
     items = [url(p.path, "1.0" if not p.slug else "0.8") for p in PAGES]
     items.append(url("/guides", "0.7"))
     items += [url(g.path, "0.7", "monthly", g.updated) for g in GUIDES]
+    # 状态页每小时自检一次，lastmod 写今天（北京时间）
+    items.append(url("/status", "0.6", "hourly", time.strftime("%Y-%m-%d", time.gmtime(time.time() + 8 * 3600))))
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + "".join(items) + "</urlset>"
@@ -487,4 +494,4 @@ def sitemap_xml(base: str) -> str:
 
 def all_paths() -> list[str]:
     """给主动推送脚本用。"""
-    return [p.path for p in PAGES] + ["/guides"] + [g.path for g in GUIDES]
+    return [p.path for p in PAGES] + ["/guides"] + [g.path for g in GUIDES] + ["/status"]
