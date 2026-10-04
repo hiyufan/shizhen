@@ -30,17 +30,38 @@ function hideOutputs() {
   $('#converter').hidden = true;
 }
 
-// 抖音图文要在服务端开浏览器渲染，6–10 秒；只有个转圈的话用户以为卡了会反复点或者直接走。
+// 解析超过两秒就轮播几句话：只有个转圈的话用户以为卡了会反复点或者直接走。
+// 抖音图文要在服务端开浏览器渲染，3–5 秒，先说清楚为什么慢。
 // 实况图的分享文案只写「# live实况」「#livephoto」，没有「图文作品」
+const WAIT_LINES = [
+  '原图在路上了，它腿短，再等等它',
+  '正在翻箱底，找最清楚的那一版',
+  '水印留在原地，只带走干净的',
+  '顺着链接摸过去了，马上回来',
+  '去平台那边排个队，前面就几个人',
+  '正在跟平台那头握手，对方有点慢热',
+  '快了快了，比泡面快',
+];
+const NOTE_LINE = '抖音图文得打开网页一张张捡图，三五秒，别走开';
+const SLOW_LINES = [
+  '平台今天有点磨蹭，我们再敲敲门',
+  '比平时久不少，不过还在努力，没卡住',
+];
+
 function slowParseHints(text) {
   const isNote = /douyin\.com\/(note|share\/(note|slides))\//.test(text)
     || (/douyin\.com/.test(text) && /图文作品|实况|live/i.test(text));
-  const first = isNote ? '抖音图文要打开页面一张张取图，大约 10 秒，别关页面。' : '还在解析，这个平台响应慢一点，稍等一下。';
-  const timers = [
-    setTimeout(() => notice(first, 'info'), 2500),
-    setTimeout(() => notice('比平时慢，平台那边响应不太快，再等一会儿。', 'info'), 15000),
-  ];
-  return () => timers.forEach(clearTimeout);
+  const lines = WAIT_LINES.slice().sort(() => Math.random() - 0.5);
+  if (isNote) lines.unshift(NOTE_LINE);
+  const start = Date.now();
+  let i = 0;
+  const show = () => {
+    const slow = Date.now() - start > 15000;
+    notice(slow ? SLOW_LINES[i++ % SLOW_LINES.length] : lines[i++ % lines.length], 'info');
+  };
+  let rotate;
+  const first = setTimeout(() => { show(); rotate = setInterval(show, 4000); }, isNote ? 1000 : 2000);
+  return () => { clearTimeout(first); clearInterval(rotate); };
 }
 
 // 从 GitHub issue 的「在线复现」点进来的，解析请求也带上来源，服务端不计入统计
