@@ -209,3 +209,70 @@ async def test_renew_context_respects_cooldown():
     browser._browser = object()
     browser._renewed_at = douyin.time.monotonic()
     assert await browser.renew_context() is False  # 刚换过
+
+
+NOTE_PC_URL = "https://www.douyin.com/note/7424432820954598707"
+
+
+def _race(monkeypatch, slides, cookie=""):
+    """跑一次图文解析，记下浏览器被调了几次、最后有没有被取消。"""
+    calls = {"browser": 0, "cancelled": False}
+
+    async def browser(self, video_id):
+        calls["browser"] += 1
+        try:
+            await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            calls["cancelled"] = True
+            raise
+        return "from-browser"
+
+    async def slides_info(self, video_id):
+        await asyncio.sleep(0.01)
+        return slides()
+
+    monkeypatch.setattr(DouYin, "_get_slides_info", slides_info)
+    monkeypatch.setattr(DouYin, "_note_via_browser", browser)
+    monkeypatch.setattr(douyin, "_configured_cookie", lambda: cookie)
+
+    async def run():
+        result = await DouYin().parse_share_url(NOTE_PC_URL)
+        await asyncio.sleep(0.1)  # 给被取消的任务跑完收尾
+        return result
+
+    return asyncio.run(run()), calls
+
+
+def test_note_starts_browser_alongside_api(monkeypatch):
+    def filtered():
+        raise ParseError("login", "抖音 filter reason=4")
+
+    result, calls = _race(monkeypatch, filtered)
+    assert result == "from-browser" and calls["browser"] == 1  # 用的是提前开的那次，没再开第二次
+
+
+def test_note_api_data_wins_and_browser_is_cancelled(monkeypatch):
+    async def build(self, aweme):
+        return "from-api"
+
+    monkeypatch.setattr(DouYin, "_build", build)
+    result, calls = _race(monkeypatch, lambda: {"aweme_details": [{"aweme_id": "1"}]})
+    assert result == "from-api" and calls["cancelled"]
+
+
+def test_note_with_login_cookie_does_not_race(monkeypatch):
+    # 配了登录 cookie 接口能拿到图文，别白开浏览器
+    async def build(self, aweme):
+        return "from-api"
+
+    monkeypatch.setattr(DouYin, "_build", build)
+    result, calls = _race(monkeypatch, lambda: {"aweme_details": [{"aweme_id": "1"}]}, cookie="sessionid=x")
+    assert result == "from-api" and calls["browser"] == 0
+
+
+def test_page_images_prefers_complete_aweme_list():
+    dom = {"images": ["https://p3/dom-a"], "ordered": ["https://p3/a.jpeg", "https://p3/b.jpeg"], "total": 2}
+    assert douyin._page_images(dom) == ["https://p3/a.jpeg", "https://p3/b.jpeg"]
+    # awemeInfo 还没凑齐：用 DOM 里的
+    assert douyin._page_images({**dom, "ordered": ["https://p3/a.jpeg"]}) == ["https://p3/dom-a"]
+    assert douyin._page_images({"images": ["https://p3/dom-a"], "total": None}) == ["https://p3/dom-a"]
