@@ -70,3 +70,24 @@ def test_old_blog_urls_are_gone(client, path):
 def test_unknown_pages_are_still_404(client):
     assert client.get("/no-such-page").status_code == 404
     assert client.get("/guide/no-such-guide").status_code == 404
+
+
+def test_every_guide_renders_and_links_resolve(client):
+    from parse_video_py.guides import GUIDE_BY_SLUG, GUIDES
+    from parse_video_py.seo import PAGES
+
+    assert all(r in GUIDE_BY_SLUG for g in GUIDES for r in g.related)
+    assert all(r in GUIDE_BY_SLUG for p in PAGES for r in p.guides)
+    sitemap = client.get("/sitemap.xml").text
+    for g in GUIDES:
+        html = client.get(g.path).text
+        assert g.h1 in html and g.path in sitemap
+        # 数据表整段输出，不能被包进 <p> 里（<p><div> 是非法嵌套，浏览器会拆开）
+        assert "<p><div" not in html
+
+
+def test_guide_table_marks_number_cells():
+    from parse_video_py.guides import table
+
+    html = table(["时长", "大小"], [["3 秒", "0.4 MB"]], "2026-10-04 实测")
+    assert '<td class="n">3 秒</td>' in html and '<p class="note">2026-10-04 实测</p>' in html
