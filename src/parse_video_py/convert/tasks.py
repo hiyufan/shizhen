@@ -51,7 +51,7 @@ async def _download_source_file(
 
     def on_bytes(done: int, total: int) -> None:
         if total:
-            job.set(progress=min(0.95, done / total) * 0.9, message="正在下载原视频")
+            job.set(progress=min(0.95, done / total) * 0.9, message="原视频搬运中")
 
     path = config.SOURCES_DIR / f"{source_id}.mp4"
     await download_source(url, path, headers, on_bytes)
@@ -70,15 +70,15 @@ async def fetch_source(
 ) -> store.Source:
     """把原视频拉到本地并探测时长 / 尺寸，供转换预览使用。直链给 url，yt-dlp 站点给 page_url。"""
     if existing := store.get(source_id):
-        job.set(progress=1.0, message="已就绪")
+        job.set(progress=1.0, message="搬完了")
         job.extra = existing.view()
         return existing
 
     config.ensure_dirs()
-    job.set(progress=0.02, message="正在下载原视频")
+    job.set(progress=0.02, message="原视频搬运中")
     path = await _download_source_file(job, source_id, url, headers or {}, page_url, format_spec)
 
-    job.set(progress=0.95, message="正在读取视频信息")
+    job.set(progress=0.95, message="看看这段视频什么来头")
     info = await ffmpeg.probe(path)
     if info.duration <= 0 or info.width <= 0:
         raise RuntimeError("下载到的文件不是可用的视频")
@@ -198,7 +198,7 @@ async def _make_gif(job: Job, src: store.Source, opts: ConvertOptions, stem: str
     start, duration = _clamp_range(src, opts.start, opts.end, config.GIF_MAX_SECONDS)
     params = (max(120, min(960, int(opts.width))), max(4, min(30, int(opts.fps))), 256)
     out = config.OUTPUTS_DIR / f"{job.id}.gif"
-    job.set(progress=0.05, message="正在生成 GIF")
+    job.set(progress=0.05, message="GIF 一帧一帧画着呢")
     for attempt in range(GIF_FIT_ATTEMPTS):
         width, fps, colors = params
         base = min(0.8, 0.05 + 0.2 * attempt)
@@ -221,7 +221,7 @@ async def _make_gif(job: Job, src: store.Source, opts: ConvertOptions, stem: str
         if smaller == params or attempt == GIF_FIT_ATTEMPTS - 1:
             break
         params = smaller
-        job.set(message=f"{size / 1e6:.1f} MB 超了，压小一点重做：宽 {smaller[0]} px、{smaller[1]} fps")
+        job.set(message=f"{size / 1e6:.1f} MB 有点胖，瘦个身重来：宽 {smaller[0]} px、{smaller[1]} fps")
 
     width, fps, colors = params
     fits = None if not opts.max_bytes else size <= opts.max_bytes
@@ -248,7 +248,7 @@ async def _make_livephoto(job: Job, src: store.Source, opts: ConvertOptions, ste
     ident = livephoto.new_identifier()
     mov = config.OUTPUTS_DIR / f"{job.id}.MOV"
     jpg = config.OUTPUTS_DIR / f"{job.id}.JPG"
-    job.set(progress=0.05, message="正在编码视频")
+    job.set(progress=0.05, message="视频下锅，小火慢炖")
     await ffmpeg.encode_segment(
         src.path,
         str(mov),
@@ -261,7 +261,7 @@ async def _make_livephoto(job: Job, src: store.Source, opts: ConvertOptions, ste
         },
         on_progress=_progress_from(job, 0.05, 0.9),
     )
-    job.set(progress=0.9, message="正在生成封面")
+    job.set(progress=0.9, message="挑一张好看的当封面")
     await ffmpeg.extract_frame(src.path, str(jpg), at=still_at)
     livephoto.write_jpeg_identifier(jpg, ident, date=_exif_now())
     if not livephoto.mov_has_identifier(mov, ident) or livephoto.read_jpeg_identifier(jpg) != ident:
@@ -282,7 +282,7 @@ async def _make_motionphoto(job: Job, src: store.Source, opts: ConvertOptions, s
     mp4 = config.OUTPUTS_DIR / f"{job.id}_mp.mp4"
     jpg = config.OUTPUTS_DIR / f"{job.id}_mp.jpg"
     out = config.OUTPUTS_DIR / f"{job.id}_motion.jpg"
-    job.set(progress=0.05, message="正在编码视频")
+    job.set(progress=0.05, message="视频下锅，小火慢炖")
     await ffmpeg.encode_segment(
         src.path,
         str(mp4),
@@ -291,7 +291,7 @@ async def _make_motionphoto(job: Job, src: store.Source, opts: ConvertOptions, s
         container="mp4",
         on_progress=_progress_from(job, 0.05, 0.9),
     )
-    job.set(progress=0.9, message="正在合成动态照片")
+    job.set(progress=0.9, message="把视频塞进照片里")
     try:
         await ffmpeg.extract_frame(src.path, str(jpg), at=still_at)
         livephoto.write_jpeg_identifier(jpg, livephoto.new_identifier(), date=_exif_now())
@@ -400,9 +400,9 @@ async def pair_live(job: Job, *, items: list[dict], fmt: str, title: str) -> Non
     try:
         pairs = []
         for i, item in enumerate(items):
-            job.set(progress=i / len(items), message=f"正在处理第 {i + 1}/{len(items)} 张")
+            job.set(progress=i / len(items), message=f"第 {i + 1}/{len(items)} 张，一张张来")
             pairs.append(await _pair_one(work, i + 1, item, fmt))
-        job.set(progress=0.97, message="正在打包")
+        job.set(progress=0.97, message="装箱打包中")
         if fmt == "livephoto":
             _bundle_livephotos(job, pairs, stem)
         else:

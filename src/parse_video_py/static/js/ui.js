@@ -6,7 +6,7 @@ import { el } from './dom.js';
 /** 任务卡片：进度条 + 状态文字，做完换成保存按钮（iPhone 上前面多一个「存到相册」） */
 export function jobCard(container, title) {
   const bar = el('div', { class: 'bar-fill' });
-  const status = el('small', {}, '排队中');
+  const status = el('small', {}, '排个队，马上轮到');
   const card = el('div', { class: 'job' },
     el('div', { class: 'row' }, el('b', {}, title), status),
     el('div', { class: 'bar-track' }, bar));
@@ -16,7 +16,7 @@ export function jobCard(container, title) {
     update(job) {
       const pct = Math.round((job.progress || 0) * 100);
       bar.style.width = pct + '%';
-      status.textContent = (job.message || (job.status === 'queued' ? '排队中' : '处理中')) + ' ' + pct + '%';
+      status.textContent = (job.message || (job.status === 'queued' ? '排个队，马上轮到' : '忙活中')) + ' ' + pct + '%';
     },
     done(text, href, filename, photos) {
       bar.style.width = '100%';
