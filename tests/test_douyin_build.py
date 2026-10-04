@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from parse_video_py.parser import douyin
 from parse_video_py.parser.douyin import DouYin
 from parse_video_py.parser.errors import ParseError
 
@@ -156,3 +157,18 @@ def test_filtered_and_no_browser_keeps_original_error(monkeypatch):
 def test_unusable_urls(url, message):
     with pytest.raises(ValueError, match=message):
         asyncio.run(DouYin().parse_share_url(url))
+
+
+@pytest.mark.parametrize(
+    ("desc", "title"),
+    [
+        (
+            "不好 是台风 - 今日有雪223于20260711发布在抖音，已经收获了2281.9万个喜欢，来抖音，记录美好生活！",
+            "不好 是台风",
+        ),
+        ("正文里本来就有 - 横杠", "正文里本来就有 - 横杠"),
+        ("页面上取到的正文 #话题", "页面上取到的正文 #话题"),
+    ],
+)
+def test_note_title_drops_meta_description_tail(desc, title):
+    assert douyin._note_title(desc) == title
