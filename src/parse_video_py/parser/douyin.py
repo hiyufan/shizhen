@@ -3,6 +3,7 @@ import contextlib
 import json
 import os
 import re
+import time
 from urllib.parse import parse_qs, urlparse
 
 from ..utils import create_async_client
@@ -34,12 +35,16 @@ class _WarmBrowser:
     某个页面出错只影响它自己；浏览器进程断了才整个重起。
     """
 
+    # 换会话的冷却：抖音哪天要是所有会话都给缩小版，别每次解析都换一遍
+    RENEW_COOLDOWN = 600
+
     def __init__(self, size: int) -> None:
         self._sem = asyncio.Semaphore(size)
         self._lock = asyncio.Lock()
         self._pw = None
         self._browser = None
         self._context = None
+        self._renewed_at = float("-inf")
 
     async def _ensure_context(self):
         from playwright.async_api import async_playwright
@@ -54,17 +59,34 @@ class _WarmBrowser:
                 chromium_sandbox=False,
                 args=["--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
             )
-            # UA 在 context 创建时定死：cookie 和 TLS 会话都绑着它，中途换 UA
-            # 等于自曝。playwright 的 headless 会被识破，webdriver 标志要藏掉。
-            self._context = await self._browser.new_context(
-                locale="zh-CN",
-                user_agent=_random_ua("Windows"),
-                viewport={"width": 1280, "height": 900},
-            )
-            await self._context.add_init_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-            )
+            self._context = await self._new_context()
             return self._context
+
+    async def _new_context(self):
+        # UA 在 context 创建时定死：cookie 和 TLS 会话都绑着它，中途换 UA
+        # 等于自曝。playwright 的 headless 会被识破，webdriver 标志要藏掉。
+        context = await self._browser.new_context(
+            locale="zh-CN",
+            user_agent=_random_ua("Windows"),
+            viewport={"width": 1280, "height": 900},
+        )
+        await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+        return context
+
+    async def renew_context(self) -> bool:
+        """换一个新会话（新 cookie）并预热。冷却期内不换，返回 False。
+
+        抖音按会话随机分桶：约三分之一的会话图文的图被缩到 1440 宽（模板 aweme-images-v2:1440:...），
+        原图 2160 宽。会话常驻，分到缩小版就一直是缩小版，所以发现了就换一个重抽。"""
+        async with self._lock:
+            if self._browser is None or time.monotonic() - self._renewed_at < self.RENEW_COOLDOWN:
+                return False
+            self._renewed_at = time.monotonic()
+            old, self._context = self._context, await self._new_context()
+        # 旧会话上可能还有别的解析在跑，过一会儿再关
+        asyncio.get_running_loop().call_later(60, lambda: asyncio.ensure_future(_close_quietly(old)))
+        await warmup_browser()
+        return True
 
     @contextlib.asynccontextmanager
     async def page(self):
@@ -95,6 +117,12 @@ class _WarmBrowser:
             await self._close_all()
 
 
+async def _close_quietly(closer) -> None:
+    if closer is not None:
+        with contextlib.suppress(Exception):
+            await closer.close()
+
+
 _warm_browser = _WarmBrowser(_BROWSER_PAGES)
 
 
@@ -110,6 +138,11 @@ async def warmup_browser() -> None:
 async def aclose_browser() -> None:
     """进程退出时把常驻浏览器收掉。"""
     await _warm_browser.reset()
+
+
+def _downscaled(dom: dict) -> bool:
+    """这个会话被分到了缩小版（见 _WarmBrowser.renew_context）。"""
+    return any("aweme-images-v2:" in u.split("?")[0] for u in dom.get("images") or [])
 
 
 def _note_images(dom: dict) -> list[ImgInfo]:
@@ -568,36 +601,22 @@ class DouYin(BaseParser):
         也能逐张配上；拿不到 awemeInfo 时只给单张图配播放器里那段 <video>。
         """
         page_url = f"https://www.douyin.com/note/{video_id}"
-        dom = None
+        dom = downscaled = None
         for attempt in range(2):
-            try:
-                async with _warm_browser.page() as page:
-                    # 第一次 12 秒还没到 DOMContentLoaded 多半是跨境连接卡死了（正常
-                    # 1~1.5 秒，统计里有 25~40 秒的长尾），换个页面重来比干等划算；第二次
-                    # 放宽到 25 秒，网络只是慢的时候别两次都掐掉
-                    await page.goto(page_url, wait_until="domcontentloaded", timeout=12000 if attempt == 0 else 25000)
-                    if f"/note/{video_id}" not in page.url:
-                        if f"/video/{video_id}" in page.url:
-                            # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
-                            # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
-                            return None
-                        # 跳去首页/推荐流说明这条作品没了
-                        raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
-                    dom = await self._extract_note_dom(page)
-            except ImportError:
-                return None
-            except ParseError:
-                raise
-            except Exception:  # noqa: BLE001
-                # 页面超时 / 崩了 / 浏览器起不来：出错的页面已经关掉，换一个再来
+            dom = await self._open_note(video_id, page_url, attempt)
+            if dom is None or (dom.get("total") == 0 and not dom.get("images")):
+                break  # 是视频 / awemeInfo 里没有图：不是图文，交回上层报原错
+            if not dom.get("images"):
+                # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
+                # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
                 continue
-            if dom.get("images"):
-                break
-            if dom.get("total") == 0:
-                return None  # awemeInfo 里没有图：不是图文，交回上层报原错
-            # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
-            # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
-        else:
+            # 会话分到了缩小版（1440 宽）：换个会话重抽一次，不行就用这一份
+            if attempt == 0 and _downscaled(dom) and await _warm_browser.renew_context():
+                downscaled = dom
+                continue
+            break
+        dom = dom if dom and dom.get("images") else downscaled
+        if not dom:
             return None
 
         images = _note_images(dom)
@@ -610,6 +629,31 @@ class DouYin(BaseParser):
             author=VideoAuthor(uid=dom.get("uid") or "", name=dom.get("author") or ""),
             page_url=page_url,
         )
+
+    async def _open_note(self, video_id: str, page_url: str, attempt: int) -> dict | None:
+        """打开一次图文页取数据。页面出错返回 {}（换个页面再来）；是视频 / playwright 没装
+        返回 None（交回上层报原错）；作品没了抛 ParseError。"""
+        try:
+            async with _warm_browser.page() as page:
+                # 第一次 12 秒还没到 DOMContentLoaded 多半是跨境连接卡死了（正常
+                # 1~1.5 秒，统计里有 25~40 秒的长尾），换个页面重来比干等划算；第二次
+                # 放宽到 25 秒，网络只是慢的时候别两次都掐掉
+                await page.goto(page_url, wait_until="domcontentloaded", timeout=12000 if attempt == 0 else 25000)
+                if f"/note/{video_id}" not in page.url:
+                    if f"/video/{video_id}" in page.url:
+                        # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
+                        # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
+                        return None
+                    # 跳去首页/推荐流说明这条作品没了
+                    raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
+                return await self._extract_note_dom(page)
+        except ImportError:
+            return None
+        except ParseError:
+            raise
+        except Exception:  # noqa: BLE001
+            # 页面超时 / 崩了 / 浏览器起不来：出错的页面已经关掉，换一个再来
+            return {}
 
     @staticmethod
     async def _extract_note_dom(page) -> dict:
