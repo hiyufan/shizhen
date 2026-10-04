@@ -18,7 +18,8 @@
 
     {% for h, html in guide.sections %}
     <h2>{{ h }}</h2>
-    <p>{{ html | safe }}</p>
+    {# 以标签开头的是整段 HTML（多段落、表格），否则是一段纯文字 #}
+    {% if html.startswith('<') %}{{ html | safe }}{% else %}<p>{{ html | safe }}</p>{% endif %}
     {% endfor %}
 
     <h2>常见问题</h2>
