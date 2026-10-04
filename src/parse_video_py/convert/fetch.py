@@ -155,9 +155,9 @@ class _YtdlpHooks:
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             if total:
                 done = d.get("downloaded_bytes") or 0
-                self._report(min(0.95, done / total) * 0.9, "正在下载原视频")
+                self._report(min(0.95, done / total) * 0.9, "原视频搬运中")
         elif d.get("status") == "finished":
-            self._report(0.92, "正在合并音视频")
+            self._report(0.92, "把声音和画面缝到一起")
 
     def postprocessor(self, d: dict) -> None:
         if d.get("status") == "finished" and d.get("postprocessor") in ("MoveFiles", "Merger"):
