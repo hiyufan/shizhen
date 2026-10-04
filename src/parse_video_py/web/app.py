@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
-from .. import failures, feedback, stats
+from .. import failures, feedback, stats, status
 from ..convert import config, jobs, net, relay, store, updater
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
@@ -61,6 +61,9 @@ def _background_jobs() -> list:
         coros.append(stats.flusher())
     if config.YTDLP_AUTOUPDATE_DAYS > 0:
         coros.append(updater.loop(config.YTDLP_AUTOUPDATE_DAYS))
+    if os.environ.get("PARSE_VIDEO_STATUS_PROBE", "1") == "1":
+        # 公开的 /status 页：每小时拿固定链接把各平台自检一遍
+        coros.append(status.loop(_reparse))
     if feedback.enabled():
         # 反馈：同步 GitHub issue、issue 关了先复测再发邮件
         coros.append(feedback.loop(_reparse))

@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
-from .. import guides, seo
+from .. import guides, seo, status
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = PACKAGE_DIR / "static"
@@ -73,6 +73,14 @@ def js_preloads(entry: str) -> tuple[str, ...]:
 
 
 templates.env.globals.update(js_url=js_url, js_preloads=js_preloads)
+
+
+def _secs(ms: float) -> str:
+    return f"{ms / 1000:.1f} 秒"
+
+
+# /status 页用的格式化
+templates.env.filters.update(bjtime=status.bj_time, daylabel=status.day_label, secs=_secs, spaced=status.spaced)
 
 
 def _critical_css() -> str:

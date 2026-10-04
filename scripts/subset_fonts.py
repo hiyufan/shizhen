@@ -5,7 +5,7 @@
 放在 fonts/ 目录或用 --src 指定。没有 OTF 时拿现有的 woff2 当源：只能删字不能加字，缺字会报出来。
 
 两个字重收的字不一样：
-- 700（h2 / h3 / 卡片标题，还有脚本里拼出来的界面文字）：模板 + seo.py + guides.py 里出现的所有字。
+- 700（h2 / h3 / 卡片标题，还有脚本里拼出来的界面文字）：模板 + seo.py + guides.py + status.py 里出现的所有字。
 - 900 只用在品牌名和各页大标题（.brand、.hero h1、.article h1）：只收这些字。它是首屏标题的字体、
   首页 LCP 元素就是它，Lighthouse 会把它的下载算进 LCP；全收是 200KB，只收标题 30KB 左右。
 """
@@ -32,6 +32,7 @@ def page_text() -> str:
     for f in glob.glob(os.path.join(PKG, "templates", "*.html")) + [
         os.path.join(PKG, "seo.py"),
         os.path.join(PKG, "guides.py"),
+        os.path.join(PKG, "status.py"),
     ]:
         text += Path(f).read_text(encoding="utf-8")
     return text

@@ -322,6 +322,34 @@ img.failed { opacity: .35; cursor: pointer; }
 .guide-list a:hover { border-color: var(--line-2); box-shadow: 0 20px 60px rgba(0,0,0,.04); }
 .guide-list h2 { font-size: 20px; margin: 0; }
 .guide-list p { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); }
+/* 解析状态页 */
+.st-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+.st-card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 24px 26px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.st-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.article .st-head h2 { font-size: 22px; margin: 0; }
+.pill { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; background: var(--line); color: var(--ink-2); white-space: nowrap; }
+.pill.ok { background: rgba(77,184,153,.14); color: #23805f; }
+.pill.down { background: rgba(232,112,42,.14); color: #b8521a; }
+.article .st-meta { font-size: 13px; color: var(--ink-2); margin: 0; }
+.st-days { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; }
+.st-days i, .st-legend i { display: block; height: 22px; border-radius: 4px; background: var(--line-2); }
+.st-days i.ok, .st-legend i.ok { background: var(--mint); }
+.st-days i.part, .st-legend i.part { background: #f2b33d; }
+.st-days i.down, .st-legend i.down { background: var(--orange); }
+.st-days i.none, .st-legend i.none { background: var(--line); }
+.st-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: -6px; }
+.st-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 0; }
+.st-nums dt { font-size: 12px; color: var(--ink-3); }
+.st-nums dd { margin: 2px 0 0; font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.article .st-note { font-size: 13px; line-height: 1.7; color: var(--ink-2); margin: 0; }
+.st-link { font-size: 13px; font-weight: 600; color: var(--sky); text-decoration: none; margin-top: auto; }
+.article .st-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); margin-top: 16px; }
+.st-legend i { width: 12px; height: 12px; }
+.st-legend i:not(:first-child) { margin-left: 10px; }
+@media (max-width: 760px) {
+  .st-grid { grid-template-columns: 1fr; } .st-card { padding: 20px; }
+  .st-nums { grid-template-columns: 1fr; gap: 4px; } .st-nums div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; } .st-nums dd { margin: 0; }
+}
 /* 落地页独有正文 */
 .page-body { margin-top: 56px; text-align: left; }
 .page-body .grid3 .card h3 { font-size: 18px; }

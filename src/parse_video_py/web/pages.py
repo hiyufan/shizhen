@@ -5,12 +5,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 
-from .. import guides, seo
+from .. import guides, seo, status
 from .auth import SITE_AUTH
 from .rendering import JS_DIR, STATIC_DIR, base_url, js_version, page_context, render, render_404, render_tool_page
 
@@ -89,6 +90,25 @@ async def guide_page(request: Request, slug: str):
         }
     )
     return render(request, "guide.html", ctx)
+
+
+@page_route("/status", response_class=HTMLResponse, dependencies=SITE_AUTH)
+async def status_page(request: Request):
+    snap = await asyncio.to_thread(status.snapshot)
+    headline = status.headline(snap)
+    ctx = page_context(
+        request,
+        title="各平台解析状态：抖音、小红书、快手现在能不能解析 - 求原图",
+        description=headline + "每小时自检抖音、小红书、快手、B站、YouTube，附近 7 天真实用户的解析成功率。",
+        path="/status",
+        keywords="抖音解析不了,抖音去水印失效,小红书解析失败,快手解析失败,去水印网站能用吗",
+        json_ld=seo.status_json_ld(base_url(request), status.FAQ),
+    )
+    ctx.update(
+        {"platforms": snap["platforms"], "headline": headline, "faq": status.FAQ, "reason_labels": status.REASON_LABELS}
+    )
+    # 状态每小时变，别让浏览器和 nginx 拿着旧的看半天
+    return render(request, "status.html", ctx, headers={"Cache-Control": "public, max-age=300"})
 
 
 @page_route("/sitemap.xml")

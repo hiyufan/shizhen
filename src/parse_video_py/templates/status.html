@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="sec cold article">
+  <div class="shape sky" style="width:420px;height:420px;left:-160px;top:-120px"></div>
+  <div class="wrap">
+    <nav class="crumbs" aria-label="位置"><a href="/">求原图</a><span>/</span><span>解析状态</span></nav>
+    <h1>各平台解析状态</h1>
+    <p class="intro">{{ headline }}</p>
+    <p class="meta">每小时自检一次 · 页面打开时实时计算 · 北京时间</p>
+
+    <div class="st-grid">
+      {% for x in platforms %}
+      {% set p = x.platform %}
+      <article class="st-card" id="{{ p.key }}">
+        <div class="st-head">
+          <h2>{{ p.label }}</h2>
+          {% if not x.last %}<span class="pill">还没检测</span>
+          {% elif x.last.ok %}<span class="pill ok">正常</span>
+          {% else %}<span class="pill down">解析失败</span>{% endif %}
+        </div>
+        <p class="st-meta">
+          {% if x.last %}最近检测 {{ x.last.ts | bjtime }}{% if x.last.ok %} · 耗时 {{ x.last.ms | secs }}{% else %} · {{ reason_labels.get(x.last.reason, x.last.reason) }}{% endif %}
+          {% else %}自检数据还在收集中{% endif %}
+        </p>
+        <div class="st-days" role="img" aria-label="近 {{ x.days | length }} 天每天的自检结果">
+          {% for d in x.days %}<i class="{% if not d.n %}none{% elif d.ok == d.n %}ok{% elif d.ok == 0 %}down{% else %}part{% endif %}" title="{{ d.day | daylabel }}：{% if d.n %}{{ d.ok }}/{{ d.n }} 次成功{% else %}没有数据{% endif %}"></i>{% endfor %}
+        </div>
+        <div class="st-axis"><span>{{ x.days[0].day | daylabel }}</span><span>今天</span></div>
+        <dl class="st-nums">
+          <div><dt>近 7 天自检成功</dt><dd>{% if x.week_n %}{{ x.week_ok }}/{{ x.week_n }}{% else %}—{% endif %}</dd></div>
+          <div><dt>一般耗时</dt><dd>{% if x.median_ms %}{{ x.median_ms | secs }}{% else %}—{% endif %}</dd></div>
+          {# 次数太少时比例没意义（1 次失败就是 0%），只写次数 #}
+          {% if p.source %}<div><dt>近 7 天用户解析</dt><dd>{% if not x.users %}没人用过{% elif x.users.n < 10 %}{{ x.users.n }} 次，成功 {{ x.users.ok }}{% else %}{{ x.users.n }} 次 · {{ (100 * x.users.ok / x.users.n) | round | int }}%{% endif %}</dd></div>{% endif %}
+        </dl>
+        <p class="st-note">{{ p.note }}</p>
+        <a class="st-link" href="{{ p.path }}">去解析{{ p.label | spaced }}链接 →</a>
+      </article>
+      {% endfor %}
+    </div>
+    <p class="st-legend"><i class="ok"></i>全部成功 <i class="part"></i>部分失败 <i class="down"></i>全部失败 <i class="none"></i>没有数据</p>
+
+    <h2>常见问题</h2>
+    <div class="faq">
+      {% for q, a in faq %}
+      <details{% if loop.first %} open{% endif %}><summary>{{ q }}</summary><p>{{ a }}</p></details>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+<section class="sec warm">
+  <div class="wrap">
+    {% include '_footer.html' %}
+  </div>
+</section>
+{% endblock %}
