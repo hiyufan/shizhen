@@ -140,9 +140,28 @@ async def aclose_browser() -> None:
     await _warm_browser.reset()
 
 
+def _discard(task: asyncio.Task | None) -> None:
+    """提前开的浏览器任务用不上了：还在跑就取消（页面会被关掉）；已经结束的把异常取走，免得报
+    「Task exception was never retrieved」。"""
+    if task is None:
+        return
+    if not task.done():
+        task.cancel()
+    elif not task.cancelled():
+        task.exception()
+
+
+def _page_images(dom: dict) -> list[str]:
+    """图集的地址列表：awemeInfo 里按顺序凑齐了就用它（早、已是 JPEG），否则用 DOM 里渲染出来的图。"""
+    total, ordered = dom.get("total"), dom.get("ordered") or []
+    if total and len(ordered) >= total:
+        return ordered[:total]
+    return dom.get("images") or []
+
+
 def _downscaled(dom: dict) -> bool:
     """这个会话被分到了缩小版（见 _WarmBrowser.renew_context）。"""
-    return any("aweme-images-v2:" in u.split("?")[0] for u in dom.get("images") or [])
+    return any("aweme-images-v2:" in u.split("?")[0] for u in _page_images(dom))
 
 
 def _note_images(dom: dict) -> list[ImgInfo]:
@@ -159,7 +178,7 @@ def _note_images(dom: dict) -> list[ImgInfo]:
     lives = dom.get("lives")
     jpegs = dom.get("jpegs") or {}
     images = []
-    for u in dom.get("images") or []:
+    for u in _page_images(dom):
         path = u.split("?")[0]
         live = next((src for img_id, src in (lives or {}).items() if img_id in path), "")
         jpeg = next((src for img_id, src in jpegs.items() if img_id in path), "")
@@ -225,7 +244,9 @@ _NOTE_DOM_EXTRACT = """
   // total 是 awemeInfo 里的总张数，轮询时据此判断图齐了没有（见 _extract_note_dom）
   // jpegs：{图片 uri 末段: 同尺寸的 JPEG}。网页 <img> 显示的是 q75 的 webp，awemeInfo 的 urlList
   // 里同一张图还有 JPEG（同样原尺寸、无水印），给用户这个（见 _note_images）
-  let lives = null, total = null, jpegs = {};   // lives：null = 没找到 awemeInfo；{} = 找到了但没有实况
+  // ordered：awemeInfo 里按顺序每张图的地址（JPEG 优先）。它比 DOM 里的图早 0.5~0.8 秒齐（实测打开后
+  // ~2.6 秒 vs ~3.2 秒），而且地址已经能下载，凑齐了就不必再等 DOM（见 _extract_note_dom）
+  let lives = null, total = null, jpegs = {}, ordered = [];   // lives：null = 没找到 awemeInfo；{} = 找到了但没有实况
   try {
     const fk = Object.keys(root).find(k => k.startsWith('__reactFiber$'));
     for (let f = fk && root[fk], up = 0; f && up < 30; f = f.return, up++) {
@@ -241,6 +262,9 @@ _NOTE_DOM_EXTRACT = """
         let jpeg = ((im && im.urlList) || []).find(u => /\\.jpe?g$/.test((u || '').split('?')[0])) || '';
         if (jpeg.startsWith('//')) jpeg = 'https:' + jpeg;
         if (jpeg && id) jpegs[id] = jpeg;
+        let any = jpeg || ((im && im.urlList) || []).find(Boolean) || '';
+        if (any.startsWith('//')) any = 'https:' + any;
+        if (any) ordered.push(any);
       }
       break;
     }
@@ -275,7 +299,10 @@ _NOTE_DOM_EXTRACT = """
     const m = metadesc.match(/([^\\s，。]{1,30})于\\d{8}发布在抖音/);
     if (m) author = m[1];
   }
-  return { images: Object.values(seen), music, lives, jpegs, live, total, detail: !!detail, desc, author, uid };
+  return {
+    images: Object.values(seen), ordered, music, lives, jpegs, live, total,
+    detail: !!detail, desc, author, uid,
+  };
 }
 """
 
@@ -382,6 +409,17 @@ class DouYin(BaseParser):
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         video_id = await self._resolve_video_id(share_url)
+        # 2026-09 起匿名请求 slidesinfo 拿不到图文（一律 filter），白等它两个 query 要 ~0.8 秒。
+        # 跳转地址认得出是图文、又没配登录 cookie，就让浏览器同时开始；接口万一给了数据照样用接口的
+        early = None
+        if self._note and not _configured_cookie():
+            early = asyncio.create_task(self._note_via_browser(video_id))
+        try:
+            return await self._parse_aweme_or_note(video_id, early)
+        finally:
+            _discard(early)
+
+    async def _parse_aweme_or_note(self, video_id: str, early: asyncio.Task | None) -> VideoInfo:
         try:
             aweme = await self._fetch_aweme(video_id)
         except ParseError as err:
@@ -394,7 +432,7 @@ class DouYin(BaseParser):
             # 判定不可靠；真视频进来也会被浏览器里 /note/{id}→/video/{id} 的
             # 归一跳转识别出来交回原错。浏览器这条路也没有（没装 playwright /
             # 页面拿不到数据）才把 slidesinfo 的错误抛出去。
-            info = await self._note_via_browser(video_id)
+            info = await (early or self._note_via_browser(video_id))
             if info is None:
                 raise
             return info
@@ -604,9 +642,9 @@ class DouYin(BaseParser):
         dom = downscaled = None
         for attempt in range(2):
             dom = await self._open_note(video_id, page_url, attempt)
-            if dom is None or (dom.get("total") == 0 and not dom.get("images")):
+            if dom is None or (dom.get("total") == 0 and not _page_images(dom)):
                 break  # 是视频 / awemeInfo 里没有图：不是图文，交回上层报原错
-            if not dom.get("images"):
+            if not _page_images(dom):
                 # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
                 # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
                 continue
@@ -615,7 +653,7 @@ class DouYin(BaseParser):
                 downscaled = dom
                 continue
             break
-        dom = dom if dom and dom.get("images") else downscaled
+        dom = dom if dom and _page_images(dom) else downscaled
         if not dom:
             return None
 
@@ -659,9 +697,10 @@ class DouYin(BaseParser):
     async def _extract_note_dom(page) -> dict:
         """轮询到图集齐了就返回。
 
-        awemeInfo 里有总张数（打开后 ~1.5 秒可读），DOM 里的图一够数就返回，实测
-        打开后 1.6~2.0 秒；以前固定等 1 秒再等图数连续两轮（隔 1.5 秒）不变，要
-        4~5 秒。读不到 awemeInfo（页面改版）时退回老规则：图数 1.5 秒不再变。
+        awemeInfo 里有总张数和每张图的地址，地址凑够总数就返回（实测打开后 ~2.6 秒），
+        不等 DOM 里的图渲染完（~3.2 秒）；DOM 先够数也一样返回。以前固定等 1 秒再等
+        图数连续两轮（隔 1.5 秒）不变，要 4~5 秒。读不到 awemeInfo（页面改版）时退回
+        老规则：图数 1.5 秒不再变。
         推荐流 / 合集的图不在 player-container 里，见 _NOTE_DOM_EXTRACT。
 
         页面中途自己重载（视频走 /note/ 地址、WAF 验证后刷新）会让 evaluate 抛
@@ -685,7 +724,7 @@ class DouYin(BaseParser):
                 continue
             n = len(dom.get("images") or [])
             total = dom.get("total")
-            if total == 0 or (total and n >= total):
+            if total == 0 or (total and max(n, len(dom.get("ordered") or [])) >= total):
                 return dom
             if n != prev:
                 prev, changed_at = n, now
