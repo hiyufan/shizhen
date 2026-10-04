@@ -27,18 +27,27 @@ _TIMEOUT = httpx.Timeout(30, read=120)
 
 
 class _StreamSlot:
-    """同一 IP 同时转发的视频流有上限（长连接、一直占带宽）；图片不进这个池子。release 可以重复调。"""
+    """同时转发的视频流有上限（长连接、一直占带宽）：每个 IP 一份、全站一份；图片不进这个池子。
+    release 可以重复调。"""
 
     def __init__(self, ip: str, *, counted: bool) -> None:
         self._ip = ip
-        self._held = counted
-        if counted:
-            limits.proxy_streams.acquire(ip)
+        self._held = False
+        if not counted:
+            return
+        limits.proxy_streams.acquire(ip)
+        try:
+            limits.proxy_streams_global.acquire(limits.GLOBAL)
+        except BaseException:
+            limits.proxy_streams.release(ip)
+            raise
+        self._held = True
 
     def release(self) -> None:
         if self._held:
             self._held = False
             limits.proxy_streams.release(self._ip)
+            limits.proxy_streams_global.release(limits.GLOBAL)
 
 
 async def _open_upstream(url: str, headers: dict[str, str]) -> httpx.Response:
@@ -131,6 +140,7 @@ class DownloadHit(BaseModel):
 async def api_download_hit(hit: DownloadHit, ip: str = Depends(limits.proxy_limit)):
     """视频 / 音频从国内边缘节点下载时不经过这台服务器，页面单独报一声，使用统计里的「下载」才不会少。
     只认解析结果里签过名的地址，别人随便刷也只能刷到自己解析过的东西。"""
-    if net.verify(hit.url, hit.sig):
-        stats.record_download(ip, hit.url, source=_cdn_name(hit.url))
+    if not net.verify(hit.url, hit.sig):
+        raise HTTPException(403, "这个地址不是解析结果里的")
+    stats.record_download(ip, hit.url, source=_cdn_name(hit.url))
     return {"ok": True}
