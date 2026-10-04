@@ -75,6 +75,8 @@ async function parse(text) {
 
 function showParseError(err) {
   notice(err.message.replace(/[。.]$/, '') + '。' + (REASON_TIPS[err.reason] || ''));
+  // 是不是整个平台出问题了：状态页上有每小时的自检结果
+  $('#notice').append(' ', el('a', { href: '/status', target: '_blank' }, '看各平台现在的解析状态'));
   if (err.feedback) $('#notice').append(feedbackBox(err.feedback));
 }
 
