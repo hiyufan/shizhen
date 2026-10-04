@@ -356,7 +356,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 网页用的就是这几个接口，快捷指令、脚本、自己的 App 都能接。上游 parse-video-py 的 `/video/share/url/parse`、`/video/id/parse`、`/mcp` 原样保留。
 
 ```bash
-curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/xxxx/"
+curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/8x0AeP8prW8/"
 ```
 
 ```jsonc
@@ -364,9 +364,9 @@ curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/xxxx/"
   "code": 200,
   "data": {
     "source": "douyin",
-    "title": "…",
-    "author": { "name": "…" },
-    "duration": 25.2, "width": 720, "height": 1280,
+    "title": "济公爷爷为大家祈福啦…",
+    "author": { "name": "济公爷爷·游本昌" },
+    "duration": 49.5, "width": 720, "height": 1280,
     "video_url": "https://…/play/….mp4",
     "music_url": "https://….mp3",
     "images": [{ "url": "…", "live_photo_url": "…" }],
