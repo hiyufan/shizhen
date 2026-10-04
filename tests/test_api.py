@@ -73,7 +73,7 @@ def recorded(monkeypatch):
 @pytest.fixture
 def client(monkeypatch):
     parse_api.cache.clear()
-    for rl in (limits.parse_limit, limits.proxy_limit, limits.job_limit):
+    for rl in (limits.parse_limit, limits.proxy_limit, limits.job_limit, limits.parse_upstream_global):
         monkeypatch.setattr(rl, "_buckets", {})
     monkeypatch.setattr(stats, "_recent_downloads", {})
     # 不进 with 块就不跑 lifespan：不起清理任务，也不预热抖音的 Chromium
@@ -256,8 +256,9 @@ def test_edge_media_and_csp_when_enabled(client, calls, recorded, monkeypatch):
 
 def test_download_hit_counts_only_signed_urls(client, recorded):
     url = "https://v3-web.douyinvod.com/play/1.mp4"
-    client.post("/api/download-hit", json={"url": url, "sig": "bad"})
-    client.post("/api/download-hit", json={"url": url, "sig": net.sign(url)})
+    # 假签名明确拒掉（以前回 ok:true 但不记，看着像刷成功了）
+    assert client.post("/api/download-hit", json={"url": url, "sig": "bad"}).status_code == 403
+    assert client.post("/api/download-hit", json={"url": url, "sig": net.sign(url)}).status_code == 200
     assert recorded == [("download", {"source": "douyinvod.com"})]
 
 
@@ -281,3 +282,32 @@ def test_segmented_download_counts_once(client, recorded, monkeypatch):
     other = "https://v3-web.douyinvod.com/play/2.mp4"
     client.post("/api/download-hit", json={"url": other, "sig": net.sign(other)})
     assert len(recorded) == 2
+
+
+def test_global_parse_cap_counts_only_upstream_fetches(client, calls, monkeypatch):
+    # 全站总量只在真去平台抓时扣：缓存命中、不支持的链接不占
+    monkeypatch.setattr(limits.parse_upstream_global, "burst", 1)
+    first = "https://v.douyin.com/a/"
+    assert client.get("/api/parse", params={"url": first}).json()["code"] == 200
+    assert client.get("/api/parse", params={"url": first}).json()["code"] == 200  # 缓存
+    assert client.get("/api/parse", params={"url": "没有链接"}).json()["code"] == 400
+    r = client.get("/api/parse", params={"url": "https://v.douyin.com/b/"})
+    assert r.status_code == 429 and "太多" in r.json()["detail"]
+    assert calls["urls"] == [first]
+
+
+def test_proxy_streams_have_a_global_cap(client, monkeypatch):
+    async def upstream(url, headers):
+        return httpx.Response(206, stream=httpx.ByteStream(b"x"), headers={"content-type": "video/mp4"})
+
+    async def always_safe(url):
+        return True
+
+    monkeypatch.setattr(proxy_api, "_open_upstream", upstream)
+    monkeypatch.setattr(proxy_api, "is_safe_url_async", always_safe)
+    monkeypatch.setattr(limits, "proxy_streams_global", limits.Concurrency("下载", 0, busy="现在下载的人太多了"))
+    url = "https://v3-web.douyinvod.com/play/1.mp4"
+    r = client.get("/api/proxy", params={"url": url, "sig": net.sign(url)})
+    assert r.status_code == 429 and "太多" in r.json()["detail"]
+    # 全站满了被拒，按 IP 的那份也要还回去，不然这个 IP 会一直被卡
+    assert limits.proxy_streams._active == {}

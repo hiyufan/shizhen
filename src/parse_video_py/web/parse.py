@@ -148,6 +148,8 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
         stats.record("parse", ip, source=platform, ok=False, reason="unsupported")
         return _failure(400, "不支持这个地址", "unsupported")
 
+    # 到这儿才真去平台抓：全站总量在这里扣，缓存命中和不支持的链接不占
+    limits.parse_upstream_global.hit(limits.GLOBAL, "现在解析的人太多了，{wait} 秒后再试")
     started = time.monotonic()
     result = await _parse(share_url)
     ok = result["code"] == 200
