@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..parser.bilibili import BiliBili
+from ..utils import gather_or_cancel
 from . import config, ffmpeg
 from .fetch import TooLarge, download_source
 
@@ -99,15 +100,18 @@ async def download(page_url: str, format_spec: str, out_dir: Path, stem: str, re
 
     parts = [(s, out_dir / f"{stem}.{kind}.m4s") for kind, s in (("v", video), ("a", audio)) if s]
     expected = sum(_bw(s) for s, _ in parts) * seconds / 8 or 1
-    done_before = 0
+    got = {path: 0 for _, path in parts}  # 每条分轨各下了多少
 
-    def on_bytes(done: int, _total: int) -> None:
-        report(min(0.9, (done_before + done) / expected * 0.9), "原视频搬运中")
+    def tracker(path: Path):
+        def on_bytes(done: int, _total: int) -> None:
+            got[path] = done
+            report(min(0.9, sum(got.values()) / expected * 0.9), "原视频搬运中")
+
+        return on_bytes
 
     try:
-        for stream, path in parts:
-            await _fetch(stream, path, on_bytes)
-            done_before += path.stat().st_size
+        # 画面和声音在不同的 CDN 连接上，一起下：以前先下完画面再下声音，声音那段是白等的
+        await gather_or_cancel(*(_fetch(stream, path, tracker(path)) for stream, path in parts))
         report(0.92, "把声音和画面缝到一起")
         if video is None:
             out = out_dir / f"{stem}.m4a"
