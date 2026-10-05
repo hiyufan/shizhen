@@ -16,7 +16,7 @@ from ..convert.net import is_safe_url_async
 from ..parser import detect_source, parse_video_share_url
 from ..parser.base import VideoInfo
 from ..parser.errors import ParseError, classify
-from ..utils import extract_url
+from ..utils import CN_SOURCES, extract_url
 from . import limits
 from .auth import SITE_AUTH
 
@@ -144,7 +144,9 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
     if cached := cache.get(share_url):
         stats.record("parse", ip, source=_result_source(cached, platform), ok=cached["code"] == 200, reason="cache")
         return cached
-    if not await is_safe_url_async(share_url):
+    # 国内平台走中继时是边缘节点去连，本机查 DNS 白花时间（见 net.is_safe_url_relayed）
+    relayed = relay.enabled() and platform in CN_SOURCES
+    if not (net.is_safe_url_relayed(share_url) if relayed else await is_safe_url_async(share_url)):
         stats.record("parse", ip, source=platform, ok=False, reason="unsupported")
         return _failure(400, "不支持这个地址", "unsupported")
 
