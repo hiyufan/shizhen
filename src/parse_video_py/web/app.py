@@ -79,6 +79,7 @@ async def _shutdown() -> None:
 
 @contextlib.asynccontextmanager
 async def _lifespan(_: FastAPI):
+    net.check_event_loop()
     config.ensure_dirs()
     # 任务和原视频的登记在内存里，上次进程留下的文件启动时先清一遍
     with contextlib.suppress(Exception):

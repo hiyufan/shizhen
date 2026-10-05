@@ -22,6 +22,7 @@ dependencies = [
 web = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
+    "httptools>=0.6",          # uvicorn 的 HTTP 解析换 C 实现。别用 uvicorn[standard]：带的 uvloop 绕过 SSRF 防线
     "jinja2>=3.1",
     "python-multipart>=0.0.20",
     "cryptography>=42",        # 反馈邮箱 AES-256-GCM 加密存储

@@ -212,6 +212,13 @@ def install_ssrf_guard() -> None:
         socket.getaddrinfo = _guarded_getaddrinfo
 
 
+def check_event_loop() -> None:
+    """上面这道防线只对 asyncio 自带的事件循环有效：uvloop 用 libuv 自己解析域名、不经过 socket.getaddrinfo，
+    装了等于没装（2026-10 实测 localhost 照样解析成 127.0.0.1）。在 uvloop 上就拒绝启动，免得以为有防线其实没有。"""
+    if _GUARD and type(asyncio.get_running_loop()).__module__.split(".")[0] == "uvloop":
+        raise RuntimeError("SSRF 防线在 uvloop 上不生效：用 python main.py 启动，或给 uvicorn 加 --loop asyncio")
+
+
 async def _ssrf_request_hook(request: httpx.Request) -> None:
     """挂在 httpx 上, 每一跳 (含 302 之后) 都检查, 外网地址跳到内网也拦得住。"""
     if not await is_safe_url_async(str(request.url)):
