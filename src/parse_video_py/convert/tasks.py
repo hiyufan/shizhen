@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..utils import gather_or_cancel, run_ytdlp
 from . import bili, config, ffmpeg, livephoto, store
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
@@ -28,7 +29,7 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
     if bili.handles(page_url):
         # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bili.py）
         return await bili.download(page_url, format_spec, out_dir, stem, report)
-    return await asyncio.to_thread(
+    return await run_ytdlp(
         ytdlp_download,
         page_url,
         format_spec,
@@ -360,19 +361,6 @@ async def _remux_live(video: Path, mov: Path, ident: str) -> None:
 _LIVE_PARALLEL = 3
 
 
-async def _all(*aws: Awaitable):
-    """同 asyncio.gather，但有一个失败就把其余的取消掉再抛（gather 会让它们接着跑，往已经删掉的工作目录里写）。
-    抛出去的是原来那个异常，任务的报错文字不变。"""
-    futures = [asyncio.ensure_future(aw) for aw in aws]
-    try:
-        return await asyncio.gather(*futures)
-    except BaseException:
-        for fut in futures:
-            fut.cancel()
-        await asyncio.gather(*futures, return_exceptions=True)
-        raise
-
-
 def _still(img: Path, ident: str) -> Path:
     """原图转 JPEG、写上实况标识。解码 / 重编码一张 2000 多像素宽的 webp 要上百毫秒，放线程里跑。"""
     jpg = _to_jpeg(img)
@@ -383,7 +371,7 @@ def _still(img: Path, ident: str) -> Path:
 async def _pair_one(work: Path, n: int, item: dict, fmt: str) -> tuple[Path, Path | None]:
     """拉一张实况的原图和短视频，配成一对。返回 (JPG, MOV)；动态照片是 (内嵌视频的 JPG, None)。"""
     img, video = work / f"{n:04d}.img", work / f"{n:04d}.mp4"
-    await _all(fetch_bytes(item["image_url"], img), fetch_bytes(item["video_url"], video))
+    await gather_or_cancel(fetch_bytes(item["image_url"], img), fetch_bytes(item["video_url"], video))
     ident = livephoto.new_identifier()
     jpg = await asyncio.to_thread(_still, img, ident)
     if fmt == "livephoto":
@@ -440,7 +428,7 @@ async def pair_live(job: Job, *, items: list[dict], fmt: str, title: str) -> Non
     try:
         job.set(progress=0, message=f"{total} 张一起拉，稍等" if total > 1 else "正在拉原图和实况视频")
         # 结果按原来的顺序排（gather 保序），打包出来的编号和页面上的顺序对得上
-        pairs = await _all(*(pair(i, item) for i, item in enumerate(items, 1)))
+        pairs = await gather_or_cancel(*(pair(i, item) for i, item in enumerate(items, 1)))
         job.set(progress=0.97, message="装箱打包中")
         if fmt == "livephoto":
             _bundle_livephotos(job, pairs, stem)
