@@ -9,8 +9,9 @@ import asyncio
 from typing import Any
 
 from ..convert import config as convert_config
+from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
-from ..utils import proxy_for
+from ..utils import fallback_proxy, proxy_for, wants_fallback
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 
 _HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
@@ -18,7 +19,16 @@ _HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
 
 class YtDlp(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        info = await asyncio.to_thread(self._extract, share_url)
+        try:
+            info = await asyncio.to_thread(self._extract, share_url)
+        except Exception as err:
+            if not wants_fallback(err):
+                raise
+            # 被 YouTube 抽查到了：换备用出口再来一次，直链也记下来走同一个出口（见 net.remember_fallback）
+            info = await asyncio.to_thread(self._extract, share_url, fallback_proxy())
+            result = self._to_video_info(info, share_url)
+            net.remember_fallback([result.video_url, *(f.url for f in result.formats)])
+            return result
         return self._to_video_info(info, share_url)
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
@@ -27,7 +37,7 @@ class YtDlp(BaseParser):
 
     # ------------------------------------------------------------------ helpers
     @staticmethod
-    def _extract(url: str) -> dict[str, Any]:
+    def _extract(url: str, proxy: str | None = None) -> dict[str, Any]:
         import yt_dlp
 
         opts = {
@@ -39,7 +49,7 @@ class YtDlp(BaseParser):
             "ffmpeg_location": ffmpeg_dir(),
             **convert_config.ytdlp_cookie_opts(),
         }
-        if proxy := proxy_for():
+        if proxy := proxy or proxy_for():
             opts["proxy"] = proxy
         # yt-dlp 自己跟跳转、抓页面里嵌的地址；连内网由 net 里换掉的 getaddrinfo 拦
         with yt_dlp.YoutubeDL(opts) as ydl:

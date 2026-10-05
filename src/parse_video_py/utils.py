@@ -54,6 +54,20 @@ def proxy_for(source: str | None = None) -> str | None:
     return os.getenv("PARSE_VIDEO_PROXY") or None
 
 
+# YouTube 对机房 IP 按视频抽查「登录确认你不是机器人」，cookies、PO Token 都不管用，换个出口就过。
+# PARSE_VIDEO_FALLBACK_PROXY 一般指向 docker-compose 里的 warp 服务（Cloudflare WARP）：
+# 平时直连，只有被抽查到的才绕一下
+_BOT_CHECK = re.compile(r"confirm you.{0,3}re not a bot", re.I)
+
+
+def fallback_proxy() -> str:
+    return os.getenv("PARSE_VIDEO_FALLBACK_PROXY", "").strip()
+
+
+def wants_fallback(err: BaseException) -> bool:
+    return bool(fallback_proxy()) and bool(_BOT_CHECK.search(str(err)))
+
+
 URL_REG = re.compile(r"http[s]?:\/\/[\w.-]+[\w\/-]*[\w.-]*\??[\w=&:\-\+\%.]*[/]*")
 
 

@@ -29,6 +29,8 @@ services:
       # YouTube 风控：PO Token 服务（下面的 bgutil 容器）+ 可选 cookies
       PARSE_VIDEO_POT_URL: "http://bgutil:4416"
       # PARSE_VIDEO_COOKIES_FILE: "/app/cookies.txt"
+      # YouTube 对机房 IP 按视频抽查「确认不是机器人」，cookies / PO Token 都不管用时换 WARP 出口重试
+      PARSE_VIDEO_FALLBACK_PROXY: "http://warp:1080"
       # 每 7 天自动升级 yt-dlp 并在空闲时重启（平台改版全靠它跟进）
       PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS: "7"
       # 站长统计页：设了就记录，打开 https://域名/stats?token=<它> 看每小时 / 每天多少人在用
@@ -38,6 +40,7 @@ services:
       # - ./cookies.txt:/app/cookies.txt:ro
     depends_on:
       - bgutil
+      - warp
     deploy:
       resources:
         limits:
@@ -49,6 +52,17 @@ services:
     image: brainicism/bgutil-ytdlp-pot-provider:latest
     restart: unless-stopped
     init: true
+
+  # Cloudflare WARP 的本地代理（官方客户端，见 docker/warp/）：YouTube 的备用出口，平时不走它
+  warp:
+    build: ./docker/warp
+    restart: unless-stopped
+    volumes:
+      - warp_data:/var/lib/cloudflare-warp  # 注册信息，重建容器不用重新注册
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   caddy:
     image: caddy:2
@@ -66,5 +80,6 @@ services:
       - app
 
 volumes:
+  warp_data:
   caddy_data:
   caddy_config:
