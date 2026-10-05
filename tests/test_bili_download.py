@@ -1,5 +1,8 @@
 """B 站高清 / 仅音频下载不经 yt-dlp（它要打开网页，海外机房 IP 一律 412），按 format_spec 自己挑分轨。"""
 
+import asyncio
+from pathlib import Path
+
 import pytest
 
 from parse_video_py.convert import bili
@@ -62,3 +65,48 @@ def test_audio_only():
 )
 def test_handles(url, ok):
     assert bili.handles(url) is ok
+
+
+async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
+    """画面和声音一起下（以前先下完画面再下声音），进度按两条的合计算。"""
+    running, peak, reports, merged = [0], [0], [], []
+
+    async def fake_download(url, dest, headers, on_bytes):
+        running[0] += 1
+        peak[0] = max(peak[0], running[0])
+        await asyncio.sleep(0.02)
+        dest.write_bytes(b"x" * 10)
+        on_bytes(10, 10)
+        running[0] -= 1
+
+    async def fake_ffmpeg(args, *a, **k):
+        merged.append(args)
+        Path(args[-1]).write_bytes(b"mp4")
+
+    parser = bili.BiliBili
+
+    async def noop(self):
+        return None
+
+    async def bvid(self, url):
+        return "BV1"
+
+    async def cid(self, bvid):
+        return 1
+
+    async def play(self, bvid, cid):
+        return {"data": {"timelength": 10_000, "dash": DASH}}, {}
+
+    monkeypatch.setattr(parser, "_ensure_buvid", noop)
+    monkeypatch.setattr(parser, "_get_bvid_from_url", bvid)
+    monkeypatch.setattr(parser, "_page_cid", cid)
+    monkeypatch.setattr(parser, "_play_urls", play)
+    monkeypatch.setattr(bili, "download_source", fake_download)
+    monkeypatch.setattr(bili.ffmpeg, "run", fake_ffmpeg)
+
+    out = await bili.download(
+        "https://www.bilibili.com/video/BV1", SPEC_1080, tmp_path, "s", lambda p, m: reports.append(p)
+    )
+    assert peak[0] == 2 and out.name == "s.mp4" and len(merged) == 1
+    assert reports == sorted(reports)  # 两条一起报，进度也不会往回跳
+    assert not list(tmp_path.glob("*.m4s"))  # 分轨用完就删
