@@ -355,20 +355,43 @@ async def _remux_live(video: Path, mov: Path, ident: str) -> None:
         raise RuntimeError("实况元数据写入失败")
 
 
+# 实况打包同时配几张。每张就是一张原图 + 一段几百 KB 的短视频，慢在跨境往返而不是带宽；以前一张张来、
+# 每张还先图后视频，多张的实况 p90 要 10 秒（2026-10 统计）。remux 不重编码，几个一起跑也不占多少 CPU
+_LIVE_PARALLEL = 3
+
+
+async def _all(*aws: Awaitable):
+    """同 asyncio.gather，但有一个失败就把其余的取消掉再抛（gather 会让它们接着跑，往已经删掉的工作目录里写）。
+    抛出去的是原来那个异常，任务的报错文字不变。"""
+    futures = [asyncio.ensure_future(aw) for aw in aws]
+    try:
+        return await asyncio.gather(*futures)
+    except BaseException:
+        for fut in futures:
+            fut.cancel()
+        await asyncio.gather(*futures, return_exceptions=True)
+        raise
+
+
+def _still(img: Path, ident: str) -> Path:
+    """原图转 JPEG、写上实况标识。解码 / 重编码一张 2000 多像素宽的 webp 要上百毫秒，放线程里跑。"""
+    jpg = _to_jpeg(img)
+    livephoto.write_jpeg_identifier(jpg, ident, date=_exif_now())
+    return jpg
+
+
 async def _pair_one(work: Path, n: int, item: dict, fmt: str) -> tuple[Path, Path | None]:
     """拉一张实况的原图和短视频，配成一对。返回 (JPG, MOV)；动态照片是 (内嵌视频的 JPG, None)。"""
     img, video = work / f"{n:04d}.img", work / f"{n:04d}.mp4"
-    await fetch_bytes(item["image_url"], img)
-    await fetch_bytes(item["video_url"], video)
-    jpg = _to_jpeg(img)
+    await _all(fetch_bytes(item["image_url"], img), fetch_bytes(item["video_url"], video))
     ident = livephoto.new_identifier()
-    livephoto.write_jpeg_identifier(jpg, ident, date=_exif_now())
+    jpg = await asyncio.to_thread(_still, img, ident)
     if fmt == "livephoto":
         mov = work / f"{n:04d}.MOV"
         await _remux_live(video, mov, ident)
         return jpg, mov
     out = work / f"MVIMG_{n:04d}.jpg"
-    livephoto.write_motion_photo(jpg, video, out)
+    await asyncio.to_thread(livephoto.write_motion_photo, jpg, video, out)
     return out, None
 
 
@@ -403,11 +426,21 @@ async def pair_live(job: Job, *, items: list[dict], fmt: str, title: str) -> Non
     stem = safe_filename(title, "", "live")[:40]
     work = config.OUTPUTS_DIR / f"{job.id}_work"
     work.mkdir(exist_ok=True)
+    total, done = len(items), 0
+    slots = asyncio.Semaphore(_LIVE_PARALLEL)
+
+    async def pair(n: int, item: dict) -> tuple[Path, Path | None]:
+        nonlocal done
+        async with slots:
+            result = await _pair_one(work, n, item, fmt)
+        done += 1
+        job.set(progress=done / total * 0.95, message=f"配好 {done}/{total} 张")
+        return result
+
     try:
-        pairs = []
-        for i, item in enumerate(items):
-            job.set(progress=i / len(items), message=f"第 {i + 1}/{len(items)} 张，一张张来")
-            pairs.append(await _pair_one(work, i + 1, item, fmt))
+        job.set(progress=0, message=f"{total} 张一起拉，稍等" if total > 1 else "正在拉原图和实况视频")
+        # 结果按原来的顺序排（gather 保序），打包出来的编号和页面上的顺序对得上
+        pairs = await _all(*(pair(i, item) for i, item in enumerate(items, 1)))
         job.set(progress=0.97, message="装箱打包中")
         if fmt == "livephoto":
             _bundle_livephotos(job, pairs, stem)
