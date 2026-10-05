@@ -3,7 +3,11 @@
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // 站长开了 /test 的浏览器：左下角标一下，免得忘了自己在测试模式里（判断在服务端，这个 cookie 只管显示）
-if (/(^|;\s*)sz_t=1/.test(document.cookie)) document.getElementById('test-badge').hidden = false;
+if (/(^|;\s*)sz_t=1/.test(document.cookie)) {
+  const badge = document.getElementById('test-badge');
+  badge.href = '/test';
+  badge.hidden = false;
+}
 
 function trackScroll() {
   const bar = document.getElementById('progress');

@@ -91,3 +91,23 @@ def test_guide_table_marks_number_cells():
 
     html = table(["时长", "大小"], [["3 秒", "0.4 MB"]], "2026-10-04 实测")
     assert '<td class="n">3 秒</td>' in html and '<p class="note">2026-10-04 实测</p>' in html
+
+
+def test_indexed_pages_have_descriptive_titles_and_no_private_links(client):
+    """Bing 站点扫描会报「标题太短」：中文标题按字数算，二十来个字就被判短。站长页（/test）
+    以前每页都带一个链接，被当成正文太少的页面抓了，现在 HTML 里不出现它的地址。"""
+    import re
+    from urllib.parse import urlparse
+
+    for loc in re.findall(r"<loc>([^<]+)</loc>", client.get("/sitemap.xml").text):
+        path = urlparse(loc).path
+        html = client.get(path).text
+        title = re.search(r"<title>([^<]*)</title>", html).group(1)
+        assert len(title) >= 28, (path, title)
+        assert 'href="/test"' not in html
+        assert html.count('name="robots"') == 1
+
+
+def test_private_and_missing_pages_are_noindex(client):
+    assert "noindex" in client.get("/no-such-page").text
+    assert "Disallow: /test" in client.get("/robots.txt").text
