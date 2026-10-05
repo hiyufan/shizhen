@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from ..utils import is_cn_url, proxy_for
+from ..utils import fallback_proxy, is_cn_url, proxy_for, wants_fallback
 from . import config, ffmpeg, relay
 from .net import headers_for, safe_client
 
@@ -190,17 +190,27 @@ def ytdlp_download(
     任务超时 / 被取消时 asyncio 只是不再等这个线程，yt-dlp 本身还会继续下；
     所以在进度回调里看 cancelled()，是真就抛 DownloadCancelled 让它停下来。
     """
-    import yt_dlp
-
     hooks = _YtdlpHooks(report, cancelled)
     opts = _ytdlp_opts(page_url, format_spec, out_dir, stem)
     opts.update(progress_hooks=[hooks.progress], postprocessor_hooks=[hooks.postprocessor])
     try:
+        info = _ytdlp_run(opts, page_url, out_dir, stem)
+    except Exception as err:
+        if not wants_fallback(err):
+            raise
+        # YouTube 抽查「确认不是机器人」：换备用出口重下（见 utils.wants_fallback）
+        info = _ytdlp_run(opts | {"proxy": fallback_proxy()}, page_url, out_dir, stem)
+    return _downloaded_file(hooks, info, out_dir, stem)
+
+
+def _ytdlp_run(opts: dict, page_url: str, out_dir: Path, stem: str) -> dict:
+    import yt_dlp
+
+    try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(page_url, download=True)
+            return ydl.extract_info(page_url, download=True)
     except Exception:
         # 半截的 .part / .ytdl 别留着占磁盘
         for leftover in out_dir.glob(f"{stem}.*"):
             leftover.unlink(missing_ok=True)
         raise
-    return _downloaded_file(hooks, info, out_dir, stem)
