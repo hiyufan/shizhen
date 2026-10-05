@@ -91,3 +91,31 @@ def test_every_ffmpeg_input_is_local_file_only(monkeypatch):
     for cmd in seen:
         idx = [i for i, arg in enumerate(cmd) if arg == "-i"]
         assert idx and all(cmd[i - 2 : i] == ["-protocol_whitelist", "file"] for i in idx), cmd
+
+
+def _filmstrip_cmd(monkeypatch, duration: float) -> list[str]:
+    seen = []
+
+    class _Stop(Exception):
+        pass
+
+    async def fake_exec(*cmd, **_):
+        seen.append(list(cmd))
+        raise _Stop
+
+    monkeypatch.setattr(ffmpeg, "ffmpeg_path", lambda: "ffmpeg")
+    monkeypatch.setattr(ffmpeg.asyncio, "create_subprocess_exec", fake_exec)
+    with contextlib.suppress(_Stop):
+        asyncio.run(ffmpeg.filmstrip("a.mp4", "o.jpg", duration=duration, frames=16))
+    return seen[0]
+
+
+def test_long_video_filmstrip_decodes_keyframes_only(monkeypatch):
+    # 3.5 分钟：每格隔 13 秒，只解关键帧（5.9 秒 → 0.4 秒）；-skip_frame 是输入选项，要在 -i 前面
+    cmd = _filmstrip_cmd(monkeypatch, 212)
+    assert cmd.index("-skip_frame") < cmd.index("-i") and cmd[cmd.index("-skip_frame") + 1] == "nokey"
+
+
+def test_short_video_filmstrip_decodes_every_frame(monkeypatch):
+    # 49 秒的抖音只有 11 个关键帧，只解关键帧的话 16 格会重复、缺格
+    assert "-skip_frame" not in _filmstrip_cmd(monkeypatch, 49.5)

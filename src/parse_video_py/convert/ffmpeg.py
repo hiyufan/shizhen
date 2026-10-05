@@ -302,12 +302,22 @@ async def extract_frame(src: str, dst: str, *, at: float, max_height: int = 1080
     )
 
 
+# 缩略图条每格间隔不小于这么多秒时只解关键帧（见 filmstrip）
+_KEYFRAME_STRIP_STEP = 8.0
+
+
 async def filmstrip(src: str, dst: str, *, duration: float, frames: int = 16, height: int = 72) -> None:
     """One JPEG with `frames` thumbnails side by side — the trimmer's backdrop."""
     frames = max(2, min(40, frames))
     step = max(duration / frames, 0.04)
+    # fps 滤镜要把整段视频每一帧都解出来：720p 3.5 分钟实测 5.9 秒，转换器打开后用户就干等这张图。
+    # 格子隔得远（长视频）就只解关键帧，同一条 0.4 秒；平台视频的关键帧一般 2~5 秒一个，每格还能落在不同画面上。
+    # 短视频不行：49 秒的抖音只有 11 个关键帧，切 16 格会出现连续几格一样、最后一格是黑的（2026-10 实测），
+    # 好在短视频完整解码本来就快（同一条 1.2 秒）
+    keyframes_only = ["-skip_frame", "nokey"] if step >= _KEYFRAME_STRIP_STEP else []
     await run(
         [
+            *keyframes_only,
             "-i",
             src,
             "-vf",
