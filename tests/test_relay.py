@@ -97,3 +97,69 @@ def test_edge_media_urls_only_for_whitelisted_video_cdns(monkeypatch):
 def test_relay_client_speaks_http2():
     # 并发请求共用一条连接：HTTP/1.1 时第二个请求要另开冷连接，B站 解析多 1~2 秒
     assert relay.RelayTransport("https://edge.example.com/relay", "tok")._client._transport._pool._http2
+
+
+# --------------------------------------------------------------------------- 走中继的请求不在本机查 DNS
+
+
+@pytest.fixture
+def no_dns(monkeypatch):
+    """本机 DNS 查了哪些域名。"""
+    from parse_video_py.convert import net
+
+    asked = []
+
+    async def getaddrinfo(self, host, *args, **kwargs):
+        asked.append(host)
+        return [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(net, "_dns_cache", {})
+    monkeypatch.setattr("asyncio.base_events.BaseEventLoop.getaddrinfo", getaddrinfo)
+    return asked
+
+
+def _relay_redirect(location: str) -> httpx.Response:
+    pairs = [["location", location]]
+    headers = {"x-relay-status": "302", "x-relay-headers": base64.b64encode(json.dumps(pairs).encode()).decode()}
+    return httpx.Response(200, headers=headers)
+
+
+async def test_relayed_requests_skip_local_dns_but_follow_every_hop(no_dns):
+    from parse_video_py.convert import net
+
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        target = request.url.params["url"]
+        seen.append(target)
+        if target.endswith("/short"):
+            return _relay_redirect("https://www.xiaohongshu.com/explore/1")
+        return _relay_reply(b"ok")
+
+    client = net.safe_client(transport=_transport(handler), follow_redirects=True)
+    r = await client.get("https://xhslink.cn/short")
+    assert r.status_code == 200 and seen == ["https://xhslink.cn/short", "https://www.xiaohongshu.com/explore/1"]
+    assert no_dns == []  # 连接是边缘节点发起的，本机解析出的 IP 用不上
+
+
+@pytest.mark.parametrize(
+    "target", ["http://127.0.0.1:8000/x", "http://169.254.169.254/", "http://localhost/", "ftp://a.com/"]
+)
+async def test_relayed_requests_still_block_internal_targets(no_dns, target):
+    from parse_video_py.convert import net
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _relay_redirect(target)
+
+    client = net.safe_client(transport=_transport(handler), follow_redirects=True)
+    # 302 跳到内网也一样拦（ftp 这类协议 httpx 自己就不跟）
+    with pytest.raises((net.UnsafeURL, httpx.UnsupportedProtocol)):
+        await client.get("https://xhslink.cn/short")
+    assert not net.is_safe_url_relayed(target)
+
+
+async def test_direct_requests_still_resolve(no_dns):
+    from parse_video_py.convert import net
+
+    assert await net.is_safe_url_async("https://www.youtube.com/watch?v=1")
+    assert no_dns == ["www.youtube.com"]

@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 import httpx
 
 from ..utils import fallback_proxy, is_cn_url
-from . import config
+from . import config, relay
 
 # 各家 CDN 直链需要带的 Referer，缺了会 403
 _REFERERS = {
@@ -86,8 +86,8 @@ def _ip_is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
-def _check_without_dns(url: str) -> tuple[bool | None, str]:
-    """不查 DNS 就能下结论的直接给结论; 否则返回 (None, 要查的域名)。"""
+def _check_without_dns(url: str, *, resolve: bool = True) -> tuple[bool | None, str]:
+    """不查 DNS 就能下结论的直接给结论; 否则返回 (None, 要查的域名)。resolve=False 时普通域名直接放行。"""
     try:
         parsed = urlparse(url)
     except ValueError:
@@ -101,7 +101,7 @@ def _check_without_dns(url: str) -> tuple[bool | None, str]:
         return not _ip_is_internal(ipaddress.ip_address(host)), host
     except ValueError:
         pass  # 普通域名
-    if not _DNS_CHECK:
+    if not (_DNS_CHECK and resolve):
         return True, host
     return _dns_cached(host), host
 
@@ -138,6 +138,17 @@ async def is_safe_url_async(url: str) -> bool:
     except socket.gaierror:
         infos = []
     return _dns_store(host, infos)
+
+
+def is_safe_url_relayed(url: str) -> bool:
+    """经国内中继代发的地址：协议、字面 IP、localhost 照查, 域名不在本机解析。
+
+    连接是边缘节点发起的, 本机解析出的 IP 根本用不上, 也碰不到这台机器的内网。而容器的 DNS 直接发给
+    1.1.1.1、没有本地缓存, 站点流量小、下面 5 分钟的缓存几乎总是凉的: 2026-10 实测每次解析白花
+    26~75ms (偶尔 200ms) 在这上面, 一次解析两三跳, 每跳查一次。
+    本机直连的请求不受影响, 照样查, 最后还有 install_ssrf_guard 兜底。
+    """
+    return bool(_check_without_dns(url, resolve=False)[0])
 
 
 # 解析结果缓存: 同一个平台域名一次解析里要查好几遍, 缓存一下省掉重复开销。
@@ -204,6 +215,12 @@ def install_ssrf_guard() -> None:
 async def _ssrf_request_hook(request: httpx.Request) -> None:
     """挂在 httpx 上, 每一跳 (含 302 之后) 都检查, 外网地址跳到内网也拦得住。"""
     if not await is_safe_url_async(str(request.url)):
+        raise UnsafeURL(f"blocked: {request.url.host}", request=request)
+
+
+async def _relayed_request_hook(request: httpx.Request) -> None:
+    """走中继的客户端用这个: 每一跳照样查, 只是不在本机解析域名 (见 is_safe_url_relayed)。"""
+    if not is_safe_url_relayed(str(request.url)):
         raise UnsafeURL(f"blocked: {request.url.host}", request=request)
 
 
@@ -288,12 +305,13 @@ def safe_client(for_url: str = "", **kwargs) -> httpx.AsyncClient:
     同样配置的客户端会复用同一个连接池, 省掉重复握手。
     """
     hooks = kwargs.pop("event_hooks", {}) or {}
-    hooks.setdefault("request", []).append(_ssrf_request_hook)
+    hook = _relayed_request_hook if isinstance(kwargs.get("transport"), relay.RelayTransport) else _ssrf_request_hook
+    hooks.setdefault("request", []).append(hook)
     if for_url and "proxy" not in kwargs and (proxy := proxy_for_url(for_url)):
         kwargs["proxy"] = proxy
 
     # 带了池化管不了的参数(比如自定义 event_hooks), 就退回一次性客户端
-    if hooks.get("request", []) != [_ssrf_request_hook] or set(kwargs) - _POOLABLE:
+    if hooks.get("request", []) != [hook] or set(kwargs) - _POOLABLE:
         return httpx.AsyncClient(event_hooks=hooks, **kwargs)
 
     key = tuple(sorted((k, _key_part(v)) for k, v in kwargs.items()))
