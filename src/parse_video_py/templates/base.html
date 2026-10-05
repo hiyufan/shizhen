@@ -7,7 +7,7 @@
 <title>{% block title %}{{ title }}{% endblock %}</title>
 <meta name="description" content="{{ description }}">
 {% if keywords %}<meta name="keywords" content="{{ keywords }}">{% endif %}
-<meta name="robots" content="index,follow,max-image-preview:large">
+{% block robots %}<meta name="robots" content="index,follow,max-image-preview:large">{% endblock %}
 <link rel="canonical" href="{{ canonical }}">
 <meta name="theme-color" content="#fafaf9">
 <meta name="applicable-device" content="pc,mobile">
@@ -45,7 +45,8 @@
 <body{% block body_class %}{% endblock %}>
 <div class="progress" id="progress" aria-hidden="true"></div>
 {# 站长开了 /test 的浏览器：左下角标一下，免得忘了自己在测试模式里（判断在服务端，这个 cookie 只管显示） #}
-<a class="test-badge" id="test-badge" href="/test" hidden>测试模式 · 不计入统计</a>
+{# 不写 href：每页都带一个指向 /test 的链接，搜索引擎会去抓这个站长页、当成「标题太短、内容太少」的页面 #}
+<a class="test-badge" id="test-badge" hidden>测试模式 · 不计入统计</a>
 
 <nav class="nav">
   <a class="brand" href="/" aria-label="求原图 首页">

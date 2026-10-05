@@ -117,7 +117,7 @@ GUIDES: list[Guide] = [
     ),
     Guide(
         slug="douyin-image-post-original",
-        title="抖音图集原图怎么下载，无水印、含实况图",
+        title="抖音图集原图怎么下载：无水印 JPEG、原始尺寸、含实况图",
         description="抖音图集里的图片长按保存会带用户名水印。用求原图解析分享链接，拿到无水印的原始尺寸 JPEG，实况图还能打包成 iPhone 实况或安卓动态照片。",
         keywords="抖音图集下载,抖音图片无水印,抖音图集原图,抖音实况图保存,抖音图文下载",
         h1="抖音图集原图怎么下载",
@@ -347,7 +347,7 @@ GUIDES: list[Guide] = [
     ),
     Guide(
         slug="xiaohongshu-link-expired",
-        title="小红书链接解析失败、提示过期怎么办",
+        title="小红书链接解析失败、提示过期怎么办？几种原因和处理办法",
         description="小红书链接解析失败，多半是链接缺了 xsec_token、被截断，或者笔记已删除。这篇说明怎么拿到能用的链接，以及各种失败提示分别是什么意思。",
         keywords="小红书链接过期,小红书解析失败,xhslink 解析,小红书 xsec_token,小红书链接打不开",
         h1="小红书链接解析失败怎么办",
@@ -420,7 +420,7 @@ GUIDES: list[Guide] = [
     ),
     Guide(
         slug="douyin-live-photo",
-        title="抖音实况图怎么保存，存下来还会动",
+        title="抖音实况图怎么保存，存到 iPhone 和安卓相册还会动",
         description="抖音图文里的实况图，用分享链接解析能拿到原图和那两三秒的视频，安卓直接存成动态照片，iPhone 存视频后转一下就是实况。附实测尺寸和耗时。",
         keywords="抖音实况图保存,抖音实况怎么保存,抖音live图下载,抖音实况照片保存到相册,抖音动图保存",
         h1="抖音实况图怎么保存，存下来还会动",
@@ -649,7 +649,7 @@ GUIDES: list[Guide] = [
     ),
     Guide(
         slug="kuaishou-download",
-        title="快手视频和图集怎么无水印下载",
+        title="快手视频和图集怎么无水印下载：短链、H.265 和实况",
         description="快手分享链接解析无水印视频和图集原图：v.kuaishou.com 短链和网页版链接都能用，有 H.265 小体积版本可选，快手实况为什么只能拿到照片。",
         keywords="快手去水印,快手视频下载,快手图集下载,快手无水印,快手实况保存,v.kuaishou.com解析",
         h1="快手视频和图集怎么无水印下载",
@@ -697,7 +697,7 @@ GUIDES: list[Guide] = [
     ),
     Guide(
         slug="android-motion-photo",
-        title="安卓动态照片是什么，怎么用视频做一张",
+        title="安卓动态照片是什么，怎么用视频或抖音实况做一张",
         description="安卓的动态照片是一张在末尾接了一段 MP4 的 JPG。说明它的文件结构、哪些相册认、怎么把任意视频或抖音小红书的实况做成动态照片，以及转发时要注意什么。",
         keywords="安卓动态照片,motion photo,动态照片制作,视频转动态照片,安卓实况照片,MVIMG",
         h1="安卓动态照片是什么，怎么做",

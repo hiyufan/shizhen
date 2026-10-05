@@ -23,6 +23,7 @@ _ROBOTS = (
     "Disallow: /video/\n"
     "Disallow: /mcp\n"
     "Disallow: /stats\n"
+    "Disallow: /test\n"
     "Disallow: /*?url=\n"
     "Sitemap: {sitemap}\n"
 )
