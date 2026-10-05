@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import re
 import time
@@ -9,6 +10,8 @@ from urllib.parse import parse_qs, urlparse
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, _random_ua
 from .errors import ParseError
+
+log = logging.getLogger("uvicorn.error")
 
 # slidesinfo 的两个入口主机，按优先级排。同一个接口两个域名都挂着，走的是不同的
 # CDN 边缘。热连接实测（各 15 次）：www.douyin.com p50 ~200ms / p90 ~220ms，
@@ -186,6 +189,15 @@ def _note_images(dom: dict) -> list[ImgInfo]:
     if lives is None and len(images) == 1 and dom.get("live"):
         images[0].live_photo_url = dom["live"]
     return images
+
+
+def _dom_summary(dom: dict | None) -> str:
+    """日志里的一次打开结果。"""
+    if dom is None:
+        return "不是图文"
+    if not dom:
+        return "页面出错"
+    return f"{len(_page_images(dom))}/{dom.get('total') if dom.get('total') is not None else '?'} 张"
 
 
 def _looks_like_note(url: str) -> bool:
@@ -640,19 +652,22 @@ class DouYin(BaseParser):
         """
         page_url = f"https://www.douyin.com/note/{video_id}"
         dom = downscaled = None
-        for attempt in range(2):
-            dom = await self._open_note(video_id, page_url, attempt)
-            if dom is None or (dom.get("total") == 0 and not _page_images(dom)):
-                break  # 是视频 / awemeInfo 里没有图：不是图文，交回上层报原错
-            if not _page_images(dom):
-                # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
-                # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
-                continue
-            # 会话分到了缩小版（1440 宽）：换个会话重抽一次，不行就用这一份
-            if attempt == 0 and _downscaled(dom) and await _warm_browser.renew_context():
-                downscaled = dom
-                continue
-            break
+        # 每一步花了多久记进日志：图文的长尾（真实用户 6~24 秒，自检只要 4 秒）到底卡在打开页面、
+        # 重试还是换会话，看日志才知道该改哪儿
+        steps: list[str] = []
+        started = mark = time.monotonic()
+
+        def step(name: str) -> None:
+            nonlocal mark
+            now = time.monotonic()
+            steps.append(f"{name} {now - mark:.1f}s")
+            mark = now
+
+        try:
+            dom, downscaled = await self._note_attempts(video_id, page_url, step)
+        finally:
+            took = time.monotonic() - started
+            log.info("抖音图文兜底 id=%s 用时 %.1fs：%s", video_id, took, "，".join(steps) or "无")
         dom = dom if dom and _page_images(dom) else downscaled
         if not dom:
             return None
@@ -667,6 +682,28 @@ class DouYin(BaseParser):
             author=VideoAuthor(uid=dom.get("uid") or "", name=dom.get("author") or ""),
             page_url=page_url,
         )
+
+    async def _note_attempts(self, video_id: str, page_url: str, step) -> tuple[dict | None, dict | None]:
+        """最多开两次页面；返回 (最后一次的结果, 换会话前那份缩小版)。"""
+        dom = downscaled = None
+        for attempt in range(2):
+            dom = await self._open_note(video_id, page_url, attempt)
+            step(f"第{attempt + 1}次打开（{_dom_summary(dom)}）")
+            if dom is None or (dom.get("total") == 0 and not _page_images(dom)):
+                break  # 是视频 / awemeInfo 里没有图：不是图文，交回上层报原错
+            if not _page_images(dom):
+                # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
+                # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
+                continue
+            # 会话分到了缩小版（1440 宽）：换个会话重抽一次，不行就用这一份
+            if attempt == 0 and _downscaled(dom):
+                renewed = await _warm_browser.renew_context()
+                step("换会话" if renewed else "缩小版，冷却中不换")
+                if renewed:
+                    downscaled = dom
+                    continue
+            break
+        return dom, downscaled
 
     async def _open_note(self, video_id: str, page_url: str, attempt: int) -> dict | None:
         """打开一次图文页取数据。页面出错返回 {}（换个页面再来）；是视频 / playwright 没装
