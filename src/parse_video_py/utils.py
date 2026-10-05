@@ -1,6 +1,11 @@
+import asyncio
+import concurrent.futures
 import contextvars
+import functools
 import os
 import re
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -114,3 +119,31 @@ def create_async_client(**kwargs) -> httpx.AsyncClient:
         if proxy and "proxy" not in kwargs:
             kwargs["proxy"] = proxy
     return safe_client(**kwargs)
+
+
+async def gather_or_cancel(*aws: Awaitable) -> list:
+    """同 asyncio.gather，但有一个失败就把其余的取消掉再抛（gather 会让它们接着跑，往已经删掉的工作目录里写）。
+    抛出去的是原来那个异常，任务的报错文字不变。"""
+    futures = [asyncio.ensure_future(aw) for aw in aws]
+    try:
+        return await asyncio.gather(*futures)
+    except BaseException:
+        for fut in futures:
+            fut.cancel()
+        await asyncio.gather(*futures, return_exceptions=True)
+        raise
+
+
+# yt-dlp 单独一个线程池。asyncio 默认的池只有 CPU 数 + 4 个线程（线上 4 核 = 8 个），httpx 建连时的
+# DNS 查询（loop.getaddrinfo）、统计落盘、转图也都排在里面；yt-dlp 下载一占几分钟、解析一占几秒，
+# 几个 YouTube 下载 + 解析就能把它占满，之后全站的 DNS 查询排队，所有解析和转发跟着变慢。
+# 线程按需创建，空着不占资源
+_YTDLP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=16, thread_name_prefix="yt-dlp")
+
+T = TypeVar("T")
+
+
+async def run_ytdlp(fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
+    """同 asyncio.to_thread，只是放进 yt-dlp 自己的线程池。contextvars 照样带过去（proxy_for 要看 current_source）。"""
+    call = functools.partial(contextvars.copy_context().run, fn, *args, **kwargs)
+    return await asyncio.get_running_loop().run_in_executor(_YTDLP_POOL, call)
