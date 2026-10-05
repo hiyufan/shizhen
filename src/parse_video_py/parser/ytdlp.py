@@ -5,13 +5,12 @@ YouTube / TikTok / Instagram 以及其它没有专用解析器的站点, 统一�
 更高的清晰度需要服务端用 ffmpeg 合并, 放进 formats 里让前端按需下载。
 """
 
-import asyncio
 from typing import Any
 
 from ..convert import config as convert_config
 from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
-from ..utils import fallback_proxy, proxy_for, wants_fallback
+from ..utils import fallback_proxy, proxy_for, run_ytdlp, wants_fallback
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 
 _HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
@@ -20,12 +19,12 @@ _HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
 class YtDlp(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         try:
-            info = await asyncio.to_thread(self._extract, share_url)
+            info = await run_ytdlp(self._extract, share_url)
         except Exception as err:
             if not wants_fallback(err):
                 raise
             # 被 YouTube 抽查到了：换备用出口再来一次，直链也记下来走同一个出口（见 net.remember_fallback）
-            info = await asyncio.to_thread(self._extract, share_url, fallback_proxy())
+            info = await run_ytdlp(self._extract, share_url, fallback_proxy())
             result = self._to_video_info(info, share_url)
             net.remember_fallback([result.video_url, *(f.url for f in result.formats)])
             return result
