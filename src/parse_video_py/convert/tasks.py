@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config, ffmpeg, livephoto, store
+from . import bili, config, ffmpeg, livephoto, store
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
 from .net import safe_filename
@@ -22,13 +22,19 @@ from .net import safe_filename
 
 
 async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem: str) -> Path:
+    def report(progress: float, message: str) -> None:
+        job.set(progress=progress, message=message)
+
+    if bili.handles(page_url):
+        # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bili.py）
+        return await bili.download(page_url, format_spec, out_dir, stem, report)
     return await asyncio.to_thread(
         ytdlp_download,
         page_url,
         format_spec,
         out_dir,
         stem,
-        report=lambda progress, message: job.set(progress=progress, message=message),
+        report=report,
         cancelled=lambda: job.abort,
     )
 
