@@ -22,13 +22,15 @@ from .net import safe_filename
 # --------------------------------------------------------------------------- 原视频与下载
 
 
-async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem: str) -> Path:
+async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem: str, *, fit: bool = False) -> Path:
+    """fit=True：这个清晰度超了大小上限就自动降一档（转换用的原视频）；否则报错让用户自己换。"""
+
     def report(progress: float, message: str) -> None:
         job.set(progress=progress, message=message)
 
     if bili.handles(page_url):
         # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bili.py）
-        return await bili.download(page_url, format_spec, out_dir, stem, report)
+        return await bili.download(page_url, format_spec, out_dir, stem, report, fit=fit)
     return await run_ytdlp(
         ytdlp_download,
         page_url,
@@ -37,11 +39,12 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
         stem,
         report=report,
         cancelled=lambda: job.abort,
+        fit=fit,
     )
 
 
 def _source_format(format_spec: str) -> str:
-    """转换用的原视频不必太清晰：默认限制在 SOURCE_MAX_HEIGHT 以内，省下载时间。"""
+    """转换用的原视频不必太清晰：默认限制在 SOURCE_MAX_HEIGHT 以内，省下载时间；长视频放不下还会再往下降。"""
     if format_spec:
         return format_spec
     height = config.SOURCE_MAX_HEIGHT
@@ -52,7 +55,7 @@ async def _download_source_file(
     job: Job, source_id: str, url: str, headers: dict[str, str], page_url: str, format_spec: str
 ) -> Path:
     if page_url:
-        return await _ytdlp(job, page_url, _source_format(format_spec), config.SOURCES_DIR, source_id)
+        return await _ytdlp(job, page_url, _source_format(format_spec), config.SOURCES_DIR, source_id, fit=True)
     if not url:
         raise ValueError("缺少视频地址")
 

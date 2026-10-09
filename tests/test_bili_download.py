@@ -48,6 +48,18 @@ def test_too_large_says_how_big():
         bili.pick(DASH, SPEC_1080, 5323, 300 << 20)
 
 
+def test_fit_steps_down_to_a_lower_height():
+    """转换用的原视频：1080p 两种编码都超了，就拿 720p。"""
+    seconds = 1500  # 1080p H.265 约 278 MB，720p H.264 约 260 MB
+    video, _ = bili.pick(DASH, SPEC_1080, seconds, 270 * 10**6, fit=True)
+    assert (video["height"], video["codecid"]) == (720, 7)
+
+
+def test_fit_still_fails_when_nothing_fits():
+    with pytest.raises(TooLarge, match="视频太长：最低清晰度也约 147 MB"):
+        bili.pick(DASH, SPEC_1080, 1500, 100 * 10**6, fit=True)
+
+
 def test_audio_only():
     video, audio = bili.pick(DASH, "ba[ext=m4a]/ba", 200, BIG)
     assert video is None and audio["bandwidth"] == 85_000
