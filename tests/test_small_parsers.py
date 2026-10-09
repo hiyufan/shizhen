@@ -463,3 +463,12 @@ def test_unsupported_urls_say_so(http):
             run(parser.parse_share_url(url))
         err = exc.value if isinstance(exc.value, ParseError) else classify(exc.value)
         assert err.reason == "unsupported", (url, exc.value)
+
+
+def test_instagram_audience_restricted_is_not_a_broken_parser():
+    """Instagram 对未登录访客隐藏的内容：是平台限制，不是解析器坏了（2026-10-08 被记成「页面结构变了」）。"""
+    msg = (
+        "ERROR: [Instagram] Dd9gDnvT4S4: This content isn't available to everyone: "
+        "It can't be seen by certain audiences."
+    )
+    assert classify(RuntimeError(msg)).reason == "restricted"

@@ -311,3 +311,55 @@ def test_proxy_streams_have_a_global_cap(client, monkeypatch):
     assert r.status_code == 429 and "太多" in r.json()["detail"]
     # 全站满了被拒，按 IP 的那份也要还回去，不然这个 IP 会一直被卡
     assert limits.proxy_streams._active == {}
+
+
+def test_proxy_gives_slot_back_when_client_leaves_before_first_byte(monkeypatch):
+    """上游第一块数据还没到用户就关了页面：收尾是在已取消的状态下跑的，名额和上游连接都得还回去。
+    以前先 await 关连接再还名额，await 一挂起就被取消，名额就漏了，漏满了这个 IP / 全站一直 429。"""
+    closed = []
+
+    class SlowStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            await asyncio.sleep(0.5)
+            yield b"x"
+
+        async def aclose(self):
+            await asyncio.sleep(0)
+            closed.append(True)
+
+    async def upstream(url, headers):
+        return httpx.Response(200, stream=SlowStream(), headers={"content-type": "video/mp4"})
+
+    async def always_safe(url):
+        return True
+
+    monkeypatch.setattr(proxy_api, "_open_upstream", upstream)
+    monkeypatch.setattr(proxy_api, "is_safe_url_async", always_safe)
+    monkeypatch.setattr(limits.proxy_limit, "_buckets", {})
+    url = "https://v3-web.douyinvod.com/play/1.mp4"
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/proxy",
+        "raw_path": b"/api/proxy",
+        "query_string": str(httpx.QueryParams({"url": url, "sig": net.sign(url)})).encode(),
+        "root_path": "",
+        # 带 gzip 时 GZipMiddleware 会把响应头扣到第一块数据才发，正好是线上出事的情形
+        "headers": [(b"host", b"t"), (b"accept-encoding", b"gzip")],
+        "client": ("203.0.113.9", 1),
+        "server": ("t", 80),
+    }
+
+    async def receive():
+        await asyncio.sleep(0.05)
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        pass
+
+    asyncio.run(web.app(scope, receive, send))  # 也不该再抛 "No response returned."
+    assert limits.proxy_streams._active == {} and limits.proxy_streams_global._active == {}
+    assert closed == [True]

@@ -29,6 +29,8 @@ class ParseError(Exception):
 
 
 _RULES: list[tuple[str, re.Pattern[str]]] = [
+    # Instagram 对未登录访客隐藏的敏感 / 限龄内容（2026-10-08 被归成了「页面结构变了」）
+    ("restricted", re.compile(r"isn't available to everyone|seen by certain audiences", re.I)),
     (
         "deleted",
         re.compile(
