@@ -3,8 +3,9 @@ yt-dlp 下载并合并音视频。不关心任务队列，进度和取消都通�
 
 from __future__ import annotations
 
+import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import httpx
@@ -24,6 +25,13 @@ _TIMEOUT = httpx.Timeout(30, read=120)
 
 class TooLarge(RuntimeError):
     pass
+
+
+def too_large_message(size: float, limit: int, fit: bool) -> str:
+    """下载前就知道放不下时给用户看的话。fit=True 是已经降到最低一档还超。"""
+    if fit:
+        return f"视频太长：最低清晰度也约 {size / 1e6:.0f} MB，超过了服务器 {limit >> 20} MB 的上限"
+    return f"这个清晰度的文件约 {size / 1e6:.0f} MB，超过了服务器 {limit >> 20} MB 的上限，换低一档清晰度试试"
 
 
 async def _stream_to_file(
@@ -116,9 +124,48 @@ async def fetch_bytes(url: str, dest: Path, headers: dict[str, str] | None = Non
 # --------------------------------------------------------------------------- yt-dlp
 
 MERGE_FORMAT = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
+# fit=True 时给定的格式放不下，依次退到这几档
+_FIT_HEIGHTS = (720, 480, 360, 240, 144)
 
 
-def _ytdlp_opts(page_url: str, format_spec: str, out_dir: Path, stem: str) -> dict:
+def _height_format(height: int) -> str:
+    return f"bv*[height<={height}][ext=mp4]+ba[ext=m4a]/b[height<={height}]"
+
+
+def _approx_size(fmt: dict) -> int:
+    # 合并格式的 filesize_approx 是 yt-dlp 把各分轨大小加起来的；不知道大小就是 0（放行）
+    return int(fmt.get("filesize") or fmt.get("filesize_approx") or 0)
+
+
+def _sized_format(format_spec: str, limit: int, fit: bool) -> Callable[[dict], Iterator[dict]]:
+    """yt-dlp 的 format 回调：下载前就按 yt-dlp 给的大小挑一个放得进 limit 的格式。
+
+    光靠 max_filesize 不够：YouTube 分段下载，要下到超了才停，而且只停掉超的那条分轨，
+    剩下的音轨被当成成品（2026-10-08 一个 68 分钟的视频，1080p 画面 1 GB，白下 300 MB
+    后报「不是可用的视频」）。fit=True 时依次降清晰度，否则直接报错让用户换一档。
+    """
+    import yt_dlp
+
+    specs = [format_spec, *(_height_format(h) for h in _FIT_HEIGHTS)] if fit else [format_spec]
+    builder = yt_dlp.YoutubeDL({"quiet": True, "merge_output_format": "mp4"})
+    selectors = [builder.build_format_selector(spec) for spec in specs]
+
+    def select(ctx: dict) -> Iterator[dict]:
+        smallest = 0
+        for selector in selectors:
+            for fmt in selector(ctx):
+                size = _approx_size(fmt)
+                if size <= limit:
+                    yield fmt
+                    return
+                smallest = min(smallest or size, size)
+        if smallest:
+            raise TooLarge(too_large_message(smallest, limit, fit))
+
+    return select
+
+
+def _ytdlp_opts(page_url: str, format_spec: str, out_dir: Path, stem: str, *, fit: bool) -> dict:
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -129,7 +176,7 @@ def _ytdlp_opts(page_url: str, format_spec: str, out_dir: Path, stem: str) -> di
         "ffmpeg_location": ffmpeg.ffmpeg_dir(),
         "merge_output_format": "mp4",
         "max_filesize": config.MAX_SOURCE_BYTES,
-        "format": format_spec,
+        "format": _sized_format(format_spec, config.MAX_SOURCE_BYTES, fit),
         "outtmpl": str(out_dir / f"{stem}.%(ext)s"),
         **config.ytdlp_cookie_opts(),
     }
@@ -169,10 +216,17 @@ def _downloaded_file(hooks: _YtdlpHooks, info: dict, out_dir: Path, stem: str) -
     path = hooks.path or (info.get("requested_downloads") or [{}])[0].get("filepath")
     if path and Path(path).exists():
         return Path(path)
-    # 各版本 yt-dlp 报路径的地方不一样，都没报就找刚下好的那个
-    candidates = sorted(out_dir.glob(f"{stem}.*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    # 各版本 yt-dlp 报路径的地方不一样，都没报就找刚下好的那个。没合并的分轨（stem.f140.m4a）
+    # 和半截的 .part 不算：那是某条分轨撞上 max_filesize 停了，拿去当成品只会是没画面的音轨
+    leftovers = list(out_dir.glob(f"{stem}.*"))
+    split = re.compile(rf"{re.escape(stem)}\.f[\w-]+\.|\.(part|ytdl)$")
+    candidates = sorted(
+        (p for p in leftovers if not split.search(p.name)), key=lambda p: p.stat().st_mtime, reverse=True
+    )
     if not candidates:
-        raise RuntimeError(f"yt-dlp 没有产出文件（可能超过 {config.MAX_SOURCE_BYTES >> 20} MB 上限）")
+        for p in leftovers:
+            p.unlink(missing_ok=True)
+        raise TooLarge(f"视频没下完整，多半是超过了服务器 {config.MAX_SOURCE_BYTES >> 20} MB 的上限")
     return candidates[0]
 
 
@@ -184,14 +238,15 @@ def ytdlp_download(
     *,
     report: StepProgress,
     cancelled: Callable[[], bool],
+    fit: bool = False,
 ) -> Path:
-    """阻塞式 yt-dlp 下载，放到线程里跑。返回最终文件路径。
+    """阻塞式 yt-dlp 下载，放到线程里跑。返回最终文件路径。fit 见 _sized_format。
 
     任务超时 / 被取消时 asyncio 只是不再等这个线程，yt-dlp 本身还会继续下；
     所以在进度回调里看 cancelled()，是真就抛 DownloadCancelled 让它停下来。
     """
     hooks = _YtdlpHooks(report, cancelled)
-    opts = _ytdlp_opts(page_url, format_spec, out_dir, stem)
+    opts = _ytdlp_opts(page_url, format_spec, out_dir, stem, fit=fit)
     opts.update(progress_hooks=[hooks.progress], postprocessor_hooks=[hooks.postprocessor])
     try:
         info = _ytdlp_run(opts, page_url, out_dir, stem)
