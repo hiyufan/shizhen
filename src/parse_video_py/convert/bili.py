@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from ..parser.bilibili import BiliBili
 from ..utils import gather_or_cancel
 from . import config, ffmpeg
-from .fetch import TooLarge, download_source
+from .fetch import TooLarge, download_source, too_large_message
 
 Report = Callable[[float, str], None]
 
@@ -38,10 +38,13 @@ def _urls(stream: dict) -> list[str]:
     return [u for u in [main, *(stream.get("backupUrl") or stream.get("backup_url") or [])] if u]
 
 
-def pick(dash: dict, format_spec: str, seconds: float, limit: int) -> tuple[dict | None, dict | None]:
+def pick(
+    dash: dict, format_spec: str, seconds: float, limit: int, *, fit: bool = False
+) -> tuple[dict | None, dict | None]:
     """按 format_spec（解析结果里给的 yt-dlp 写法）挑 (画面, 声音)。仅音频时画面是 None。
 
     同一高度有 H.264 / H.265 / AV1 几份：先要 H.264，估算体积超了上限换 H.265，还超就报错。
+    fit=True（转换用的原视频，清晰度无所谓）时这一档都超了就往低一档找，找不到再报错。
     """
     audio = max(dash.get("audio") or [], key=_bw, default=None)
     if format_spec.startswith("ba"):
@@ -53,21 +56,21 @@ def pick(dash: dict, format_spec: str, seconds: float, limit: int) -> tuple[dict
     videos = [v for v in dash.get("video") or [] if 0 < int(v.get("height") or 0) <= max_h]
     if not videos:
         raise RuntimeError("B站没有给出这个清晰度")
-    top = max(int(v["height"]) for v in videos)
-    tier = [v for v in videos if int(v["height"]) == top]
+    heights = sorted({int(v["height"]) for v in videos}, reverse=True)
     audio_bw = _bw(audio) if audio else 0
 
     def size(v: dict) -> float:
         return (_bw(v) + audio_bw) * seconds / 8
 
-    ranked = sorted(tier, key=lambda v: ({_AVC: 0, _HEVC: 1}.get(v.get("codecid"), 2), -_bw(v)))
-    for v in ranked:
-        if size(v) <= limit:
-            return v, audio
-    smallest = min(size(v) for v in tier)
-    raise TooLarge(
-        f"这个清晰度的文件约 {smallest / 1e6:.0f} MB，超过了服务器 {limit >> 20} MB 的上限，换低一档清晰度试试"
-    )
+    smallest = 0.0
+    for height in heights if fit else heights[:1]:
+        tier = [v for v in videos if int(v["height"]) == height]
+        ranked = sorted(tier, key=lambda v: ({_AVC: 0, _HEVC: 1}.get(v.get("codecid"), 2), -_bw(v)))
+        for v in ranked:
+            if size(v) <= limit:
+                return v, audio
+        smallest = min(size(v) for v in tier)
+    raise TooLarge(too_large_message(smallest, limit, fit))
 
 
 async def _fetch(stream: dict, dest: Path, on_bytes) -> None:
@@ -84,7 +87,9 @@ async def _fetch(stream: dict, dest: Path, on_bytes) -> None:
     raise last or RuntimeError("B站没有给出下载地址")
 
 
-async def download(page_url: str, format_spec: str, out_dir: Path, stem: str, report: Report) -> Path:
+async def download(
+    page_url: str, format_spec: str, out_dir: Path, stem: str, report: Report, *, fit: bool = False
+) -> Path:
     parser = BiliBili()
     await parser._ensure_buvid()
     bvid = await parser._get_bvid_from_url(page_url)
@@ -96,7 +101,7 @@ async def download(page_url: str, format_spec: str, out_dir: Path, stem: str, re
         raise dash
     data = dash.get("data") or {}
     seconds = float(data.get("timelength") or 0) / 1000 or float((data.get("dash") or {}).get("duration") or 0)
-    video, audio = pick(data.get("dash") or {}, format_spec, seconds, config.MAX_SOURCE_BYTES)
+    video, audio = pick(data.get("dash") or {}, format_spec, seconds, config.MAX_SOURCE_BYTES, fit=fit)
 
     parts = [(s, out_dir / f"{stem}.{kind}.m4s") for kind, s in (("v", video), ("a", audio)) if s]
     expected = sum(_bw(s) for s, _ in parts) * seconds / 8 or 1
