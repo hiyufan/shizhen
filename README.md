@@ -83,7 +83,7 @@
 
 - 编辑风极简界面，手机端完整适配
 - 字体全部自托管，页面零外部请求
-- 8 个落地页 + 7 篇教程，JSON-LD 结构化数据
+- 8 个落地页 + 13 篇教程，JSON-LD 结构化数据
 - 公网加固：限流、配额、签名、SSRF、CSP
 - Docker 非 root 运行
 - yt-dlp 自动升级跟进平台改版
@@ -146,26 +146,7 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 
 排查问题：`docker compose exec app python -m parse_video_py.diag "<分享链接>"`，会打印出口 IP、解析结果和平台返回的原始状态。
 
-<details>
-<summary><b>自动部署（CI/CD）</b> — push 到 main，测试通过就自动上线</summary>
-
-<br>
-
-`.github/workflows/ci.yml`：每次 push / PR 跑单元测试（不碰外网）、语法检查和部署脚本的 shellcheck，改到 `Dockerfile` / 依赖时再构建一遍镜像；push 到 main 且都通过，就 SSH 到服务器跑 `scripts/deploy.sh`：等进行中的转换任务做完 → 打回滚标签 → 构建上线 → 自检（容器健康、首页、`/api/health`、公网首页），不过就自动退回上一个镜像。回滚镜像留最近 3 个，日志在 Actions 里和服务器的 `/var/log/shizhen-deploy.log`。
-
-部署密钥在服务器上被锁死成只能跑部署脚本，开不了 shell、转发不了端口；SSH 带过去的只被当成要部署的提交 SHA，且必须是 GitHub 上 main 里的提交：
-
-```bash
-ssh-keygen -t ed25519 -N "" -C shizhen-actions-deploy -f deploy_key
-echo "restrict,command=\"$PWD/scripts/deploy.sh\" $(cat deploy_key.pub)" >> ~/.ssh/authorized_keys
-gh secret set DEPLOY_SSH_KEY < deploy_key                  # 私钥传上去后在服务器上删掉
-gh secret set DEPLOY_HOST --body "<服务器 IP>"
-for f in /etc/ssh/ssh_host_*_key.pub; do echo "<服务器 IP> $(cut -d' ' -f1,2 "$f")"; done | gh secret set DEPLOY_KNOWN_HOSTS
-```
-
-`SITE_URL` 默认 `https://ynvan.com`，自检会访问它，部署别的域名记得改。手动部署：`scripts/deploy.sh`（GitHub 上 main 的最新提交）、`FORCE=1 scripts/deploy.sh`（重新构建一遍）。
-
-</details>
+push 到 main、测试通过后自动上线，自检不过自动回滚：配置方法见 [docs/deploy.md](docs/deploy.md)。
 
 <details>
 <summary><b>海外服务器必看</b> — 小红书 / B站 会拒绝海外和机房 IP</summary>
@@ -191,20 +172,14 @@ YouTube 等仍然直连。只有解析请求（流量很小）走它，视频本
 
 **2. 边缘函数中继**（没有国内机器时）
 
-把 `scripts/esa-relay.js` 部署到阿里云 ESA 边缘函数 / 边缘 Pages，出口在国内边缘节点。改掉里面的 `TOKEN`，然后：
+把 `scripts/esa-relay.js` 部署到阿里云 ESA 边缘函数（改掉里面的 `TOKEN`），国内平台的解析请求就从国内边缘节点发出：
 
 ```bash
 PARSE_VIDEO_RELAY_CN=https://<函数域名>/relay
 PARSE_VIDEO_RELAY_TOKEN=<同一个 TOKEN>
 ```
 
-国内平台的解析请求由边缘节点代发，跳转仍由本地逐跳做 SSRF 检查。要看边缘出口能不能过，先在脚本里填一个单独的 `PROBE_TOKEN`，再开 `https://<函数域名>/probe?token=<PROBE_TOKEN>&xhs=<小红书链接>`。探测口令别用 `TOKEN`：它会留在浏览器历史和访问日志里，而 `TOKEN` 同时管着中继和图片签名，漏了别人就能拿你的边缘节点当代理。用完把 `PROBE_TOKEN` 清空，探测和其它路径都只回 404，免得被爬虫扫来扫去、拿你的出口 IP 去打平台接口。ESA 上改完代码要在「版本管理」里发布到生产环境，只点「部署」只会更新测试环境。
-
-再设 `PARSE_VIDEO_EDGE_IMG=1`，国内平台（小红书 / 抖音 / 快手 / B站 / 微博）的图片就由浏览器直接从边缘节点的 `/img` 取，不再走「国内 CDN → 海外服务器 → 国内用户」跨两次太平洋；边缘取不到时自动回退到服务器转发。`/img` 只认服务器签过名、未过期的地址，只转白名单里的图片 CDN、只回 `image/*`，不会变成通用代理。
-
-再设 `PARSE_VIDEO_EDGE_MEDIA=1`，视频和音频（预览、拖进度条、下载、iPhone 存相册）也从边缘节点的 `/media` 取。这部分原来占全站流量的六成，都要跨两次太平洋；边缘播不了时页面自动退回服务器转发。`/media` 同样只认签过名的地址，只转白名单里的音视频 CDN，只回音视频。这部分流量会算在 ESA 上，开之前看一眼套餐额度。服务器到中继走 HTTP/2，一次解析里并发的几个请求共用一条焐热的连接。
-
-局限：中继只是 HTTP 转发，不是真正的代理，yt-dlp 走不了它，所以 B站 只有上游解析器的 480p 直链，1080p 合并下载仍取决于服务器自身出口。
+可以再开 `PARSE_VIDEO_EDGE_IMG=1` / `PARSE_VIDEO_EDGE_MEDIA=1`，让国内用户直接从边缘节点取图片和视频，不用绕海外服务器。局限：yt-dlp 走不了中继，B站 只有 480p 直链。部署、探测出口和口令的注意事项见 [docs/esa-relay.md](docs/esa-relay.md)。
 
 **3. 贴登录 Cookie**
 
@@ -453,14 +428,6 @@ docker-compose.yml · Caddyfile   一台机器的 HTTPS 部署
 - **配额** — 按 IP 限流、并发任务数、上传与原视频上限、磁盘配额
 
 仍需注意：ffmpeg 和 yt-dlp 处理的是不可信媒体，应保持更新（yt-dlp 可自动升级，ffmpeg 通过重建镜像更新）；`cookies.txt` 属于账号凭证，只应存放在服务器上；服务本身没有登录机制，限流针对的是脚本滥用，带宽成本需要部署者自行评估。
-
-## 🔍 SEO
-
-- 首页拿泛词；8 个落地页各拿一个精确词（`/douyin` `/xiaohongshu` `/kuaishou` `/youtube` `/x` `/bilibili` `/gif` `/live-photo`），每页独立标题、描述、H1、三段独有正文与专属问答
-- 7 篇教程对准长尾词（`/guides`），真能照着做的步骤，带 HowTo + Article + FAQPage + 面包屑，和落地页互链
-- 标题 ≤ 30 汉字、描述 ≤ 80 汉字、每页一个 H1；sitemap（带 lastmod）、robots、canonical、OG 大图、百度 `applicable-device`；服务端渲染、gzip、静态资源内容哈希缓存一年
-
-部署后的清单：设置 `PARSE_VIDEO_SITE_URL`；在百度 / Google / Bing 站长平台验证站点并提交 sitemap；运行 `python scripts/push_urls.py` 主动推送；国内服务器需要 ICP 备案；教程内容可分发到其它平台并链接回站点。
 
 ## 🗺️ 路线图
 
