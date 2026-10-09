@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from urllib.parse import quote
 
+import anyio
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -92,8 +93,11 @@ async def _relay_body(resp: httpx.Response, slot: _StreamSlot) -> AsyncIterator[
         async for chunk in resp.aiter_raw(1 << 16):
             yield chunk
     finally:
-        await resp.aclose()
+        # 用户关掉页面时这里是在「已取消」的状态下跑的：await 一挂起就会再被取消一次。
+        # 以前先 await aclose 再还名额，名额就永远还不回去（每个 IP 4 路、全站 64 路，漏满要等重启）
         slot.release()
+        with anyio.move_on_after(5, shield=True):
+            await resp.aclose()
 
 
 @router.get("/api/proxy", dependencies=SITE_AUTH)

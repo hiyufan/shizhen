@@ -104,7 +104,14 @@ async def site_headers(request: Request, call_next) -> Response:
     if stats.enabled() and _excluded_from_stats(request):
         stats.mute()
 
-    response = _strip_trailing_slash(request) or await call_next(request)
+    try:
+        response = _strip_trailing_slash(request) or await call_next(request)
+    except RuntimeError as exc:
+        # 响应头还没发出去用户就走了（视频代理等上游第一块数据时常见），框架报这个错。
+        # 人都走了，没什么可记的，免得每次在日志里留一整段 traceback
+        if str(exc) != "No response returned.":
+            raise
+        return Response(status_code=499)
     path = request.url.path
     is_page = request.method in ("GET", "HEAD") and _is_html(response) and not path.startswith("/api")
     if path.startswith("/static/"):
