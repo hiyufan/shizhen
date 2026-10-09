@@ -57,6 +57,9 @@ services:
   warp:
     build: ./docker/warp
     restart: unless-stopped
+    # 2026.8 起的客户端代理模式也要装 fwmark 路由规则，没这个权限会连上就断、反复重连
+    cap_add:
+      - NET_ADMIN
     volumes:
       - warp_data:/var/lib/cloudflare-warp  # 注册信息，重建容器不用重新注册
     deploy:
