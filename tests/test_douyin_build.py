@@ -276,3 +276,42 @@ def test_page_images_prefers_complete_aweme_list():
     # awemeInfo 还没凑齐：用 DOM 里的
     assert douyin._page_images({**dom, "ordered": ["https://p3/a.jpeg"]}) == ["https://p3/dom-a"]
     assert douyin._page_images({"images": ["https://p3/dom-a"], "total": None}) == ["https://p3/dom-a"]
+
+
+class _FilteredClient:
+    """slidesinfo 每次都回 filter_list 的假客户端。"""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, url, **_kw):
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"status_code": 0, "aweme_details": None, "filter_list": [{"reason": 8}]}
+
+        return Resp()
+
+
+@pytest.mark.parametrize(
+    ("cookie", "note", "reason", "says_login"),
+    [
+        ("", False, "restricted", True),  # 匿名视频：说清楚要登录、重试没用，不再只报 reason 码
+        ("", True, "login", False),  # 匿名图文：照旧报 login，提示站长配 cookie
+        ("sessionid=x", False, "restricted", False),  # 带了登录还被 filter：真是作者限制
+    ],
+)
+def test_filtered_slides_message(monkeypatch, cookie, note, reason, says_login):
+    monkeypatch.setenv("PARSE_VIDEO_DOUYIN_COOKIE", cookie)
+    monkeypatch.setattr(douyin, "create_async_client", lambda **_kw: _FilteredClient())
+    parser = DouYin()
+    parser._note = note
+    with pytest.raises(ParseError) as exc:
+        asyncio.run(parser._get_slides_info(VIDEO_ID))
+    assert exc.value.reason == reason
+    assert ("只给登录用户看" in str(exc.value)) is says_login
