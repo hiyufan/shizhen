@@ -311,9 +311,11 @@ _NOTE_DOM_EXTRACT = """
     const m = metadesc.match(/([^\\s，。]{1,30})于\\d{8}发布在抖音/);
     if (m) author = m[1];
   }
+  // 视频走 /note/ 地址、匿名又被要求登录时不会跳 /video/，页面只写「你要观看的图文不存在」
+  const gone = !detail && (document.body.innerText || '').includes('图文不存在');
   return {
     images: Object.values(seen), ordered, music, lives, jpegs, live, total,
-    detail: !!detail, desc, author, uid,
+    detail: !!detail, desc, author, uid, gone,
   };
 }
 """
@@ -721,7 +723,10 @@ class DouYin(BaseParser):
                         return None
                     # 跳去首页/推荐流说明这条作品没了
                     raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
-                return await self._extract_note_dom(page)
+                dom = await self._extract_note_dom(page)
+                # 页面明说「图文不存在」：多半是要登录才给看的视频（filter reason=8），
+                # 重开一次也一样，以前要白等两轮 15~18 秒
+                return None if dom.get("gone") else dom
         except ImportError:
             return None
         except ParseError:
@@ -759,6 +764,8 @@ class DouYin(BaseParser):
                     raise
                 await page.wait_for_timeout(200)
                 continue
+            if dom.get("gone"):
+                return dom
             n = len(dom.get("images") or [])
             total = dom.get("total")
             if total == 0 or (total and max(n, len(dom.get("ordered") or [])) >= total):
