@@ -1,6 +1,7 @@
 """抖音图文兜底浏览器：轮询到图齐就返回、页面重载不算坏、并发上限与用完即关。不起真浏览器。"""
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -62,6 +63,22 @@ def test_aweme_info_without_images_returns_immediately():
     page = FakePage([_dom(0, 0)])
     dom = asyncio.run(DouYin._extract_note_dom(page))
     assert dom["total"] == 0 and page.waited == 0
+
+
+def test_note_not_found_page_gives_up_at_once(monkeypatch):
+    """要登录的视频走 /note/ 地址只显示「图文不存在」：一轮就交回原错，不再重开一次白等 15 秒。"""
+    page = FakePage([{**_dom(0, None, detail=False), "gone": True}])
+    opened = []
+
+    class Browser:
+        @contextlib.asynccontextmanager
+        async def page(self):
+            opened.append(1)
+            yield page
+
+    monkeypatch.setattr(douyin, "_warm_browser", Browser())
+    assert asyncio.run(DouYin()._note_via_browser("1")) is None
+    assert opened == [1] and page.waited == 0
 
 
 class FakeContext:
