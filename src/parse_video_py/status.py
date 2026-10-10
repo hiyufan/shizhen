@@ -111,6 +111,7 @@ REASON_LABELS = {
     "parse": "平台改版",
     "empty": "没拿到内容",
     "unsupported": "不支持",
+    "copyright": "版权内容",
 }
 
 FAQ = [
@@ -139,7 +140,7 @@ FAQ = [
 # 链接本身的问题，不是平台的问题
 _LINK_ROT = ("deleted",)
 # 用户这边的原因（贴错链接、作品删了），不算进平台成功率
-_USER_SIDE = ("deleted", "unsupported", "cache")
+_USER_SIDE = ("deleted", "unsupported", "copyright", "cache")
 
 
 def _db():

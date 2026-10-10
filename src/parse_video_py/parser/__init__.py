@@ -220,8 +220,8 @@ async def _run_parser(source: VideoSource, share_url: str) -> VideoInfo:
     try:
         return await parser.parse_share_url(share_url)
     except Exception as exc:  # noqa: BLE001
-        # 内容删了 / 链接不对：换 yt-dlp 也是一样的结果，别让用户多等几秒
-        if classify(exc).reason in ("deleted", "unsupported"):
+        # 内容删了 / 链接不对 / 版权内容：换 yt-dlp 也是一样的结果，别让用户多等几秒
+        if classify(exc).reason in ("deleted", "unsupported", "copyright"):
             raise
         extra = await _ytdlp_extra(share_url)
         if extra is None or not (extra.formats or extra.video_url):

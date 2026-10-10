@@ -2,9 +2,14 @@
 
 import json
 
+import pytest
+
+from parse_video_py import parser as parser_pkg
+from parse_video_py.feedback import FIXABLE
 from parse_video_py.parser import VideoSource, detect_source
 from parse_video_py.parser.bilibili import dash_formats, guest_params, id_param
 from parse_video_py.parser.douyin import _looks_like_note, _note_images
+from parse_video_py.parser.errors import ParseError
 
 
 def test_av_ids_use_numeric_params():
@@ -102,3 +107,23 @@ def test_douyin_browser_note_prefers_jpeg_from_aweme_info():
     imgs = _note_images({"images": [a, b], "lives": {"oAD7QVQrR": "https://v/a.mp4"}, "jpegs": {"oAD7QVQrR": jpeg_a}})
     assert [i.url for i in imgs] == [jpeg_a, b]
     assert imgs[0].live_photo_url == "https://v/a.mp4"  # 换了地址实况照样配得上
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.bilibili.com/bangumi/play/ep690878?spm_id_from=333.337.0.0",
+        "https://m.bilibili.com/bangumi/play/ss41417",
+        "https://www.bilibili.com/cheese/play/ep123",
+    ],
+)
+async def test_bili_copyright_content_fails_fast(url, monkeypatch):
+    """番剧 / 电影 / 课程不支持（issue #4）：不请求接口、不退回 yt-dlp，也不让用户点反馈。"""
+
+    async def no_ytdlp(_url):
+        raise AssertionError("不该退回 yt-dlp")
+
+    monkeypatch.setattr(parser_pkg, "_ytdlp_extra", no_ytdlp)
+    with pytest.raises(ParseError) as exc:
+        await parser_pkg.parse_video_share_url(url)
+    assert exc.value.reason == "copyright" and exc.value.reason not in FIXABLE
