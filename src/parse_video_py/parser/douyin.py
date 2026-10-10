@@ -626,16 +626,23 @@ class DouYin(BaseParser):
                         break
 
         if filtered:
-            # filter_list 一般只给个 reason 码，没有 detail_msg；有就带上
-            detail = filtered.get("detail_msg") or filtered.get("notice") or ""
-            detail = detail or f"抖音 filter reason={filtered.get('reason')}"
-            if not cookie and self._note:
-                # 没配 cookie 时，图文被 filter 是平台不给匿名数据而不是作者限制：
-                # 报 restricted 会让用户以为链接有问题，站长也看不出配 cookie 能修。
-                raise ParseError("login", detail)
-            raise ParseError("restricted", detail)
-
+            raise self._filtered_error(video_id, filtered, cookie)
         return None
+
+    def _filtered_error(self, video_id: str, filtered: dict, cookie: str) -> ParseError:
+        """slidesinfo 的 filter_list -> 给用户看的错误。"""
+        # filter_list 一般只给个 reason 码，没有 detail_msg；有就带上
+        detail = filtered.get("detail_msg") or filtered.get("notice") or ""
+        if not cookie and self._note:
+            # 没配 cookie 时，图文被 filter 是平台不给匿名数据而不是作者限制：
+            # 报 restricted 会让用户以为链接有问题，站长也看不出配 cookie 能修。
+            return ParseError("login", detail or f"抖音 filter reason={filtered.get('reason')}")
+        if not cookie and not detail:
+            # 匿名的视频被 filter（多是 reason=8）：网页、App feed、分享页、浏览器全试过，
+            # 都要登录才给（2026-10）。原来只报个 reason 码，有人对同一条连点了 9 次
+            log.info("抖音视频匿名被 filter id=%s reason=%s", video_id, filtered.get("reason"))
+            return ParseError("restricted", "这条抖音只给登录用户看，服务器拿不到，重试也一样")
+        return ParseError("restricted", detail or f"抖音 filter reason={filtered.get('reason')}")
 
     async def _note_via_browser(self, video_id: str) -> VideoInfo | None:
         """slidesinfo 被平台 filter 后的图文兜底：用常驻无痕 Chromium 渲染 PC 版
