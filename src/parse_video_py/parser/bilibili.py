@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import random
+import re
 import string
 from urllib.parse import urlencode, urlparse
 
@@ -11,6 +12,10 @@ from .base import BaseParser, FormatInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
 
 _REFERER = "https://www.bilibili.com/"
+
+# 番剧 / 电影 / 纪录片（bangumi/play/ep… ss…）和付费课程（cheese/play/…）。不支持：
+# 版权内容只限中国大陆、没登录最多 480p、会员集只有试看，整集体积又大（issue #4）
+_PGC_PATH = re.compile(r"/(bangumi|cheese)/play/", re.I)
 
 # 清晰度 id -> 高度。html5 合一流只给 quality，不给宽高
 _QN_HEIGHT = {
@@ -183,6 +188,8 @@ class BiliBili(BaseParser):
                 return await self._get_bvid_from_url(location)
 
         if "bilibili.com" in parsed_url.netloc:
+            if _PGC_PATH.search(parsed_url.path):
+                raise ParseError("copyright")
             for part in parsed_url.path.split("/"):
                 if part[:2] in ("BV", "bv") or (part[:2] in ("av", "AV") and part[2:].isdigit()):
                     return part

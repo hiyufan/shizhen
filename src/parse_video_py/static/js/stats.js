@@ -8,7 +8,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const REASONS = {
   deleted: '内容已删除 / 链接过期', login: '平台要求登录', blocked: '被平台风控', unsupported: '不支持的链接',
-  network: '网络错误', timeout: '超时', empty: '没有媒体', restricted: '平台不给这条的数据', parse: '页面结构变了',
+  network: '网络错误', timeout: '超时', empty: '没有媒体', restricted: '平台不给这条的数据', copyright: '版权内容', parse: '页面结构变了',
   cache: '缓存', '': '未知',
 };
 const JOBS = { prepare: '准备原视频', gif: 'GIF', livephoto: '实况照片', motionphoto: '动态照片', download: '高清下载', live: '实况打包' };
