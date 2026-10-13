@@ -462,7 +462,8 @@ class DouYin(BaseParser):
             self._note = _looks_like_note(share_url)
             if video_id := self._parse_video_id_from_path(share_url):
                 return video_id
-            raise ValueError("Failed to parse video ID from PC share URL")
+            # 主页 / 搜索页 / 推荐页的地址里没有作品 ID，以前被归成「已删除」，用户以为作品没了
+            raise ParseError("unsupported", "这不是单条作品的链接（像是主页、搜索页），打开作品后再复制分享链接")
         if host == "v.douyin.com":
             if video_id := await self._parse_app_share_url(share_url):
                 return video_id

@@ -7,7 +7,7 @@ import pytest
 from parse_video_py import parser as parser_pkg
 from parse_video_py.feedback import FIXABLE
 from parse_video_py.parser import VideoSource, detect_source
-from parse_video_py.parser.bilibili import dash_formats, guest_params, id_param
+from parse_video_py.parser.bilibili import BiliBili, dash_formats, guest_params, id_param, opus_images, opus_text
 from parse_video_py.parser.douyin import _looks_like_note, _note_images
 from parse_video_py.parser.errors import ParseError
 
@@ -127,3 +127,40 @@ async def test_bili_copyright_content_fails_fast(url, monkeypatch):
     with pytest.raises(ParseError) as exc:
         await parser_pkg.parse_video_share_url(url)
     assert exc.value.reason == "copyright" and exc.value.reason not in FIXABLE
+
+
+async def test_bili_opus_images_and_links():
+    """B站动态：图集和正文里的图都要，实况带 live_url；三种链接写法都认（2026-10-13 有人试了 4 次）。"""
+    modules = {
+        "MODULE_TYPE_TOP": {
+            "module_top": {
+                "display": {
+                    "album": {
+                        "pics": [
+                            {"url": "http://i0.hdslb.com/bfs/new_dyn/a.jpg", "live_url": "https://i0.hdslb.com/v.mp4"}
+                        ]
+                    }
+                }
+            }
+        },
+        "MODULE_TYPE_CONTENT": {
+            "module_content": {
+                "paragraphs": [
+                    {"text": {"nodes": [{"word": {"words": "想我了"}}, {"word": {"words": "没"}}]}},
+                    {"pic": {"pics": [{"url": "https://i0.hdslb.com/bfs/b.jpg"}]}},
+                ]
+            }
+        },
+    }
+    assert [(i.url, i.live_photo_url) for i in opus_images(modules)] == [
+        ("https://i0.hdslb.com/bfs/new_dyn/a.jpg", "https://i0.hdslb.com/v.mp4"),
+        ("https://i0.hdslb.com/bfs/b.jpg", ""),
+    ]
+    assert opus_text(modules) == "想我了没"
+    for url in (
+        "https://m.bilibili.com/opus/1257456486020284425?plat_id=186",
+        "https://www.bilibili.com/opus/1257456486020284425",
+        "https://t.bilibili.com/1257456486020284425",
+    ):
+        assert await BiliBili()._get_bvid_from_url(url) == "opus1257456486020284425"
+    assert detect_source("https://t.bilibili.com/1257456486020284425") == VideoSource.BiliBili

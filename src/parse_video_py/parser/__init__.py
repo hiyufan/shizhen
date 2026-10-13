@@ -64,6 +64,7 @@ video_source_info_mapping = {
             "www.bilibili.com",
             "b23.tv",
             "m.bilibili.com",
+            "t.bilibili.com",
         ],
         "parser": BiliBili,
     },

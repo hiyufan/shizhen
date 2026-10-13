@@ -8,7 +8,7 @@ import string
 from urllib.parse import urlencode, urlparse
 
 from ..utils import create_async_client
-from .base import BaseParser, FormatInfo, VideoAuthor, VideoInfo
+from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
 
 _REFERER = "https://www.bilibili.com/"
@@ -16,6 +16,8 @@ _REFERER = "https://www.bilibili.com/"
 # 番剧 / 电影 / 纪录片（bangumi/play/ep… ss…）和付费课程（cheese/play/…）。不支持：
 # 版权内容只限中国大陆、没登录最多 480p、会员集只有试看，整集体积又大（issue #4）
 _PGC_PATH = re.compile(r"/(bangumi|cheese)/play/", re.I)
+# 动态（图文 / 实况）：bilibili.com/opus/123、m.bilibili.com/opus/123、t.bilibili.com/123
+_OPUS_PATH = re.compile(r"^/(?:opus/)?(\d{15,})")
 
 # 清晰度 id -> 高度。html5 合一流只给 quality，不给宽高
 _QN_HEIGHT = {
@@ -90,7 +92,42 @@ class BiliBili(BaseParser):
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         bvid = await self._get_bvid_from_url(share_url)
+        if bvid.startswith("opus"):
+            return await self._parse_opus(bvid[4:])
         return await self.parse_video_id(bvid)
+
+    async def _parse_opus(self, opus_id: str) -> VideoInfo:
+        """动态（opus）：图片和实况在 opus/detail 里（每张图的 live_url 就是实况视频），
+        转发视频的动态交给视频那条路。2026-10-13 有人把同一条实况动态换着分享方式试了 4 次。"""
+        await self._ensure_buvid()
+        resp = await self._api(f"https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detail?id={opus_id}")
+        if resp.get("code") != 0:
+            raise ParseError("restricted", f"B 站动态接口 code={resp.get('code')} {resp.get('message', '')}")
+        item = (resp.get("data") or {}).get("item")
+        if not item:
+            # 删了 / 不存在的动态照样 code=0，只是 item 为 null
+            raise ParseError("deleted", "B 站没有这条动态")
+        modules = {m.get("module_type"): m for m in item.get("modules") or []}
+        images = opus_images(modules)
+        if not images:
+            # 没图的多半是转发视频的动态：老的 detail 接口里有 bvid
+            detail = await self._api(f"https://api.bilibili.com/x/polymer/web-dynamic/v1/detail?id={opus_id}")
+            major = (((detail.get("data") or {}).get("item") or {}).get("modules") or {}).get("module_dynamic") or {}
+            if bvid := ((major.get("major") or {}).get("archive") or {}).get("bvid"):
+                return await self.parse_video_id(bvid)
+            raise ParseError("empty", "这条 B 站动态里没有图片或视频")
+
+        author = (modules.get("MODULE_TYPE_AUTHOR") or {}).get("module_author") or {}
+        return VideoInfo(
+            title=opus_text(modules)[:60] or (item.get("basic") or {}).get("title", ""),
+            video_url="",
+            cover_url=images[0].url,
+            images=images,
+            page_url=f"https://www.bilibili.com/opus/{opus_id}",
+            author=VideoAuthor(
+                uid=str(author.get("mid", "")), name=author.get("name", ""), avatar=author.get("face", "")
+            ),
+        )
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         await self._ensure_buvid()
@@ -190,6 +227,8 @@ class BiliBili(BaseParser):
         if "bilibili.com" in parsed_url.netloc:
             if _PGC_PATH.search(parsed_url.path):
                 raise ParseError("copyright")
+            if opus := _OPUS_PATH.match(parsed_url.path):
+                return "opus" + opus.group(1)
             for part in parsed_url.path.split("/"):
                 if part[:2] in ("BV", "bv") or (part[:2] in ("av", "AV") and part[2:].isdigit()):
                     return part
@@ -293,3 +332,31 @@ def dash_formats(play_data: dict, duration: float, above: int) -> list[FormatInf
             )
         )
     return formats
+
+
+def _https(url: str) -> str:
+    return "https://" + url[len("http://") :] if url.startswith("http://") else url
+
+
+def opus_images(modules: dict) -> list[ImgInfo]:
+    """动态里的图：顶部的图集（module_top.display.album）加正文段落里的图。原图就是不带 @ 参数的地址。"""
+    top = (((modules.get("MODULE_TYPE_TOP") or {}).get("module_top") or {}).get("display") or {}).get("album") or {}
+    pics = list(top.get("pics") or [])
+    content = (modules.get("MODULE_TYPE_CONTENT") or {}).get("module_content") or {}
+    for para in content.get("paragraphs") or []:
+        pics += (para.get("pic") or {}).get("pics") or []
+    return [
+        ImgInfo(url=_https(p["url"]), live_photo_url=_https(p.get("live_url") or ""))
+        for p in pics
+        if isinstance(p, dict) and p.get("url")
+    ]
+
+
+def opus_text(modules: dict) -> str:
+    content = (modules.get("MODULE_TYPE_CONTENT") or {}).get("module_content") or {}
+    words = [
+        (node.get("word") or {}).get("words", "")
+        for para in content.get("paragraphs") or []
+        for node in (para.get("text") or {}).get("nodes") or []
+    ]
+    return " ".join("".join(words).split())
