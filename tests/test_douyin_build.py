@@ -150,12 +150,14 @@ def test_filtered_and_no_browser_keeps_original_error(monkeypatch):
 @pytest.mark.parametrize(
     "url, message",
     [
-        ("https://www.douyin.com/user/abc", "Failed to parse video ID from PC share URL"),
+        # 主页 / 搜索页不是作品：说清楚，别归成「已删除」
+        ("https://www.douyin.com/user/abc", "不是单条作品的链接"),
+        ("https://www.douyin.com/search/%E5%80%9F%E5%8F%B7", "不是单条作品的链接"),
         ("https://other.douyin.cc/x", "Douyin not support this host"),
     ],
 )
 def test_unusable_urls(url, message):
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(Exception, match=message):
         asyncio.run(DouYin().parse_share_url(url))
 
 

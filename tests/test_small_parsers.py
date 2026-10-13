@@ -472,3 +472,6 @@ def test_instagram_audience_restricted_is_not_a_broken_parser():
         "It can't be seen by certain audiences."
     )
     assert classify(RuntimeError(msg)).reason == "restricted"
+    # 图片帖子 yt-dlp 只说没有视频：是「没拿到内容」，也不是解析器坏了
+    image_post = "ERROR: [Instagram] Dd-5dJdHcMJ: No video formats found!; please report this issue on  https://github.com/yt-dlp/yt-dlp/issues"
+    assert classify(RuntimeError(image_post)).reason == "empty"
