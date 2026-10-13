@@ -11,6 +11,7 @@ from ..convert import config as convert_config
 from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
 from ..utils import fallback_proxy, proxy_for, run_ytdlp, wants_fallback
+from . import instagram
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 
 _HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
@@ -21,6 +22,9 @@ class YtDlp(BaseParser):
         try:
             info = await run_ytdlp(self._extract, share_url)
         except Exception as err:
+            # Instagram 图片帖：yt-dlp 只认视频，图片项全报 No video formats found
+            if "No video formats found" in str(err) and (post := await instagram.image_post(share_url)):
+                return post
             if not wants_fallback(err):
                 raise
             # 被 YouTube 抽查到了：换备用出口再来一次，直链也记下来走同一个出口（见 net.remember_fallback）
