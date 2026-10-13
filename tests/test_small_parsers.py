@@ -475,3 +475,37 @@ def test_instagram_audience_restricted_is_not_a_broken_parser():
     # 图片帖子 yt-dlp 只说没有视频：是「没拿到内容」，也不是解析器坏了
     image_post = "ERROR: [Instagram] Dd-5dJdHcMJ: No video formats found!; please report this issue on  https://github.com/yt-dlp/yt-dlp/issues"
     assert classify(RuntimeError(image_post)).reason == "empty"
+
+
+def test_instagram_image_post_from_page_json():
+    """yt-dlp 只认视频，图片帖整条失败（issue #5）：从未登录页面内嵌的 JSON 里取，推荐区的别的帖子不要。"""
+    from parse_video_py.parser import instagram
+
+    def post(code, items):
+        return {
+            "code": code,
+            "user": {"pk": "1", "username": "yuqi"},
+            "caption": {"text": "hi"},
+            "carousel_media": items,
+        }
+
+    def image(url):
+        return {"media_type": 1, "image_versions2": {"candidates": [{"url": url}, {"url": url + "?s=640"}]}}
+
+    video = {"media_type": 2, "video_versions": [{"url": "https://cdn/v.mp4"}], "image_versions2": {"candidates": []}}
+    other = {
+        "require": [{"xig_polaris_media": {"if_not_gated_logged_out": post("OTHER", [image("https://cdn/x.jpg")])}}]
+    }
+    target = {
+        "a": [
+            {"b": {"xig_polaris_media": {"if_not_gated_logged_out": post("Dd-5", [image("https://cdn/1.jpg"), video])}}}
+        ]
+    }
+    html = "".join(f'<script type="application/json" data-sjs>{json.dumps(o)}</script>' for o in (other, target))
+
+    info = instagram.to_video_info(instagram.find_post(html, "Dd-5"), "Dd-5")
+    assert [i.url for i in info.images] == ["https://cdn/1.jpg"]  # candidates 第一个是原图
+    assert info.video_url == "https://cdn/v.mp4" and info.author.name == "yuqi"
+    assert instagram.post_code("https://www.instagram.com/p/Dd-5dJdHcMJ/?img_index=3") == "Dd-5dJdHcMJ"
+    assert instagram.post_code("https://www.instagram.com/yuqi/p/Dd-5/") == "Dd-5"
+    assert instagram.post_code("https://www.instagram.com/reel/Dd9gDnvT4S4/") == ""
