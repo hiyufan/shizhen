@@ -4,7 +4,7 @@ const browser = Object.fromEntries(
   [
     'window', 'document', 'navigator', 'location', 'console', 'fetch', 'performance', 'innerHeight',
     'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame', 'addEventListener',
-    'matchMedia', 'IntersectionObserver', 'AbortController', 'File', 'FormData', 'URLSearchParams', 'Uint8Array',
+    'matchMedia', 'localStorage', 'IntersectionObserver', 'AbortController', 'File', 'FormData', 'URLSearchParams', 'Uint8Array',
   ].map((name) => [name, 'readonly']),
 );
 

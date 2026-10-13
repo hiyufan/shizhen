@@ -240,6 +240,8 @@ img.failed { opacity: .35; cursor: pointer; }
 /* 按钮下面的小字说明：一句一行，比 .hint 再小一号 */
 .fine { margin: -4px 0 14px; font-size: 12px; line-height: 1.65; color: var(--ink-3); }
 .fine p { margin: 0; }
+.star-ask { margin: 22px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+.star-ask a { color: var(--ink); font-weight: 600; }
 .fine p + p { margin-top: 2px; }
 .fine b { color: var(--ink-2); font-weight: 600; }
 .fine a { color: var(--ink-2); }
