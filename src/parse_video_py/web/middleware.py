@@ -64,6 +64,10 @@ SECURITY_HEADERS = {
 }
 
 _BOT_UA = re.compile(r"bot|spider|crawl|slurp|fetch|curl|wget|python|http", re.I)
+# 真浏览器（含各家 App 内置浏览器）的 UA 里都有 "(KHTML, like Gecko)"。2026-10-13 有个脚本
+# 用 "…AppleWebKit/605.1.15 Mobile/15E148" 这种截短的假 iPhone UA、每次换一个 IP 批量解析
+# 同一个博主的作品，一上午 93 次，统计里的用户数被它撑大了好几倍
+_FAKE_WEBKIT_UA = re.compile(r"AppleWebKit/(?!.*KHTML)")
 _UNCOUNTED_PAGES = ("/stats", "/test")
 
 
@@ -71,11 +75,17 @@ def _is_html(response: Response) -> bool:
     return response.headers.get("content-type", "").startswith("text/html")
 
 
+def _is_script(user_agent: str) -> bool:
+    """爬虫、curl / python 之类的脚本，以及冒充浏览器的假 UA。快捷指令（BackgroundShortcutRunner）
+    和微信小程序是真人在用，照常计。"""
+    return bool(_BOT_UA.search(user_agent) or _FAKE_WEBKIT_UA.search(user_agent))
+
+
 def _excluded_from_stats(request: Request) -> bool:
-    """不计入统计的：站长测试设备（/test 开过）、服务器自己的请求，以及从 GitHub issue 里
+    """不计入统计的：站长测试设备（/test 开过）、服务器自己的请求、脚本，以及从 GitHub issue 里
     「在线复现」点进来的（src=issue）——issue 是公开的，通知邮件的链接扫描、爬虫都会打开它，
     2026-10-02 一条测试反馈就这样被不认识的 IP 打开了 4 次，统计里快手成功率直接成了 0。"""
-    if request.query_params.get("src") == "issue":
+    if request.query_params.get("src") == "issue" or _is_script(request.headers.get("user-agent", "")):
         return True
     return stats.ignored_ip(limits.client_ip(request)) or stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE))
 
@@ -83,8 +93,6 @@ def _excluded_from_stats(request: Request) -> bool:
 def _record_page_view(request: Request, response: Response) -> None:
     path = request.url.path
     if response.status_code != 200 or path in _UNCOUNTED_PAGES:
-        return
-    if _BOT_UA.search(request.headers.get("user-agent", "")):
         return
     stats.record("view", limits.client_ip(request), source=path)
 
