@@ -69,3 +69,28 @@ export function feedbackBox(ticket) {
   box.append(open, form);
   return box;
 }
+
+// 下载成功后请用户去 GitHub 点个星：14 天里网站几百个真实用户，只有 10 个点进过仓库，
+// 入口只有右上角的小按钮。刚拿到原图的时候最愿意点。每台设备只说一次，不弹窗、不挡操作
+const STAR_KEY = 'sz_star_ask';
+const DOWNLOADISH = /下载|存到相册|保存/;
+
+export function askForStarAfterDownload(...containers) {
+  const handler = (e) => {
+    const target = e.target.closest('a, button');
+    // 「其他清晰度 ▾」「下载视频 ▾」只是展开菜单
+    if (!target || !DOWNLOADISH.test(target.textContent) || target.textContent.includes('▾')) return;
+    try {
+      if (localStorage.getItem(STAR_KEY)) return;
+      localStorage.setItem(STAR_KEY, '1');
+    } catch {
+      return; // 存不了就不提：没法保证只说一次
+    }
+    const card = e.currentTarget.firstElementChild || e.currentTarget;
+    setTimeout(() => card.append(el('p', { class: 'star-ask' },
+      '求原图是开源的，免费、不用登录。觉得好用的话，去 ',
+      el('a', { href: 'https://github.com/hiyufan/shizhen', target: '_blank', rel: 'noopener' }, 'GitHub 点个 ★'),
+      '，能让更多人找到它。')), 1500);
+  };
+  for (const box of containers) box.addEventListener('click', handler);
+}

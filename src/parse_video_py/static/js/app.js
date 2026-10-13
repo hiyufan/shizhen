@@ -4,7 +4,7 @@ import { api, useSignatures } from './api.js';
 import { openConverter } from './converter.js';
 import { $, el, notice } from './dom.js';
 import { renderResult } from './result.js';
-import { feedbackBox } from './ui.js';
+import { askForStarAfterDownload, feedbackBox } from './ui.js';
 
 const REASON_TIPS = {
   deleted: '确认一下原内容还在，或者重新复制一次分享链接（小红书的链接会过期）。',
@@ -25,6 +25,8 @@ const parseBtn = $('#parse-btn');
 const pasteBtn = $('#paste-btn');
 const clearBtn = $('#clear-btn');
 const hasLink = (text) => /https?:\/\//.test(text);
+
+askForStarAfterDownload($('#result'), $('#converter'));
 
 function hideOutputs() {
   $('#result').hidden = true;
