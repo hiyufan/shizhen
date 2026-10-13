@@ -105,3 +105,25 @@ def test_links_from_github_issues_are_not_counted(rows):
     c.get("/", params={"url": "https://v.douyin.com/c/", "src": "issue"})
     c.get("/api/parse", params={"url": "https://v.douyin.com/c/", "src": "issue"})
     assert rows == []
+
+
+@pytest.mark.parametrize(
+    ("ua", "counted"),
+    [
+        ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148", False),
+        ("curl/8.14.1", False),
+        ("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", False),
+        (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_1 like Mac OS X) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) CriOS/137.0.7151.107 Mobile/15E148 Safari/604.1",
+            True,
+        ),
+        ("BackgroundShortcutRunner/5037.111 CFNetwork/3896.100.1.2.1 Darwin/27.0.0", True),  # 快捷指令是真人
+    ],
+)
+def test_scripts_are_not_counted(rows, ua, counted):
+    """脚本换着 IP 批量解析会把用户数撑大好几倍（2026-10-13）：按 UA 认出来，浏览和解析都不计。"""
+    c = TestClient(web.app, headers={"User-Agent": ua})
+    c.get("/")
+    c.get("/api/parse", params={"url": "https://v.douyin.com/a/"})
+    assert kinds(rows) == (["view", "parse"] if counted else [])
