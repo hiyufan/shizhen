@@ -45,7 +45,53 @@ let edges = {};
 export function useSignatures(data) {
   sigs = data.sig || {};
   edges = data.edge || {};
+  useDirect(sigs);
 }
+
+// ---------- 直连：推特视频 CDN 对任何来源都放行跨域，开着代理的用户直接从推特下，比绕一趟美国服务器快得多；
+// 服务器 7 天转发的 3 GB 里 90% 是它，其中下载按钮占四分之三。
+// - 防盗链：带了非推特的 Referer 一律 403（2026-10 实测），所以请求都不带 Referer。<video> 没法单独
+//   不带 Referer，预览播放仍走服务器转发，只有下载走直连
+// - 国内没开代理的连不上：先用 1 字节的请求探一下（不挡结果显示），通了才用，下载中途失败也退回服务器转发
+
+const DIRECT_HOSTS = /^video\.twimg\.com$/;
+const PROBE_MS = 3000;
+let direct = {};
+let reachable = null; // 这一页里探过的结果：null 没探过，true / false
+
+export const canDirect = (url) => {
+  try {
+    return DIRECT_HOSTS.test(new URL(url).hostname);
+  } catch (_) {
+    return false;
+  }
+};
+
+async function probe(url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), PROBE_MS);
+  try {
+    const res = await fetch(url, { headers: { Range: 'bytes=0-0' }, referrerPolicy: 'no-referrer', signal: ctl.signal });
+    return res.ok;
+  } catch (_) {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function useDirect(current) {
+  direct = {};
+  const urls = Object.keys(current).filter(canDirect);
+  if (!urls.length || reachable === false) return;
+  (reachable ? Promise.resolve(true) : probe(urls[0])).then((ok) => {
+    reachable = ok;
+    if (!ok || sigs !== current) return; // 探的时候用户已经换了一条链接
+    for (const u of urls) direct[u] = u;
+  });
+}
+
+export const directOf = (url) => direct[url] || '';
 
 export const sigOf = (url) => sigs[url] || '';
 
@@ -56,7 +102,7 @@ export function proxy(url, name, download) {
 }
 
 /** 一个文件可以从哪儿拿：有国内边缘地址就先边缘（国内直达），再服务器转发（跨两次太平洋，兜底） */
-export const sourcesOf = (url) => [edges[url], proxy(url)].filter(Boolean);
+export const sourcesOf = (url) => [edges[url], direct[url], proxy(url)].filter(Boolean);
 
 /** 视频 / 音频的下载链接。边缘地址是跨域的，<a download> 浏览器不认，靠边缘回的下载头 */
 export function mediaDownload(url, name) {
@@ -65,7 +111,7 @@ export function mediaDownload(url, name) {
 
 /** 走边缘的下载不经过服务器，单独报一声给使用统计（走服务器转发的那边自己会记） */
 export function trackDownload(url) {
-  if (!edges[url]) return;
+  if (!edges[url] && !direct[url]) return;
   fetch('/api/download-hit', {
     method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, sig: sigOf(url) }),
@@ -74,7 +120,8 @@ export function trackDownload(url) {
 
 /** <video>：边缘地址播不了（节点出错、被平台拒）就退回服务器转发，只退一次 */
 export function mediaVideo(url, attrs) {
-  const [first, ...rest] = sourcesOf(url);
+  // 不用直连：<video> 没法不带 Referer（见上面「直连」）
+  const [first, ...rest] = [edges[url], proxy(url)].filter(Boolean);
   const video = el('video', { ...attrs, src: first });
   video.addEventListener('error', () => {
     if (rest.length) video.src = rest.shift();

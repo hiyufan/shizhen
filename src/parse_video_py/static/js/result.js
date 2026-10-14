@@ -1,9 +1,11 @@
 // 解析结果：视频（预览、下载、其他清晰度、转换入口）、图集（逐张保存、实况打包）
 
-import { mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob } from './api.js';
+import {
+  directOf, mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob,
+} from './api.js';
 import { openConverter } from './converter.js';
 import { $, el, fmtClock, fmtSize, safeName, sleep } from './dom.js';
-import { ANDROID, IOS, PHOTOS, fetchFiles, iphoneLiveHint, oneFile, photosButton } from './save.js';
+import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
 import { jobCard } from './ui.js';
 
 const PLATFORMS = {
@@ -15,9 +17,28 @@ const PLATFORMS = {
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
 };
 
-/** 视频 / 音频的下载按钮：有国内边缘地址就从边缘下（国内直达），否则服务器转发 */
+/** 视频 / 音频的下载按钮：有国内边缘地址就从边缘下（国内直达），探通了直连就直连，否则服务器转发 */
 const download = (url, filename, label, cls) =>
-  el('a', { class: cls, href: mediaDownload(url, filename), download: filename, onclick: () => trackDownload(url) }, label);
+  el('a', { class: cls, href: mediaDownload(url, filename), download: filename, onclick: (e) => saveDirect(e, url, filename) }, label);
+
+/** 直连可用时在页面里拉（按钮上显示进度）；拉不下来就照原来的链接走服务器转发 */
+async function saveDirect(e, url, filename) {
+  trackDownload(url);
+  const src = directOf(url);
+  const a = e.currentTarget;
+  if (!src) return; // 链接本身就是边缘 / 服务器转发
+  e.preventDefault();
+  if (a.dataset.busy) return;
+  a.dataset.busy = '1';
+  const label = a.textContent;
+  const file = await fetchDirect(src, filename.replace(/\.mp4$/, ''), (got, total) => {
+    a.textContent = '下载中 ' + (total ? Math.round(got * 100 / total) + '%' : fmtSize(got));
+  });
+  a.textContent = label;
+  delete a.dataset.busy;
+  if (file) saveFile(file);
+  else location.href = a.href;
+}
 
 export function renderResult(d) {
   const title = d.title || '未命名';
@@ -82,7 +103,7 @@ const isPortrait = (d) => (d.width && d.height ? d.height > d.width : true);
 function saveActions(d, baseName, jobsBox) {
   if (PHOTOS && d.video_url) {
     const more = el('div', { class: 'more-acts' }, ...secondaryDownloads(d, baseName, jobsBox, true));
-    return el('div', { class: 'group' }, photosButton('存到相册', oneFile(sourcesOf(d.video_url), baseName, 'video/mp4')), more);
+    return el('div', { class: 'group' }, photosButton('存到相册', oneFile(() => sourcesOf(d.video_url), baseName, 'video/mp4')), more);
   }
   return el('div', { class: 'group' }, ...secondaryDownloads(d, baseName, jobsBox, false));
 }
@@ -107,7 +128,7 @@ function formatMenu(d, baseName, jobsBox, compact) {
     const meta = [el('span', {}, f.label), el('small', {}, f.filesize ? fmtSize(f.filesize) : f.ext)];
     const filename = baseName + '_' + f.label.replace(/\s+/g, '') + '.' + (f.ext || 'mp4');
     list.append(f.url
-      ? el('a', { href: mediaDownload(f.url, filename), download: '', onclick: () => { close(); trackDownload(f.url); } }, ...meta)
+      ? el('a', { href: mediaDownload(f.url, filename), download: '', onclick: (e) => { close(); saveDirect(e, f.url, filename); } }, ...meta)
       : el('button', { type: 'button', onclick: () => { close(); startDownload(f, d, baseName, jobsBox); } }, ...meta));
   }
   if (d.formats.some((f) => f.codec)) {

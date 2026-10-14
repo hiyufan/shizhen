@@ -21,6 +21,10 @@ def _inline_hash(body: str) -> str:
     return "'sha256-" + base64.b64encode(hashlib.sha256(body.encode()).digest()).decode() + "'"
 
 
+# 页面直接拿的第三方媒体（跨域放行了本站的 CDN，见 static/js/api.js 的 DIRECT_HOSTS，两边要一致）
+DIRECT_MEDIA_ORIGINS = ("https://video.twimg.com",)
+
+
 def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str = "") -> str:
     """页面上我们自己的脚本都是 /js/ 下的外部文件，不许跑任何内联脚本（XSS 注入进来也执行不了）。
     站长配的统计代码（PARSE_VIDEO_ANALYTICS）是唯一的例外：里面的内联脚本按内容哈希放行，
@@ -30,8 +34,9 @@ def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str
     third_party = "".join(" " + item for item in hashes + origins)
     hosts = "".join(" " + origin for origin in origins)
     edge = f" {edge_origin}" if edge_origin else ""
-    media_edge = f" {media_origin}" if media_origin else ""
-    fetchable = "".join(f" {o}" for o in sorted({edge_origin, media_origin} - {""}))
+    direct = "".join(f" {o}" for o in DIRECT_MEDIA_ORIGINS)
+    media_edge = (f" {media_origin}" if media_origin else "") + direct
+    fetchable = "".join(f" {o}" for o in sorted({edge_origin, media_origin} - {""})) + direct
     return "; ".join(
         (
             "default-src 'self'",
@@ -40,7 +45,7 @@ def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str
             "style-src 'self' 'unsafe-inline'",  # 首屏 CSS 是内联的，元素上也有 style 属性
             f"script-src 'self'{third_party}",
             "font-src 'self'",
-            # iPhone 存相册要 fetch 边缘节点上的图片 / 视频
+            # iPhone 存相册要 fetch 边缘节点上的图片 / 视频；推特视频开着代理的直接从推特拿
             f"connect-src 'self'{fetchable}{hosts}",
             "object-src 'none'",
             "base-uri 'self'",
