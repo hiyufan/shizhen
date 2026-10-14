@@ -172,10 +172,25 @@ def _merge_lives(images: list[ImgInfo], page_images: list[ImgInfo]) -> int:
     return filled
 
 
+# 放到后台跑完的浏览器任务（见 _detach），留个引用免得半路被回收
+_background: set[asyncio.Task] = set()
+
+
+def _detach(task: asyncio.Task) -> None:
+    _background.add(task)
+    task.add_done_callback(_finish_background)
+
+
+def _finish_background(task: asyncio.Task) -> None:
+    _background.discard(task)
+    if not task.cancelled():
+        task.exception()  # 取走，免得报「Task exception was never retrieved」
+
+
 def _discard(task: asyncio.Task | None) -> None:
     """提前开的浏览器任务用不上了：还在跑就取消（页面会被关掉）；已经结束的把异常取走，免得报
-    「Task exception was never retrieved」。"""
-    if task is None:
+    「Task exception was never retrieved」。放到后台跑完的不动。"""
+    if task is None or task in _background:
         return
     if not task.done():
         task.cancel()
@@ -579,11 +594,14 @@ class DouYin(BaseParser):
         只有 _dropped_lives 认出确实丢了才等，其它图文不多花时间。等不到 / 页面失败就用接口给的。"""
         task = early or asyncio.create_task(self._note_via_browser(video_id))
         try:
-            page = await asyncio.wait_for(task, _LIVE_FILL_WAIT)
-        except Exception:  # noqa: BLE001 - 超时、页面失败都照旧用接口的
+            page = await asyncio.wait_for(asyncio.shield(task), _LIVE_FILL_WAIT)
+        except TimeoutError:
+            # 不取消：冷浏览器多半正卡在人机验证上（部署后头几次要十几秒），取消了下次还得从头过；
+            # 让它在后台跑完把会话热起来，这次就用接口给的
+            _detach(task)
             page = None
-        finally:
-            _discard(task)
+        except Exception:  # noqa: BLE001 - 页面那边失败了照旧用接口的
+            page = None
         if page and (filled := _merge_lives(info.images, page.images)):
             log.info("抖音图文接口缺了 %d 个实况，从页面补上 id=%s", filled, video_id)
 
