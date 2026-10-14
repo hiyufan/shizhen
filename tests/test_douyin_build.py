@@ -317,3 +317,39 @@ def test_filtered_slides_message(monkeypatch, cookie, note, reason, says_login):
         asyncio.run(parser._get_slides_info(VIDEO_ID))
     assert exc.value.reason == reason
     assert ("只给登录用户看" in str(exc.value)) is says_login
+
+
+def test_note_data_read_straight_from_html():
+    """图文页 HTML 的 RSC 载荷里就有整条作品，不用等页面渲染（2026-10-14：~3.1 秒降到 ~1.8 秒）。
+    推荐区别的作品也有 awemeId，要认准这一条；验证页（几 KB）直接返回 None 交给渲染那条路。"""
+    import json
+
+    def push(obj):
+        payload = "5:" + json.dumps(obj, separators=(",", ":"), ensure_ascii=False)  # 和真实载荷一样紧凑
+        return f"<script>self.__pace_f.push([1,{json.dumps(payload)}])</script>"
+
+    note = {
+        "awemeId": VIDEO_ID,
+        "desc": "不好 是台风",
+        "authorInfo": {"nickname": "今日有雪223", "secUid": "MS4w"},
+        "music": {"playUrl": {"urlList": ["https://sf6/ies-music/1.mp3"]}},
+        "images": [
+            {
+                "uri": "tos-cn-i-0813/abc",
+                "urlList": ["//p3/tos-cn-i-0813/abc~q75.webp?x=1", "https://p3/tos-cn-i-0813/abc~q75.jpeg?x=1"],
+                "video": {"playAddr": [{"src": "//v26/video/tos/live.mp4"}]},
+            },
+            {"uri": "tos-cn-i-0813/def", "urlList": ["https://p3/tos-cn-i-0813/def~q75.webp"]},
+        ],
+    }
+    other = {"awemeId": "123", "images": [{"uri": "x", "urlList": ["https://p3/x.jpeg"]}]}
+    html = push({"list": [other]}) + push({"page": {"aweme": note}}) + "x" * douyin._MIN_NOTE_HTML
+
+    dom = douyin.note_from_html(html, VIDEO_ID)
+    assert dom["total"] == 2 and dom["author"] == "今日有雪223" and dom["music"] == "https://sf6/ies-music/1.mp3"
+    images = douyin._note_images(dom)
+    assert [(i.url, i.live_photo_url) for i in images] == [
+        ("https://p3/tos-cn-i-0813/abc~q75.jpeg?x=1", "https://v26/video/tos/live.mp4"),  # JPEG 优先、补上 https:
+        ("https://p3/tos-cn-i-0813/def~q75.webp", ""),
+    ]
+    assert douyin.note_from_html("<html>人机验证</html>", VIDEO_ID) is None

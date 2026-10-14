@@ -197,7 +197,95 @@ def _dom_summary(dom: dict | None) -> str:
         return "不是图文"
     if not dom:
         return "页面出错"
-    return f"{len(_page_images(dom))}/{dom.get('total') if dom.get('total') is not None else '?'} 张"
+    via = "，直接读 HTML" if dom.get("from_html") else ""
+    return f"{len(_page_images(dom))}/{dom.get('total') if dom.get('total') is not None else '?'} 张{via}"
+
+
+# 图文页的 HTML 里就有整条作品的数据（React 的 RSC 载荷，self.__pace_f.push 的一串字符串），
+# 和页面渲染后播放器组件里的 awemeInfo 是同一份，签名过的图片 / 实况地址都能直接下载。
+# 2026-10-14 实测：HTML 1 秒左右就到了，等页面 JS 把 awemeInfo 渲染出来还要再 2 秒多（美国、杭州
+# 都是 ~3.1 秒，慢在页面自己，不在网络）。抖音的人机验证页只有 2KB，验证完页面才刷新成真的，
+# 那种情况和 HTML 里没找到数据的情况照旧等渲染（_extract_note_dom）
+_PACE_PUSH = re.compile(r'self\.__pace_f\.push\(\[1,\s*("(?:[^"\\]|\\.)*")\]\)')
+_MIN_NOTE_HTML = 50_000
+
+
+def _https(url: str) -> str:
+    return "https:" + url if url.startswith("//") else url
+
+
+def _aweme_in_html(html: str, video_id: str) -> dict | None:
+    """RSC 载荷里 awemeId 是这条、带 images 的那个对象。"""
+    try:
+        text = "".join(json.loads(chunk) for chunk in _PACE_PUSH.findall(html))
+    except ValueError:
+        return None
+    decoder = json.JSONDecoder()
+    key = f'"awemeId":"{video_id}"'
+    pos = 0
+    while (found := text.find(key, pos)) >= 0:
+        pos = start = found + 1
+        # 键在对象中间：从它前面最近的 { 往回一个个试，直到解析出包住它的那个对象
+        for _ in range(400):
+            start = text.rfind("{", 0, start)
+            if start < 0:
+                break
+            try:
+                obj, _end = decoder.raw_decode(text, start)
+            except ValueError:
+                continue
+            if isinstance(obj, dict) and obj.get("awemeId") == video_id and obj.get("images"):
+                return obj
+    return None
+
+
+def _dom_from_aweme(aweme: dict) -> dict:
+    """换成和 _NOTE_DOM_EXTRACT 一样的结构，后面的 _note_images / _downscaled 照用。"""
+    ordered, lives, jpegs = [], {}, {}
+    for img in aweme.get("images") or []:
+        img_id = (img.get("uri") or "").split("/")[-1]
+        urls = [_https(u) for u in img.get("urlList") or [] if u]
+        jpeg = next((u for u in urls if re.search(r"\.jpe?g$", u.split("?")[0])), "")
+        live = _https((((img.get("video") or {}).get("playAddr") or [{}])[0] or {}).get("src") or "")
+        if img_id and jpeg:
+            jpegs[img_id] = jpeg
+        if img_id and live:
+            lives[img_id] = live
+        if first := jpeg or (urls[0] if urls else ""):
+            ordered.append(first)
+    author = aweme.get("authorInfo") or {}
+    return {
+        "images": ordered,
+        "ordered": ordered,
+        "total": len(aweme.get("images") or []),
+        "lives": lives,
+        "jpegs": jpegs,
+        "live": "",
+        "music": _first(((aweme.get("music") or {}).get("playUrl") or {}).get("urlList")),
+        "detail": True,
+        "desc": aweme.get("desc") or "",
+        "author": author.get("nickname") or "",
+        "uid": author.get("secUid") or "",
+        "from_html": True,
+    }
+
+
+def note_from_html(html: str, video_id: str) -> dict | None:
+    if len(html) < _MIN_NOTE_HTML:
+        return None
+    aweme = _aweme_in_html(html, video_id)
+    return _dom_from_aweme(aweme) if aweme else None
+
+
+async def _note_from_response(resp, video_id: str) -> dict | None:
+    """页面导航的响应里直接读；验证页、读不到、解析不出都返回 None。1MB 的 HTML 解析要 ~60ms，放线程里"""
+    if resp is None:
+        return None
+    try:
+        html = await resp.text()
+    except Exception:  # noqa: BLE001 - 页面已经跳走 / 响应体拿不到
+        return None
+    return await asyncio.to_thread(note_from_html, html, video_id)
 
 
 def _looks_like_note(url: str) -> bool:
@@ -723,7 +811,8 @@ class DouYin(BaseParser):
                 # 第一次 12 秒还没到 DOMContentLoaded 多半是跨境连接卡死了（正常
                 # 1~1.5 秒，统计里有 25~40 秒的长尾），换个页面重来比干等划算；第二次
                 # 放宽到 25 秒，网络只是慢的时候别两次都掐掉
-                await page.goto(page_url, wait_until="domcontentloaded", timeout=12000 if attempt == 0 else 25000)
+                timeout = 12000 if attempt == 0 else 25000
+                resp = await page.goto(page_url, wait_until="domcontentloaded", timeout=timeout)
                 if f"/note/{video_id}" not in page.url:
                     if f"/video/{video_id}" in page.url:
                         # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
@@ -731,6 +820,8 @@ class DouYin(BaseParser):
                         return None
                     # 跳去首页/推荐流说明这条作品没了
                     raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
+                if dom := await _note_from_response(resp, video_id):
+                    return dom
                 dom = await self._extract_note_dom(page)
                 # 页面明说「图文不存在」：多半是要登录才给看的视频（filter reason=8），
                 # 重开一次也一样，以前要白等两轮 15~18 秒
