@@ -166,3 +166,62 @@ async def test_bili_opus_images_and_links():
     ):
         assert await BiliBili()._get_bvid_from_url(url) == "opus1257456486020284425"
     assert detect_source("https://t.bilibili.com/1257456486020284425") == VideoSource.BiliBili
+
+
+@pytest.mark.parametrize(
+    ("url", "kind", "source"),
+    [
+        (
+            "https://p11-sign.douyinpic.com/tos-cn-i-0813c000-ce/oo9r~tplv-dy-lqen-new:1192:670:q80.webp?x-expires=1",
+            "image",
+            "douyin",
+        ),
+        ("https://sns-webpic-qc.xhscdn.com/202610141200/abc/1040g2sg31!nd_dft_wlteh_webp_3", "image", "redbook"),
+        ("https://video.twimg.com/ext_tw_video/1/pu/vid/avc1/720x1280/a.mp4?tag=12", "video", "twitter"),
+        ("https://v26-weba.douyinvod.com/abc/6acf/video/tos/cn/tos-cn-ve-15/o42e/?a=6383", "video", "douyin"),
+        ("https://v.douyin.com/u3knSHnayKo/", None, None),  # 分享链接照常解析
+        ("https://x.com/a/status/1", None, None),
+        ("https://example.com/a.jpg", None, None),  # 不认识的站点不管，交给 yt-dlp
+    ],
+)
+def test_direct_media_links(url, kind, source):
+    """平台 CDN 上的文件地址直接给出去（2026-10-10 有人贴抖音图片地址试了 3 次，以前交给 yt-dlp 必失败）。"""
+    from parse_video_py.parser.direct import direct_media
+
+    info = direct_media(url)
+    if kind is None:
+        assert info is None
+        return
+    assert info.source == source and info.notice
+    assert (info.video_url == url) if kind == "video" else ([i.url for i in info.images] == [url])
+
+
+@pytest.mark.parametrize(
+    ("text", "url"),
+    [
+        (
+            "8.28 VLW:/ E@U.LJ :2pm 08/30 # 06 # 不纯男高  https://v.douyin.com/u3knSHnayKo/ 复制此链接，打开抖音",
+            "https://v.douyin.com/u3knSHnayKo/",
+        ),
+        ("【小红书】这家店绝了😭 http://xhslink.com/m/1gJ5tOG6M1b 复制本条信息", "http://xhslink.com/m/1gJ5tOG6M1b"),
+        ("【标题】https://b23.tv/xgrWG6H哔哩哔哩", "https://b23.tv/xgrWG6H"),  # 链接后面直接接中文
+        ("《少女》@汽水音乐https://qishui.douyin.com/s/iXQkjGeP/", "https://qishui.douyin.com/s/iXQkjGeP/"),
+        ("Look: https://x.com/a/status/1?s=20.", "https://x.com/a/status/1?s=20"),  # 句末英文句号不算
+        ("https://x.com/a/status/1😂", "https://x.com/a/status/1"),
+        # 以前在 @ ~ : = 处截断（2026-10-14）
+        ("https://www.tiktok.com/@scout2015/video/6718335390845095173", None),
+        (
+            "https://p11-sign.douyinpic.com/tos-cn-i-0813c000-ce/oo9r~tplv-dy-lqen-new:1192:670:q80.webp?x-signature=r0%2B%3D",
+            None,
+        ),
+        ("https://tv.sohu.com/v/MjAyNjEwMTMvbjYyMDI1NTEwOS5zaHRtbA==.html", None),
+        ("没有链接", "NONE"),
+    ],
+)
+def test_extract_url_from_share_text(text, url):
+    from parse_video_py.utils import extract_url
+
+    if url == "NONE":
+        assert extract_url(text) is None
+    else:
+        assert extract_url(text) == (url or text)
