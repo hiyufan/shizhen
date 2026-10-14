@@ -5,6 +5,7 @@
 // 实况不走这条路：真机上分享面板会把配好对的 JPG + MOV 存成一张图加一段视频，合不成实况。
 // 只在 iPhone / iPad 上换成这条路：电脑和安卓点下载本来就顺。
 
+import { canDirect } from './api.js';
 import { el, fmtSize, notice } from './dom.js';
 
 export const IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
@@ -29,10 +30,11 @@ const ATTEMPTS = 3;
 // 拉一个文件（同源地址），边下边报进度。跨境转发偶尔卡在半路：20 秒没收到数据就算卡住，
 // 换个地址（&retry=n，和 proxyImg 一样避开缓存里那份残缺的）再试，最多三次
 async function download(url, name, onBytes, type, guard) {
-  const res = await fetch(url, { signal: guard.signal });
+  const res = await fetch(url, fetchOptions(url, guard));
   if (!res.ok) throw new Error('下载失败（' + res.status + '）');
   const mime = type || (res.headers.get('content-type') || '').split(';')[0] || 'application/octet-stream';
   const total = +res.headers.get('content-length') || 0;
+  checkLimit(total, guard);
   const reader = res.body.getReader();
   const chunks = [];
   let got = 0;
@@ -47,12 +49,25 @@ async function download(url, name, onBytes, type, guard) {
   return new File(chunks, name + (MIME_EXT[mime] ? '.' + MIME_EXT[mime] : ''), { type: mime });
 }
 
+/** 直连推特要不带 Referer，不然 403（防盗链） */
+const fetchOptions = (url, guard) =>
+  (canDirect(url) ? { signal: guard.signal, referrerPolicy: 'no-referrer' } : { signal: guard.signal });
+
+/** 设了上限的下载：不知道多大或者超了就不下 */
+function checkLimit(total, guard) {
+  if (!guard.limit || (total && total <= guard.limit)) return;
+  guard.cancel();
+  throw new Error('文件太大，换服务器转发');
+}
+
 /** 一段时间没收到数据就中断请求；每收到一块调 touch() 续命 */
-function stallGuard() {
+function stallGuard(limit = 0) {
   const ctl = new AbortController();
   let timer = setTimeout(() => ctl.abort(), STALL_MS);
   return {
     signal: ctl.signal,
+    limit,
+    cancel() { ctl.abort(); },
     touch() { clearTimeout(timer); timer = setTimeout(() => ctl.abort(), STALL_MS); },
     done() { clearTimeout(timer); },
   };
@@ -75,7 +90,8 @@ async function fetchWithRetry(url, name, onBytes, type, attempts) {
 
 /** sources：一个地址，或者按顺序试的几个地址（边缘、服务器转发）。前面的只试一次，失败就换下一个 */
 export async function fetchFile(sources, name, onBytes, type) {
-  const list = [].concat(sources);
+  // 传函数的话点的时候才取：直连是结果显示出来之后才探通的
+  const list = [].concat(typeof sources === 'function' ? sources() : sources);
   for (let i = 0; i < list.length - 1; i++) {
     try {
       return await fetchWithRetry(list[i], name, onBytes, type, 1);
@@ -84,6 +100,28 @@ export async function fetchFile(sources, name, onBytes, type) {
     }
   }
   return fetchWithRetry(list[list.length - 1], name, onBytes, type, ATTEMPTS);
+}
+
+// 直连下载整个文件先放在浏览器内存里再存，太大的手机扛不住，交给服务器转发（浏览器自己的下载管理器）
+const DIRECT_MAX = 200 * 1024 * 1024;
+
+/** 跨域直连下载成文件；文件太大、连不上、中途断了都返回 null，由调用方退回服务器转发 */
+export async function fetchDirect(url, name, onBytes) {
+  const guard = stallGuard(DIRECT_MAX);
+  try {
+    return await download(url, name, onBytes, 'video/mp4', guard);
+  } catch (_) {
+    return null;
+  } finally {
+    guard.done();
+  }
+}
+
+/** 浏览器里已经有的文件存到本地 */
+export function saveFile(file) {
+  const href = URL.createObjectURL(file);
+  el('a', { href, download: file.name }).click();
+  setTimeout(() => URL.revokeObjectURL(href), 60000);
 }
 
 /** 几个文件一起拉（同时最多 3 个），进度按字节合计 */
