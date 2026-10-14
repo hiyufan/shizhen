@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from parse_video_py.parser import douyin
+from parse_video_py.parser.base import ImgInfo, VideoInfo
 from parse_video_py.parser.douyin import DouYin
 from parse_video_py.parser.errors import ParseError
 
@@ -353,3 +354,34 @@ def test_note_data_read_straight_from_html():
         ("https://p3/tos-cn-i-0813/def~q75.webp", ""),
     ]
     assert douyin.note_from_html("<html>人机验证</html>", VIDEO_ID) is None
+
+
+@pytest.mark.parametrize("browser_delay", [0, 1])
+def test_api_note_missing_live_is_filled_from_page(monkeypatch, browser_delay):
+    """匿名接口给了图文却丢了一种实况：等页面那边补上（按图片 id 对，签名不同）；页面等太久就照旧用接口的。"""
+    monkeypatch.setattr(douyin, "_LIVE_FILL_WAIT", 0.2)
+
+    async def page(self, video_id):
+        await asyncio.sleep(browser_delay)
+        return VideoInfo(
+            title="",
+            video_url="",
+            cover_url="",
+            images=[
+                ImgInfo(
+                    url="https://p3-pc-sign.douyinpic.com/1~tplv-q75.jpeg?sig=x", live_photo_url="https://v/live1.mp4"
+                ),
+                ImgInfo(
+                    url="https://p3-pc-sign.douyinpic.com/2~tplv-q75.jpeg?sig=y", live_photo_url="https://v/other.mp4"
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(DouYin, "_note_via_browser", page)
+    info = _parse(monkeypatch, NOTE_AWEME)
+    lives = [i.live_photo_url for i in info.images]
+    if browser_delay:
+        assert lives == ["", "https://v3-web.douyinvod.com/live2.mp4"]  # 等不到，和以前一样
+    else:
+        # 第一张接口没给实况、页面有，补上；第二张接口已经有的不覆盖
+        assert lives == ["https://v/live1.mp4", "https://v3-web.douyinvod.com/live2.mp4"]
