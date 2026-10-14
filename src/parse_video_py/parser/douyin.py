@@ -143,6 +143,26 @@ async def aclose_browser() -> None:
     await _warm_browser.reset()
 
 
+# 接口给了图文时，再等页面那边补实况最多这么久（读 HTML 中位 ~1.8 秒，碰上人机验证要 6 秒就不等了）
+_LIVE_FILL_WAIT = 3.0
+
+
+def _image_key(url: str) -> str:
+    """图片地址里那段 id（路径最后一段 ~ 或扩展名之前），接口和页面给的同一张图签名、模板不同，id 一样。"""
+    return re.split(r"[~.]", urlparse(url).path.rsplit("/", 1)[-1], maxsplit=1)[0]
+
+
+def _merge_lives(images: list[ImgInfo], page_images: list[ImgInfo]) -> int:
+    """接口那份缺的实况从页面那份补上，返回补了几个。"""
+    lives = {_image_key(i.url): i.live_photo_url for i in page_images if i.live_photo_url}
+    filled = 0
+    for img in images:
+        if not img.live_photo_url and (live := lives.get(_image_key(img.url))):
+            img.live_photo_url = live
+            filled += 1
+    return filled
+
+
 def _discard(task: asyncio.Task | None) -> None:
     """提前开的浏览器任务用不上了：还在跑就取消（页面会被关掉）；已经结束的把异常取走，免得报
     「Task exception was never retrieved」。"""
@@ -538,7 +558,25 @@ class DouYin(BaseParser):
             if info is None:
                 raise
             return info
-        return await self._build(aweme)
+        info = await self._build(aweme)
+        if aweme.get("images") and not _configured_cookie():
+            await self._fill_missing_lives(info, video_id, early)
+        return info
+
+    async def _fill_missing_lives(self, info: VideoInfo, video_id: str, early: asyncio.Task | None) -> None:
+        """匿名接口偶尔肯给图文，但会丢掉一种实况（livePhotoType 2 / clipType 5，看分辨率像安卓拍的
+        动态照片）：2026-10-14 一条 11 张图的图文，页面上 1 张实况，接口给的 0 张；另一条 4 张实况的
+        接口倒是给全了。图文页 HTML 里是全的（见 note_from_html），再等页面那边最多几秒，按图片 id 补上。
+        等不到 / 页面那边失败就用接口给的，和以前一样。"""
+        task = early or asyncio.create_task(self._note_via_browser(video_id))
+        try:
+            page = await asyncio.wait_for(task, _LIVE_FILL_WAIT)
+        except Exception:  # noqa: BLE001 - 超时、页面失败都照旧用接口的
+            page = None
+        finally:
+            _discard(task)
+        if page and (filled := _merge_lives(info.images, page.images)):
+            log.info("抖音图文接口缺了 %d 个实况，从页面补上 id=%s", filled, video_id)
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         return await self.parse_share_url(self._get_request_url_by_video_id(video_id))
