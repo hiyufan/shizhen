@@ -83,7 +83,7 @@ video_source_info_mapping = {
         "parser": LiShiPin,
     },
     VideoSource.LvZhou: {
-        "domain_list": ["weibo.cn"],
+        "domain_list": ["oasis.weibo.cn"],
         "parser": LvZhou,
     },
     VideoSource.MeiPai: {
@@ -115,7 +115,11 @@ video_source_info_mapping = {
         "parser": Sohu,
     },
     VideoSource.WeiBo: {
-        "domain_list": ["weibo.com"],
+        "domain_list": [
+            "weibo.com",
+            # m.weibo.cn 的微博手机链接（以前绿洲登记的是整个 weibo.cn，把它们抢走了；绿洲已停运）
+            "m.weibo.cn",
+        ],
         "parser": WeiBo,
     },
     VideoSource.WeiShi: {

@@ -1,5 +1,5 @@
+import re
 import time
-from urllib.parse import urlparse
 
 from .base import BaseParser, VideoInfo
 from .errors import ParseError
@@ -9,7 +9,9 @@ class LiShiPin(BaseParser):
     """梨视频"""
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        video_id = urlparse(share_url).path.replace("/detail_", "")
+        # 首页和列表里是 /video_<id>，分享出来是 /detail_<id>，接口地址里是 contId=<id>
+        m = re.search(r"(?:/video_|/detail_|contId=)(\d+)", share_url)
+        video_id = m.group(1) if m else ""
         if not video_id:
             raise ParseError("unsupported", "链接里没有梨视频的作品 ID")
         return await self.parse_video_id(video_id)
