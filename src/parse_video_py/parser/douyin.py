@@ -312,7 +312,7 @@ _NOTE_DOM_EXTRACT = """
     if (m) author = m[1];
   }
   // 视频走 /note/ 地址、匿名又被要求登录时不会跳 /video/，页面只写「你要观看的图文不存在」
-  const gone = !detail && (document.body.innerText || '').includes('图文不存在');
+  const gone = !detail && (document.body && document.body.innerText || '').includes('图文不存在');
   return {
     images: Object.values(seen), ordered, music, lives, jpegs, live, total,
     detail: !!detail, desc, author, uid, gone,
