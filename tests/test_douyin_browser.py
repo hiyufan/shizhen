@@ -28,6 +28,9 @@ class FakePage:
     async def goto(self, url, **_kw):
         self.url = url
 
+    async def wait_for_load_state(self, *_a, **_kw):
+        pass
+
     async def close(self):
         self.closed = True
 
