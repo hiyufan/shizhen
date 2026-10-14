@@ -7,6 +7,7 @@ from .acfun import AcFun
 from .base import VideoInfo, VideoSource
 from .bilibili import BiliBili
 from .cctv import CCTV
+from .direct import direct_media
 from .doupai import DouPai
 from .douyin import DouYin
 from .errors import ParseError, classify
@@ -237,6 +238,10 @@ async def _run_parser(source: VideoSource, share_url: str) -> VideoInfo:
 
 async def parse_video_share_url(share_url: str) -> VideoInfo:
     """解析分享链接，获取视频信息；失败时抛 ParseError（带 reason）。"""
+    if direct := direct_media(share_url):
+        # 平台 CDN 上的图片 / 视频文件地址：不用解析（见 direct.py）
+        direct.page_url = share_url
+        return direct
     source = detect_source(share_url)
     token = current_source.set(source.value)
     try:
