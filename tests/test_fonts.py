@@ -39,3 +39,18 @@ def test_font_urls_are_versioned_and_preloads_match_font_faces():
     # 不一致浏览器会当成两个资源，预加载白做；不带版本，重裁字体后 nginx / 浏览器缓存会一直发旧的
     assert preloads <= faces
     assert all(re.search(r"\.woff2\?v=[0-9a-f]{8}$", u) for u in faces)
+
+
+def test_700_slices_cover_everything_and_entry_pages_need_only_the_first():
+    """700 字重切成两片（入口页的字 / 其余），靠 unicode-range 按需下载：两片不能重叠、合起来不能缺字；
+    入口页标题的字都得在第一片，不然首页又会去下第二片（188KB）。改了落地页标题就重跑脚本。"""
+    first = set(TTFont(ROOT / "src/parse_video_py/static/noto-serif-sc-700.woff2").getBestCmap())
+    more = set(TTFont(ROOT / "src/parse_video_py/static/noto-serif-sc-700-more.woff2").getBestCmap())
+    assert not ({c for c in first & more if c > 0x2000})  # 只在一片里，浏览器才不会两片都下
+    site = {ord(ch) for ch in subset_fonts.page_text() if ord(ch) > 0x2000} - {ord("▾")}  # ▾ 源字体里本来就没有
+    assert not site - first - more, "700 字重缺字，跑一下 scripts/subset_fonts.py --weight 700"
+    entry = {ord(ch) for ch in subset_fonts.entry_text() if ord(ch) > 0x2000} & (first | more)
+    missing = "".join(sorted(chr(c) for c in entry - first))
+    assert not missing, (
+        f"入口页标题的 {missing} 在第二片里，首页会多下 188KB：跑一下 scripts/subset_fonts.py --weight 700"
+    )
