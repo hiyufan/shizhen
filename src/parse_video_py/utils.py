@@ -73,13 +73,19 @@ def wants_fallback(err: BaseException) -> bool:
     return bool(fallback_proxy()) and bool(_BOT_CHECK.search(str(err)))
 
 
-URL_REG = re.compile(r"http[s]?:\/\/[\w.-]+[\w\/-]*[\w.-]*\??[\w=&:\-\+\%.]*[/]*")
+# 链接一直到空白、引号、中文（含全角标点）或表情为止。以前的写法只认字母数字和 / - 这几个，
+# 遇到 @ ~ : = 就截断：TikTok 的 /@用户/video/… 被截成 tiktok.com/、抖音图片地址的 ~tplv-…:q80
+# 被截掉签名、搜狐 base64 地址末尾的 == 丢了（2026-10-14 拿日志里 967 条真实输入对比，只有 7 条
+# 结果不同，都是新写法对）
+URL_REG = re.compile(r"https?://[^\s<>\"'\u3000-\u303f\u4e00-\u9fff\uff00-\uffef\U0001F000-\U0001FAFF]+")
+# 句子里链接后面紧跟的英文标点不算链接的一部分
+_URL_TAIL = ".,;!?)]}>'\""
 
 
 def extract_url(text: str) -> str | None:
     """从文本中提取第一个匹配的 URL"""
     match = URL_REG.search(text)
-    return match.group() if match else None
+    return match.group().rstrip(_URL_TAIL) if match else None
 
 
 def get_val_from_url_by_query_key(url: str, query_key: str) -> str:
