@@ -64,7 +64,9 @@ def test_detect_source_matches_host_not_substring():
     assert detect_source("https://t.co/abc") == VideoSource.Twitter
     assert detect_source("https://X.com/a/status/1") == VideoSource.Twitter
     assert detect_source("https://mobile.twitter.com/a/status/1") == VideoSource.Twitter
-    assert detect_source("https://m.weibo.cn/status/1") == VideoSource.LvZhou
+    # 微博手机链接是微博的，以前绿洲登记了整个 weibo.cn 把它抢走了（2026-10-14 实测失败）
+    assert detect_source("https://m.weibo.cn/status/1") == VideoSource.WeiBo
+    assert detect_source("https://m.oasis.weibo.cn/v1/h5/share?sid=7") == VideoSource.LvZhou
     assert detect_source("https://v.douyin.com/irXxc3GY/") == VideoSource.DouYin
     assert detect_source("not a url") == VideoSource.YtDlp
 

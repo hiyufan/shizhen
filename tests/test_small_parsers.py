@@ -178,6 +178,8 @@ def test_lishipin(http):
     )
     info = run(LiShiPin().parse_share_url("https://www.pearvideo.com/detail_1785"))
     assert info.video_url == "https://video.pearvideo.com/mp4/cont-1785-15-hd.mp4" and info.cover_url == "c.jpg"
+    # 首页 / 列表里的是 /video_<id>，以前把「/video_1785」整个当成 ID（2026-10-14 实测失败）
+    assert run(LiShiPin().parse_share_url("https://www.pearvideo.com/video_1785")).video_url == info.video_url
 
 
 def test_pipigaoxiao(http):
@@ -258,6 +260,41 @@ def test_quanminkge(http):
     assert (info.video_url, info.title, info.author.name) == ("v.mp4", "唱歌", "歌手")
 
 
+@pytest.mark.parametrize(
+    ("audio", "expect"),
+    [
+        ("http://ws.stream.kg.qq.com/a.m4a", ("", "http://ws.stream.kg.qq.com/a.m4a", "十一年", "缅甸小姐姐")),
+        ("", "restricted"),  # 两个地址都空：私密 / 下架（海外 IP 也是这样，所以走国内中继）
+    ],
+)
+def test_quanminkge_audio_only(http, audio, expect):
+    """大多数作品是纯音频翻唱，只有 playurl（2026-10-14：以前只读视频地址，一律「没拿到内容」）。"""
+    detail = {
+        "playurl_video": "",
+        "playurl": audio,
+        "content": "我唱了一首歌，快来听听吧。",
+        "song_name": "十一年",
+        "nick": "[em]e400846[/em]缅甸小姐姐[em]e400846[/em]",
+        "cover": "c.jpg",
+        "uid": "u",
+        "avatar": "a",
+    }
+    http(
+        {
+            "https://kg.qq.com/node/play?s=SID": "<script>window.__DATA__ = "
+            + json.dumps({"detail": detail})
+            + "; </script>",
+        }
+    )
+    if expect == "restricted":
+        with pytest.raises(ParseError) as exc:
+            run(QuanMinKGe().parse_share_url("https://node.kg.qq.com/play?s=SID"))
+        assert exc.value.reason == "restricted"
+        return
+    info = run(QuanMinKGe().parse_share_url("https://node.kg.qq.com/play?s=SID"))
+    assert (info.video_url, info.music_url, info.title, info.author.name) == expect
+
+
 def test_sixroom(http):
     content = {"playurl": "v.mp4", "picurl": "c.jpg", "title": "六间房", "alias": "主播", "picuser": "a.jpg"}
     calls = http({"https://v.6.cn/coop/mobile/index.php": {"content": content}})
@@ -332,6 +369,9 @@ def test_sohu(http):
         "user": {"user_id": 5, "nickname": "作者", "small_pic": "a.jpg"},
     }
     http({"https://api.tv.sohu.com/v4/video/info/123.json": {"status": 200, "data": data}})
+    # 搜狐首页上的是 <日期>/n<vid>.shtml 这种（也用 base64 包着），以前认不出 ID
+    news = "https://tv.sohu.com/v/" + base64.b64encode(b"20261013/n123.shtml").decode() + ".html"
+    assert run(Sohu().parse_share_url(news)).video_url == "d.mp4"
     url = "https://tv.sohu.com/v/" + base64.b64encode(b"us/1/123.shtml").decode() + ".html"
     info = run(Sohu().parse_share_url(url))
     assert summary(info) == {

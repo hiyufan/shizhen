@@ -6,8 +6,8 @@ from .errors import ParseError
 
 # tv.sohu.com/v/<base64>.html，base64 解出来是 us/<uid>/<vid>.shtml
 _BASE64_PATH = re.compile(r"/v/([A-Za-z0-9+/=]+)\.html")
-# my.tv.sohu.com/us/<uid>/<vid>.shtml
-_USER_VIDEO = re.compile(r"/?us/\d+/(\d+)\.shtml")
+# my.tv.sohu.com/us/<uid>/<vid>.shtml；tv.sohu.com 首页上的还有 <日期>/n<vid>.shtml（base64 包着），同一个接口能查
+_USER_VIDEO = re.compile(r"/?us/\d+/(\d+)\.shtml|/?\d{8}/n(\d+)\.shtml")
 _API = "https://api.tv.sohu.com/v4/video/info/{vid}.json?site=2&api_key=9854b2afa779e1a6bcdd07b217417549&sver=6.2.0"
 
 
@@ -44,9 +44,13 @@ class Sohu(BaseParser):
     def _extract_vid(raw_url: str) -> str:
         if match := _BASE64_PATH.search(raw_url):
             raw_url = base64.b64decode(match.group(1)).decode("utf-8")
-        elif "my.tv.sohu.com" not in raw_url and "tv.sohu.com/us/" not in raw_url:
+        elif (
+            "my.tv.sohu.com" not in raw_url
+            and "tv.sohu.com/us/" not in raw_url
+            and not re.search(r"/\d{8}/n\d+", raw_url)
+        ):
             raise ParseError("unsupported", "不是搜狐视频的作品链接")
         match = _USER_VIDEO.search(raw_url)
         if not match:
             raise ParseError("unsupported", "链接里没有搜狐视频的视频 ID")
-        return match.group(1)
+        return match.group(1) or match.group(2)

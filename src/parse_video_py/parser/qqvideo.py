@@ -33,7 +33,8 @@ class QQVideo(BaseParser):
         # JSONP：去掉前缀 QZOutputJson= 和结尾的分号
         data = json.loads(body.removeprefix("QZOutputJson=").removesuffix(";"))
         if data.get("em", 0) != 0:
-            raise ValueError(f"腾讯视频API返回错误: {data.get('msg', '')} (em: {data.get('em')})")
+            # 「该内容暂不可观看」（em 61）是会员 / 版权内容，以前被归成「页面结构变了」
+            raise ParseError("restricted", f"腾讯视频：{data.get('msg', '')}（em {data.get('em')}）")
         videos = (data.get("vl") or {}).get("vi") or []
         if not videos:
             raise ParseError("deleted", "腾讯视频没有返回这条视频，可能已被删除或设为私密")
