@@ -326,8 +326,9 @@ async def _note_from_response(resp, video_id: str) -> dict | None:
     if resp is None:
         return None
     try:
-        html = await resp.text()
-    except Exception:  # noqa: BLE001 - 页面已经跳走 / 响应体拿不到
+        # 跨境下载偶尔卡住：卡太久就当没读到，交给等页面那条路
+        html = await asyncio.wait_for(resp.text(), 10)
+    except Exception:  # noqa: BLE001 - 页面已经跳走 / 响应体拿不到 / 超时
         return None
     return await asyncio.to_thread(note_from_html, html, video_id)
 
@@ -877,7 +878,13 @@ class DouYin(BaseParser):
                 # 1~1.5 秒，统计里有 25~40 秒的长尾），换个页面重来比干等划算；第二次
                 # 放宽到 25 秒，网络只是慢的时候别两次都掐掉
                 timeout = 12000 if attempt == 0 else 25000
-                resp = await page.goto(page_url, wait_until="domcontentloaded", timeout=timeout)
+                # HTML 一下载完就读（见 note_from_html），不等页面脚本跑完到 DOMContentLoaded：
+                # 2026-10-14 实测中位 1.59 秒降到 1.29 秒。服务器端的跳转在这之前已经跟完了
+                resp = await page.goto(page_url, wait_until="commit", timeout=timeout)
+                if f"/note/{video_id}" in page.url and (dom := await _note_from_response(resp, video_id)):
+                    return dom
+                # 人机验证页 / 读不出数据 / 跳走了：照旧等页面加载
+                await page.wait_for_load_state("domcontentloaded", timeout=timeout)
                 if f"/note/{video_id}" not in page.url:
                     if f"/video/{video_id}" in page.url:
                         # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
@@ -885,8 +892,6 @@ class DouYin(BaseParser):
                         return None
                     # 跳去首页/推荐流说明这条作品没了
                     raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
-                if dom := await _note_from_response(resp, video_id):
-                    return dom
                 dom = await self._extract_note_dom(page)
                 # 页面明说「图文不存在」：多半是要登录才给看的视频（filter reason=8），
                 # 重开一次也一样，以前要白等两轮 15~18 秒
