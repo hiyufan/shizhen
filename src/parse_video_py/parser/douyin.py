@@ -147,6 +147,15 @@ async def aclose_browser() -> None:
 _LIVE_FILL_WAIT = 3.0
 
 
+def _dropped_lives(aweme: dict) -> bool:
+    """接口丢了实况的图：resolution_log_param 里记着视频尺寸（video_publish_width 之类），
+    却没给 video.play_addr。普通图没有 video_ 这些键；接口给全了的实况有 play_addr。"""
+    return any(
+        "video_" in str(img.get("resolution_log_param") or "") and not (img.get("video") or {}).get("play_addr")
+        for img in aweme.get("images") or []
+    )
+
+
 def _image_key(url: str) -> str:
     """图片地址里那段 id（路径最后一段 ~ 或扩展名之前），接口和页面给的同一张图签名、模板不同，id 一样。"""
     return re.split(r"[~.]", urlparse(url).path.rsplit("/", 1)[-1], maxsplit=1)[0]
@@ -559,15 +568,15 @@ class DouYin(BaseParser):
                 raise
             return info
         info = await self._build(aweme)
-        if aweme.get("images") and not _configured_cookie():
+        if _dropped_lives(aweme) and not _configured_cookie():
             await self._fill_missing_lives(info, video_id, early)
         return info
 
     async def _fill_missing_lives(self, info: VideoInfo, video_id: str, early: asyncio.Task | None) -> None:
-        """匿名接口偶尔肯给图文，但会丢掉一种实况（livePhotoType 2 / clipType 5，看分辨率像安卓拍的
+        """匿名接口偶尔肯给图文，但会丢掉一种实况（页面上是 livePhotoType 2 / clipType 5，像安卓拍的
         动态照片）：2026-10-14 一条 11 张图的图文，页面上 1 张实况，接口给的 0 张；另一条 4 张实况的
-        接口倒是给全了。图文页 HTML 里是全的（见 note_from_html），再等页面那边最多几秒，按图片 id 补上。
-        等不到 / 页面那边失败就用接口给的，和以前一样。"""
+        接口倒是给全了。图文页 HTML 里是全的（见 note_from_html），等页面那边最多几秒，按图片 id 补上。
+        只有 _dropped_lives 认出确实丢了才等，其它图文不多花时间。等不到 / 页面失败就用接口给的。"""
         task = early or asyncio.create_task(self._note_via_browser(video_id))
         try:
             page = await asyncio.wait_for(task, _LIVE_FILL_WAIT)

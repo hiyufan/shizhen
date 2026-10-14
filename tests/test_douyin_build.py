@@ -1,6 +1,7 @@
 """抖音：slidesinfo 返回的作品数据 -> VideoInfo。接口换成假的，不碰网络。"""
 
 import asyncio
+import json
 
 import pytest
 
@@ -356,12 +357,18 @@ def test_note_data_read_straight_from_html():
     assert douyin.note_from_html("<html>人机验证</html>", VIDEO_ID) is None
 
 
-@pytest.mark.parametrize("browser_delay", [0, 1])
-def test_api_note_missing_live_is_filled_from_page(monkeypatch, browser_delay):
-    """匿名接口给了图文却丢了一种实况：等页面那边补上（按图片 id 对，签名不同）；页面等太久就照旧用接口的。"""
+@pytest.mark.parametrize(("dropped", "browser_delay"), [(True, 0), (True, 1), (False, 0)])
+def test_api_note_missing_live_is_filled_from_page(monkeypatch, dropped, browser_delay):
+    """匿名接口给了图文却丢了一种实况（记录里有视频尺寸、没给地址）：等页面那边补上（按图片 id 对，签名不同）；
+    页面等太久就照旧用接口的；没丢的图文根本不等页面。"""
     monkeypatch.setattr(douyin, "_LIVE_FILL_WAIT", 0.2)
+    calls = []
+    aweme = json.loads(json.dumps(NOTE_AWEME))
+    if dropped:
+        aweme["images"][0]["resolution_log_param"] = "{'image_publish_width': 2160, 'video_publish_width': 1308}"
 
     async def page(self, video_id):
+        calls.append(video_id)
         await asyncio.sleep(browser_delay)
         return VideoInfo(
             title="",
@@ -378,9 +385,11 @@ def test_api_note_missing_live_is_filled_from_page(monkeypatch, browser_delay):
         )
 
     monkeypatch.setattr(DouYin, "_note_via_browser", page)
-    info = _parse(monkeypatch, NOTE_AWEME)
+    info = _parse(monkeypatch, aweme)
     lives = [i.live_photo_url for i in info.images]
-    if browser_delay:
+    if not dropped:
+        assert calls == [] and lives == ["", "https://v3-web.douyinvod.com/live2.mp4"]
+    elif browser_delay:
         assert lives == ["", "https://v3-web.douyinvod.com/live2.mp4"]  # 等不到，和以前一样
     else:
         # 第一张接口没给实况、页面有，补上；第二张接口已经有的不覆盖
