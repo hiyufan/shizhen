@@ -357,15 +357,26 @@ def test_note_data_read_straight_from_html():
     assert douyin.note_from_html("<html>人机验证</html>", VIDEO_ID) is None
 
 
-@pytest.mark.parametrize(("dropped", "browser_delay"), [(True, 0), (True, 1), (False, 0)])
-def test_api_note_missing_live_is_filled_from_page(monkeypatch, dropped, browser_delay):
+@pytest.mark.parametrize(
+    ("dropped", "browser_delay", "url"),
+    [
+        (True, 0, PC_URL),
+        (True, 1, PC_URL),
+        (False, 0, PC_URL),
+        # 图文链接（浏览器已经同时开跑）、接口一个实况都没给、也没留线索：照样等页面核对（2026-10-16）
+        ("silent", 0, NOTE_PC_URL),
+    ],
+)
+def test_api_note_missing_live_is_filled_from_page(monkeypatch, dropped, browser_delay, url):
     """匿名接口给了图文却丢了一种实况（记录里有视频尺寸、没给地址）：等页面那边补上（按图片 id 对，签名不同）；
     页面等太久就照旧用接口的；没丢的图文根本不等页面。"""
     monkeypatch.setattr(douyin, "_LIVE_FILL_WAIT", 0.2)
     calls = []
     aweme = json.loads(json.dumps(NOTE_AWEME))
-    if dropped:
+    if dropped is True:
         aweme["images"][0]["resolution_log_param"] = "{'image_publish_width': 2160, 'video_publish_width': 1308}"
+    if dropped == "silent":
+        del aweme["images"][1]["video"]  # 接口一个实况都没给
 
     async def page(self, video_id):
         calls.append(video_id)
@@ -385,8 +396,12 @@ def test_api_note_missing_live_is_filled_from_page(monkeypatch, dropped, browser
         )
 
     monkeypatch.setattr(DouYin, "_note_via_browser", page)
-    info = _parse(monkeypatch, aweme)
+    monkeypatch.setattr(douyin, "_configured_cookie", lambda: "")
+    info = _parse(monkeypatch, aweme, url)
     lives = [i.live_photo_url for i in info.images]
+    if dropped == "silent":
+        assert lives == ["https://v/live1.mp4", "https://v/other.mp4"]
+        return
     if not dropped:
         assert calls == [] and lives == ["", "https://v3-web.douyinvod.com/live2.mp4"]
     elif browser_delay:
