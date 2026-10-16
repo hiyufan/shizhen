@@ -19,7 +19,7 @@ import statistics
 import time
 from dataclasses import dataclass
 
-from . import db, stats
+from . import alerts, db, stats
 from .convert import config
 from .parser.errors import ParseError, classify
 
@@ -199,6 +199,22 @@ async def run_once(parse) -> None:
             await asyncio.to_thread(record, platform, ok, reason, ms)
         if not ok:
             log.warning("状态自检：%s 失败 reason=%s", platform, reason)
+    try:
+        await alerts.check(await asyncio.to_thread(recent_runs))
+    except Exception:  # noqa: BLE001 - 告警发不出去不能拖垮自检，下一轮再试
+        log.exception("自检告警失败")
+
+
+def recent_runs(per_platform: int = 3) -> dict[str, list[tuple[bool, str]]]:
+    """每个平台最近几轮自检的 (成功, 原因)，新的在前；给 alerts.check 判断连续失败。"""
+    out: dict[str, list[tuple[bool, str]]] = {}
+    with _db() as conn:
+        for (platform,) in conn.execute("SELECT DISTINCT platform FROM probes WHERE ts > ?", (time.time() - 86400,)):
+            rows = conn.execute(
+                "SELECT ok, reason FROM probes WHERE platform = ? ORDER BY ts DESC LIMIT ?", (platform, per_platform)
+            ).fetchall()
+            out[platform] = [(bool(ok), reason) for ok, reason in rows]
+    return out
 
 
 async def loop(parse) -> None:

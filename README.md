@@ -321,6 +321,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 | `PARSE_VIDEO_STATS_IGNORE_IPS` | – | 不计入统计的 IP（逗号分隔），填服务器自己的公网地址；本机 / 内网地址本来就不计。站长自己的设备打开 `/test` 用统计口令开一次测试模式 |
 | `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | 解析失败反馈：建 issue 的私有仓库、只给它 Issues 读写的 fine-grained token、加密反馈邮箱的 32 字节密钥（base64）。和下面的 SMTP 四样都填了才显示「反馈这个问题」 |
 | `PARSE_VIDEO_SMTP_USER` / `_PASS` / `_HOST` / `_PORT` | – / – / `smtp.qq.com` / `465` | 反馈修好后发通知邮件的发件邮箱和 SMTP 授权码 |
+| `PARSE_VIDEO_ALERT_TO` | – | 站长收告警的邮箱（用上面的 SMTP 发）。每小时自检后判断：一半以上平台连续两轮超时 / 连不上（多半是服务器自己断网了），或某个平台连续三轮解析失败（多半改版了），就发一封；恢复了再发一封，同一个问题不重复发 |
 | `PARSE_VIDEO_STATS_DAYS` | `90` | 明细保留天数 |
 
 数据在 `data/stats.db`（SQLite）。只记事件：成功的解析不记链接，IP 经密钥 HMAC 后只留 12 位，能数出人数还原不出是谁。解析失败的链接另存在 `data/failures.db`，只留 7 天，统计页上列出来方便排查（站长测试设备和服务器自己的请求不记）。`/api/stats?range=7d&token=…` 直接拿 JSON。
