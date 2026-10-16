@@ -83,3 +83,47 @@ def test_status_page_renders():
     assert r.status_code == 200 and r.headers["cache-control"] == "public, max-age=300"
     assert "各平台解析状态" in r.text and "1 个平台全部能正常解析" in r.text and "FAQPage" in r.text
     assert "/status" in TestClient(web.app).get("/sitemap.xml").text
+
+
+T, F = True, False
+NET = (F, "timeout")
+
+
+@pytest.mark.parametrize(
+    ("history", "keys"),
+    [
+        # 2026-10-15 那种：大部分平台连续两轮都超时 → 服务器级，一封就够（不再逐个平台报）
+        ({"douyin": [NET, NET], "redbook": [NET, NET], "bilibili": [NET, NET], "youtube": [(T, "")] * 2}, {"server"}),
+        ({"douyin": [NET, (T, "")], "redbook": [NET, NET], "bilibili": [NET, NET]}, {"server"}),  # 两个也算「一半以上」
+        ({"douyin": [NET, (T, "")], "redbook": [NET, (T, "")], "bilibili": [(T, "")] * 2}, set()),  # 只失败一轮
+        # 单个平台连续三轮解析出错：多半改版了
+        ({"douyin": [(F, "parse")] * 3, "redbook": [(T, "")] * 3, "bilibili": [(T, "")] * 3}, {"platform:douyin"}),
+        # 已知限制、自检链接失效不算
+        ({"douyin-note": [(F, "login")] * 3, "douyin": [(F, "canary")] * 3, "x": [(T, "")] * 3}, set()),
+    ],
+)
+def test_alert_rules(history, keys):
+    from parse_video_py import alerts
+
+    assert set(alerts.problems(history)) == keys
+
+
+def test_alert_sent_once_then_recovery(monkeypatch, tmp_path):
+    """同一个问题只发一次；恢复了发一封；状态落在文件里，部署重启后不重发。"""
+    from parse_video_py import alerts
+
+    sent = []
+    monkeypatch.setattr(alerts, "ALERT_TO", "me@example.com")
+    monkeypatch.setattr(alerts, "STATE_PATH", tmp_path / "alerts.json")
+    monkeypatch.setattr(alerts.feedback, "mail_enabled", lambda: True)
+    monkeypatch.setattr(alerts.feedback, "_send_mail", lambda to, subject, text: sent.append((to, subject)))
+    down = {p: [NET, NET] for p in ("douyin", "redbook", "bilibili")}
+    up = {p: [(T, ""), NET] for p in ("douyin", "redbook", "bilibili")}
+
+    asyncio.run(alerts.check(down))
+    asyncio.run(alerts.check(down))  # 还没好：不重发
+    assert [s[1] for s in sent] == ["求原图告警：服务器可能连不上外网"]
+    asyncio.run(alerts.check(up))
+    assert sent[-1] == ("me@example.com", "求原图：自检已恢复") and len(sent) == 2
+    asyncio.run(alerts.check(up))
+    assert len(sent) == 2 and (tmp_path / "alerts.json").read_text() == "{}"

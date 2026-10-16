@@ -106,7 +106,7 @@ def _subset(src: str, chars: set[str], out: str) -> None:
     os.remove(glyphs)
 
 
-_FACE_700 = re.compile(r"/\* 700-START \*/.*?/\* 700-END \*/", re.S)
+_FACE_700 = re.compile(r"/\* 700-START[^*]*\*/.*?/\* 700-END \*/", re.S)
 
 
 def _write_700_faces(entry: set[str], more: set[str]) -> None:
@@ -141,8 +141,11 @@ def build_700(src: str) -> None:
     out_b = os.path.join(PKG, "static", "noto-serif-sc-700-more.woff2")
     _subset(src, entry, out_a)
     _subset(src, more, out_b)
-    _write_700_faces(entry, more)
-    got = set(TTFont(out_a).getBestCmap()) | set(TTFont(out_b).getBestCmap())
+    # unicode-range 按字体里实际有的字写：子集化时连字规则会顺带收进几个没要的字（比如 ≥），
+    # 按要求的字写的话，这些字在 CSS 里没登记，两边就对不上
+    cmap_a, cmap_b = set(TTFont(out_a).getBestCmap()), set(TTFont(out_b).getBestCmap())
+    _write_700_faces({chr(c) for c in cmap_a}, {chr(c) for c in cmap_b - cmap_a})
+    got = cmap_a | cmap_b
     missing = "".join(sorted(ch for ch in chars if ord(ch) > 0x2000 and ord(ch) not in got))
     print(
         f"700: 入口页 {len(entry)} 个字形 {os.path.getsize(out_a) // 1000} KB，"
