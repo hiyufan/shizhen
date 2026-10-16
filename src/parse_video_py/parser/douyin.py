@@ -584,7 +584,14 @@ class DouYin(BaseParser):
                 raise
             return info
         info = await self._build(aweme)
-        if _dropped_lives(aweme) and not _configured_cookie():
+        # 接口丢实况有两种：记录里有视频尺寸却没给地址（_dropped_lives 认得出），和一点线索都不留的
+        # （2026-10-16 一条单张实况的图文，重启后浏览器还冷着，接口那次给了数据、实况没了）。后一种认不出来，
+        # 就在「链接本身是图文、浏览器已经同时开跑了、接口一个实况都没给」时等页面核对：浏览器有先发优势，
+        # 多等 ~1 秒；接口直接给图文的只占 ~6%（最近 3 天 169 次里 10 次），给了实况的照旧直接返回
+        if not aweme.get("images") or _configured_cookie():
+            return info
+        no_lives = early is not None and not any(img.live_photo_url for img in info.images)
+        if _dropped_lives(aweme) or no_lives:
             await self._fill_missing_lives(info, video_id, early)
         return info
 
