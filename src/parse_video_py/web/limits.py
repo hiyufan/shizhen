@@ -109,6 +109,39 @@ class Concurrency:
             self._active.pop(key, None)
 
 
+class DailyBytes:
+    """每个 IP 每天（北京时间零点清零）经本站转发的字节数上限。只在开始转发前检查，正在下的那个下完。
+    记在内存里，重启清零；limit 为 0 就不限。"""
+
+    def __init__(self, limit: int):
+        self.limit = limit
+        self._day = 0
+        self._used: dict[str, int] = defaultdict(int)
+
+    @staticmethod
+    def _today() -> int:
+        return int((time.time() + 8 * 3600) // 86400)
+
+    def _roll(self) -> None:
+        if (today := self._today()) != self._day:
+            self._day = today
+            self._used.clear()
+
+    def check(self, ip: str) -> None:
+        self._roll()
+        if self.limit and self._used.get(limit_key(ip), 0) >= self.limit:
+            wait = int((self._day + 1) * 86400 - 8 * 3600 - time.time()) + 1
+            raise HTTPException(
+                429,
+                f"今天经本站转发的下载已经超过 {self.limit / 1e9:g} GB，明天再来",
+                headers={"Retry-After": str(wait)},
+            )
+
+    def add(self, ip: str, n: int) -> None:
+        self._roll()
+        self._used[limit_key(ip)] += n
+
+
 _IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp", ".avif")
 # 各家图片 CDN 的处理参数, 带上就肯定是图片而不是视频
 _IMAGE_HINT = ("imageview2", "image_process", "x-oss-process", "format/jpg", "format/webp", "/format/png")
@@ -146,4 +179,7 @@ proxy_streams = Concurrency("下载", _env_int("PARSE_VIDEO_MAX_STREAMS_PER_IP",
 proxy_streams_global = Concurrency(
     "下载", _env_int("PARSE_VIDEO_MAX_STREAMS", 64), busy="现在下载的人太多了，稍等一下再试"
 )
+# 每个 IP 每天经本站转发的下载量（GB）。2026-10-17 有个脚本一天拉走 50–75 GB 推特原画，
+# 正常用户单 IP 一天最多 2.5 GB
+proxy_daily = DailyBytes(_env_int("PARSE_VIDEO_PROXY_GB_PER_DAY", 10) * 10**9)
 jobs_per_ip = Concurrency("任务", _env_int("PARSE_VIDEO_MAX_JOBS_PER_IP", 2))

@@ -107,23 +107,32 @@ def test_links_from_github_issues_are_not_counted(rows):
     assert rows == []
 
 
+_CHROME = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
 @pytest.mark.parametrize(
-    ("ua", "counted"),
+    ("ua", "referer", "counted"),
     [
-        ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148", False),
-        ("curl/8.14.1", False),
-        ("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", False),
+        ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148", "", []),
+        ("curl/8.14.1", "", []),
+        ("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", "", []),
         (
             "Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_1 like Mac OS X) AppleWebKit/605.1.15 "
             "(KHTML, like Gecko) CriOS/137.0.7151.107 Mobile/15E148 Safari/604.1",
-            True,
+            "https://ynvan.com/",
+            ["view", "parse"],
         ),
-        ("BackgroundShortcutRunner/5037.111 CFNetwork/3896.100.1.2.1 Darwin/27.0.0", True),  # 快捷指令是真人
+        # 快捷指令是真人，本来就不带 Referer
+        ("BackgroundShortcutRunner/5037.111 CFNetwork/3896.100.1.2.1 Darwin/27.0.0", "", ["view", "parse"]),
+        (_CHROME, "https://ynvan.com/", ["view", "parse"]),
+        (_CHROME, "", ["view"]),  # 浏览器 UA 不经网页直接调接口（2026-10-17）
     ],
 )
-def test_scripts_are_not_counted(rows, ua, counted):
-    """脚本换着 IP 批量解析会把用户数撑大好几倍（2026-10-13）：按 UA 认出来，浏览和解析都不计。"""
+def test_scripts_are_not_counted(rows, ua, referer, counted):
+    """脚本换着 IP 批量解析会把用户数撑大好几倍（2026-10-13）：按 UA / Referer 认出来，不计。"""
     c = TestClient(web.app, headers={"User-Agent": ua})
     c.get("/")
-    c.get("/api/parse", params={"url": "https://v.douyin.com/a/"})
-    assert kinds(rows) == (["view", "parse"] if counted else [])
+    c.get("/api/parse", params={"url": "https://v.douyin.com/a/"}, headers={"Referer": referer} if referer else {})
+    assert kinds(rows) == counted

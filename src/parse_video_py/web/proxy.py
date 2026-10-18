@@ -88,9 +88,10 @@ def _cdn_name(url: str) -> str:
     return ".".join((httpx.URL(url).host or "").rsplit(".", 2)[-2:])
 
 
-async def _relay_body(resp: httpx.Response, slot: _StreamSlot) -> AsyncIterator[bytes]:
+async def _relay_body(resp: httpx.Response, slot: _StreamSlot, ip: str) -> AsyncIterator[bytes]:
     try:
         async for chunk in resp.aiter_raw(1 << 16):
+            limits.proxy_daily.add(ip, len(chunk))
             yield chunk
     finally:
         # 用户关掉页面时这里是在「已取消」的状态下跑的：await 一挂起就会再被取消一次。
@@ -113,6 +114,7 @@ async def api_proxy(
         raise HTTPException(403, "这个地址不是解析结果里的，拒绝转发")
     if not await is_safe_url_async(url):
         raise HTTPException(400, "不支持的地址")
+    limits.proxy_daily.check(ip)
 
     upstream_headers = headers_for(url)
     if byte_range := request.headers.get("range"):
@@ -132,7 +134,7 @@ async def api_proxy(
     if download:
         headers["content-disposition"] = _attachment(filename, headers.get("content-type", ""))
         stats.record_download(ip, url, source=_cdn_name(url))
-    return StreamingResponse(_relay_body(resp, slot), status_code=resp.status_code, headers=headers)
+    return StreamingResponse(_relay_body(resp, slot, ip), status_code=resp.status_code, headers=headers)
 
 
 class DownloadHit(BaseModel):
