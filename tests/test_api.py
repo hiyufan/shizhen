@@ -391,3 +391,33 @@ def test_proxy_refuses_browser_ua_outside_the_page(client, monkeypatch, headers,
     url = "https://video.twimg.com/amplify_video/1/vid/1.mp4"
     params = {"url": url, "sig": net.sign(url), "download": download}
     assert client.get("/api/proxy", params=params, headers=headers).status_code == status
+
+
+def test_proxy_sends_headers_remembered_at_parse_time(client, calls, monkeypatch):
+    """TikTok 的视频地址要带 yt-dlp 解析时拿到的 cookie，名单里没有的 CDN 补平台自己的 Referer；
+    cookie 不发给页面。"""
+    video, cover = "https://v19-webapp-prime.us.tiktok.com/video/1", "https://img.unlisted-cdn.net/c.jpg"
+    calls["result"] = _info(
+        video_url=video,
+        cover_url=cover,
+        page_url="https://www.tiktok.com/@a/video/1",
+        video_headers={"Referer": "https://www.tiktok.com/@a/video/1", "Cookie": "tt_chain_token=abc"},
+    )
+    sent = {}
+
+    async def upstream(url, headers):
+        sent[url] = headers
+        return httpx.Response(200, stream=httpx.ByteStream(b"x"), headers={"content-type": "video/mp4"})
+
+    async def always_safe(url):
+        return True
+
+    monkeypatch.setattr(proxy_api, "_open_upstream", upstream)
+    monkeypatch.setattr(proxy_api, "is_safe_url_async", always_safe)
+    data = client.get("/api/parse", params={"url": "https://www.tiktok.com/@a/video/1"}).json()["data"]
+    assert data["video_headers"] == {"Referer": "https://www.tiktok.com/@a/video/1"}
+    for url in (video, cover, data["images"][0]["url"]):
+        client.get("/api/proxy", params={"url": url, "sig": data["sig"][url]})
+    assert sent[video]["Cookie"] == "tt_chain_token=abc"
+    assert sent[cover]["Referer"] == "https://www.tiktok.com/"
+    assert sent[data["images"][0]["url"]]["Referer"] == "https://www.douyin.com/"  # 名单里有的照名单

@@ -5,6 +5,8 @@ YouTube / TikTok / Instagram 以及其它没有专用解析器的站点, 统一�
 更高的清晰度需要服务端用 ffmpeg 合并, 放进 formats 里让前端按需下载。
 """
 
+import contextlib
+from http.cookies import CookieError, SimpleCookie
 from typing import Any
 
 from ..convert import config as convert_config
@@ -121,7 +123,24 @@ def _direct_stream(info: dict[str, Any], formats: list[dict[str, Any]]) -> tuple
         best = info
     if best is None:
         return "", {}, 0, 0
-    return best["url"], dict(best.get("http_headers") or {}), best.get("width") or 0, best.get("height") or 0
+    return best["url"], _stream_headers(best), best.get("width") or 0, best.get("height") or 0
+
+
+_KEEP_HEADERS = ("user-agent", "referer", "origin")
+
+
+def _stream_headers(fmt: dict[str, Any]) -> dict[str, str]:
+    """转发这一路要带的请求头：yt-dlp 给的 UA / Referer，加上解析时拿到的 cookie。
+    TikTok 的视频地址缺了 cookie（tt_chain_token）一律 403。"""
+    headers = {k: v for k, v in (fmt.get("http_headers") or {}).items() if k.lower() in _KEEP_HEADERS}
+    # yt-dlp 把 cookie 写成 Set-Cookie 的样子：'a=1; Domain=.x.com; Path=/; Secure; b="x+y=="; ...'，
+    # 带特殊字符的值加了引号，原样发出去 TikTok 不认（还是 403），要按 cookie 的规矩解开
+    jar = SimpleCookie()
+    with contextlib.suppress(CookieError):
+        jar.load(fmt.get("cookies") or "")
+    if cookie := "; ".join(f"{name}={morsel.value}" for name, morsel in jar.items()):
+        headers["Cookie"] = cookie
+    return headers
 
 
 def _merge_options(formats: list[dict[str, Any]], direct_height: int) -> list[FormatInfo]:

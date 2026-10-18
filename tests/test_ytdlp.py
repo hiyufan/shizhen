@@ -8,6 +8,17 @@ def _fmt(**kw):
     return {**base, **kw}
 
 
+_HEADERS = {
+    "User-Agent": "UA",
+    "Accept": "text/html",
+    "Sec-Fetch-Mode": "navigate",
+    "Referer": "https://www.tiktok.com/@a",
+}
+# yt-dlp 给的是 Set-Cookie 的写法，带 = + 的值加了引号（原样发出去 TikTok 不认）
+_COOKIES = (
+    'ttwid=1%7C2; Domain=.tiktok.com; Path=/; Secure; Expires=1823445095; tt_chain_token="sA+x=="; Domain=.tiktok.com'
+)
+
 INFO = {
     "title": "t",
     "extractor_key": "Youtube",
@@ -18,7 +29,16 @@ INFO = {
     "thumbnails": [{"url": "small.jpg"}, {"url": "big.jpg"}],
     "formats": [
         _fmt(format_id="18", ext="mp4", vcodec="avc1", acodec="mp4a", height=360, width=640),
-        _fmt(format_id="22", ext="mp4", vcodec="avc1", acodec="mp4a", height=720, width=1280, http_headers={"A": "1"}),
+        _fmt(
+            format_id="22",
+            ext="mp4",
+            vcodec="avc1",
+            acodec="mp4a",
+            height=720,
+            width=1280,
+            http_headers=_HEADERS,
+            cookies=_COOKIES,
+        ),
         _fmt(format_id="hls", ext="mp4", vcodec="avc1", acodec="mp4a", height=1080, protocol="m3u8_native"),
         _fmt(format_id="137", ext="mp4", vcodec="avc1", height=1080, filesize=50),
         _fmt(format_id="401", ext="mp4", vcodec="av01", height=2160, filesize_approx=900),
@@ -29,7 +49,11 @@ INFO = {
 
 def test_direct_link_is_best_progressive_http_stream():
     info = YtDlp._to_video_info(INFO, "https://youtu.be/1")
-    assert info.video_url == "https://cdn/22" and info.video_headers == {"A": "1"}
+    assert info.video_url == "https://cdn/22" and info.video_headers == {
+        "User-Agent": "UA",
+        "Referer": "https://www.tiktok.com/@a",
+        "Cookie": "ttwid=1%7C2; tt_chain_token=sA+x==",  # TikTok 缺了 cookie 一律 403
+    }
     assert (info.width, info.height, info.duration) == (1280, 720, 12.0)
     assert (info.source, info.cover_url, info.page_url) == ("youtube", "big.jpg", "https://www.youtube.com/watch?v=1")
 
