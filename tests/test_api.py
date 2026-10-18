@@ -363,3 +363,31 @@ def test_proxy_gives_slot_back_when_client_leaves_before_first_byte(monkeypatch)
     asyncio.run(web.app(scope, receive, send))  # 也不该再抛 "No response returned."
     assert limits.proxy_streams._active == {} and limits.proxy_streams_global._active == {}
     assert closed == [True]
+
+
+_CHROME = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
+@pytest.mark.parametrize(
+    ("headers", "download", "status"),
+    [
+        ({"User-Agent": _CHROME, "Referer": "https://ynvan.com/"}, 0, 200),  # 网页里播放
+        ({"User-Agent": _CHROME}, 1, 200),  # 手机浏览器自带的下载器接手，不带 Referer
+        ({"User-Agent": "BackgroundShortcutRunner/5037.111"}, 0, 200),  # 快捷指令
+        ({"User-Agent": _CHROME}, 0, 403),  # 脚本冒充浏览器直接拉（2026-10-18）
+    ],
+)
+def test_proxy_refuses_browser_ua_outside_the_page(client, monkeypatch, headers, download, status):
+    async def upstream(url, headers):
+        return httpx.Response(200, stream=httpx.ByteStream(b"x"), headers={"content-type": "video/mp4"})
+
+    async def always_safe(url):
+        return True
+
+    monkeypatch.setattr(proxy_api, "_open_upstream", upstream)
+    monkeypatch.setattr(proxy_api, "is_safe_url_async", always_safe)
+    url = "https://video.twimg.com/amplify_video/1/vid/1.mp4"
+    params = {"url": url, "sig": net.sign(url), "download": download}
+    assert client.get("/api/proxy", params=params, headers=headers).status_code == status
