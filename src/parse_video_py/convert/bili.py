@@ -92,8 +92,8 @@ async def download(
 ) -> Path:
     parser = BiliBili()
     await parser._ensure_buvid()
-    bvid = await parser._get_bvid_from_url(page_url)
-    cid = await parser._page_cid(bvid)
+    bvid, page = await parser._video_ref(page_url)
+    cid = await parser._page_cid(bvid, page)
     if not cid:
         raise RuntimeError("B站没有返回分P信息")
     dash, _ = await parser._play_urls(bvid, cid)
