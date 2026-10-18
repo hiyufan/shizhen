@@ -59,10 +59,31 @@ def referer_for(url: str) -> str | None:
     return None
 
 
+# 解析时记下的、某个直链要带的请求头：名单只能按域名补 Referer，可 TikTok 的视频地址还要 yt-dlp
+# 解析时拿到的 cookie（tt_chain_token），缺了一律 403（2026-10-11 起 5 个人播放 / 下载全失败）；
+# 名单里没有的 CDN 域名也在这里补上平台自己的 Referer。只在内存里，跟解析缓存一样重启就没了
+_REMEMBERED: dict[str, tuple[float, dict[str, str]]] = {}
+_REMEMBER_MAX = 20000
+
+
+def remember_headers(url: str, headers: dict[str, str], ttl: float) -> None:
+    now = time.time()
+    if len(_REMEMBERED) >= _REMEMBER_MAX:
+        for key in [k for k, (until, _) in _REMEMBERED.items() if until < now] or list(_REMEMBERED)[:1000]:
+            _REMEMBERED.pop(key, None)
+    _REMEMBERED[url] = (now + ttl, headers)
+
+
+def _remembered(url: str) -> dict[str, str]:
+    until, headers = _REMEMBERED.get(url, (0, {}))
+    return headers if until > time.time() else {}
+
+
 def headers_for(url: str, extra: dict[str, str] | None = None) -> dict[str, str]:
     headers = {"User-Agent": config.DESKTOP_UA, "Accept": "*/*"}
     if ref := referer_for(url):
         headers["Referer"] = ref
+    headers.update(_remembered(url))
     if extra:
         headers.update({k: v for k, v in extra.items() if k.lower() not in ("host", "content-length", "cookie")})
     return headers

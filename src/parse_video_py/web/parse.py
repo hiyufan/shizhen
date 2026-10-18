@@ -6,6 +6,7 @@ import asyncio
 import dataclasses
 import logging
 import time
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -94,9 +95,25 @@ def _edge_urls(data: dict) -> dict[str, str]:
     return edges
 
 
+def _remember_headers(info: VideoInfo, data: dict, share_url: str) -> None:
+    """代理 / 下载这些地址时要带的请求头记在服务器上（见 net.remember_headers）：
+    yt-dlp 给的整套（含 cookie），名单里没有的域名补平台自己的 Referer。"""
+    ttl = config.PARSE_CACHE_SECONDS + 3600  # 结果会被缓存，要比缓存活得久
+    page = urlparse(info.page_url or share_url)
+    origin = {"Referer": f"{page.scheme}://{page.netloc}/"} if page.netloc else {}
+    for url in _media_urls(data) - {data.get("page_url"), share_url}:
+        if url == info.video_url and info.video_headers:
+            net.remember_headers(url, info.video_headers, ttl)
+        elif origin and not net.referer_for(url):
+            net.remember_headers(url, origin, ttl)
+
+
 def _client_data(info: VideoInfo, share_url: str) -> dict:
     data = dataclasses.asdict(info)
     data["share_url"] = share_url
+    _remember_headers(info, data, share_url)
+    # cookie 只留在服务器上；页面拿这些头去 /api/prepare 时 cookie 本来也会被去掉
+    data["video_headers"] = {k: v for k, v in info.video_headers.items() if k.lower() != "cookie"}
     # 代理和转换只认这里签过名的地址，不做开放代理
     data["sig"] = {u: net.sign(u) for u in _media_urls(data)}
     if relay.edge_img_enabled() or relay.edge_media_enabled():
