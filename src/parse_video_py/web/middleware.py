@@ -73,6 +73,10 @@ _BOT_UA = re.compile(r"bot|spider|crawl|slurp|fetch|curl|wget|python|http", re.I
 # 用 "…AppleWebKit/605.1.15 Mobile/15E148" 这种截短的假 iPhone UA、每次换一个 IP 批量解析
 # 同一个博主的作品，一上午 93 次，统计里的用户数被它撑大了好几倍
 _FAKE_WEBKIT_UA = re.compile(r"AppleWebKit/(?!.*KHTML)")
+# 2026-10-17 起有个脚本伪装成完整的 Windows Chrome UA，不开网页、直接调 /api/parse + /api/proxy 批量下推特，
+# 一天 1800 次「解析」。网页里发的接口请求都带 Referer，浏览器 UA 却不带 Referer 的就是脚本。
+# 快捷指令、微信小程序的 UA 不以 Mozilla 开头（小程序带 servicewechat 的 Referer），照常计
+_BROWSER_UA = re.compile(r"^Mozilla/")
 _UNCOUNTED_PAGES = ("/stats", "/test")
 
 
@@ -86,11 +90,21 @@ def _is_script(user_agent: str) -> bool:
     return bool(_BOT_UA.search(user_agent) or _FAKE_WEBKIT_UA.search(user_agent))
 
 
+def _api_without_page(request: Request) -> bool:
+    return (
+        request.url.path.startswith("/api/")
+        and not request.headers.get("referer")
+        and bool(_BROWSER_UA.match(request.headers.get("user-agent", "")))
+    )
+
+
 def _excluded_from_stats(request: Request) -> bool:
     """不计入统计的：站长测试设备（/test 开过）、服务器自己的请求、脚本，以及从 GitHub issue 里
     「在线复现」点进来的（src=issue）——issue 是公开的，通知邮件的链接扫描、爬虫都会打开它，
     2026-10-02 一条测试反馈就这样被不认识的 IP 打开了 4 次，统计里快手成功率直接成了 0。"""
     if request.query_params.get("src") == "issue" or _is_script(request.headers.get("user-agent", "")):
+        return True
+    if _api_without_page(request):
         return True
     return stats.ignored_ip(limits.client_ip(request)) or stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE))
 

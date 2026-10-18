@@ -59,3 +59,18 @@ def test_limit_of_one_allows_the_first_request():
     rl.hit("203.0.113.7")
     with pytest.raises(HTTPException):
         rl.hit("203.0.113.7")
+
+
+def test_daily_bytes_by_64_and_reset_at_beijing_midnight(monkeypatch):
+    now = [20_000 * 86400 - 8 * 3600 + 60.0]  # 北京时间某天 00:01
+    monkeypatch.setattr(limits.time, "time", lambda: now[0])
+    quota = limits.DailyBytes(100)
+    quota.check("2001:db8:1:2::1")
+    quota.add("2001:db8:1:2::1", 100)  # 正在下的那个不打断，下一个才拒
+    with pytest.raises(HTTPException) as err:
+        quota.check("2001:db8:1:2::99")  # 同一个 /64
+    assert err.value.status_code == 429 and int(err.value.headers["Retry-After"]) > 86000
+    quota.check("2001:db8:1:3::1")  # 别的 /64 不受影响
+    now[0] += 86400
+    quota.check("2001:db8:1:2::1")  # 第二天清零
+    limits.DailyBytes(0).check("2001:db8:1:2::1")  # 0 = 不限
