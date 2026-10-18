@@ -2,11 +2,13 @@
 
 import json
 
+import httpx
 import pytest
 
 from parse_video_py import parser as parser_pkg
 from parse_video_py.feedback import FIXABLE
 from parse_video_py.parser import VideoSource, detect_source
+from parse_video_py.parser import bilibili as bilibili_mod
 from parse_video_py.parser.bilibili import BiliBili, dash_formats, guest_params, id_param, opus_images, opus_text
 from parse_video_py.parser.douyin import _looks_like_note, _note_images
 from parse_video_py.parser.errors import ParseError
@@ -225,3 +227,59 @@ def test_extract_url_from_share_text(text, url):
         assert extract_url(text) is None
     else:
         assert extract_url(text) == (url or text)
+
+
+@pytest.mark.parametrize(
+    ("url", "cid", "title", "page_url"),
+    [
+        (
+            "https://www.bilibili.com/video/BV1x/?spm_id_from=333.788.videopod.episodes&p=13",
+            13,
+            "课 P13 第13讲",
+            "https://www.bilibili.com/video/BV1x?p=13",
+        ),
+        ("https://www.bilibili.com/video/BV1x/", 1, "课 P1 第1讲", "https://www.bilibili.com/video/BV1x"),
+        ("https://www.bilibili.com/video/BV1x?p=2", 2, "课 P2 第2讲", "https://www.bilibili.com/video/BV1x?p=2"),
+        # 短链跳转到带 p 的长链接，分 P 跟着走
+        ("https://b23.tv/abc", 13, "课 P13 第13讲", "https://www.bilibili.com/video/BV1x?p=13"),
+        ("https://www.bilibili.com/video/BV1x?p=99", None, "", ""),  # 没有这一 P：明确报错，不悄悄换成 P1
+    ],
+)
+async def test_bili_multi_part_uses_the_linked_part(monkeypatch, url, cid, title, page_url):
+    """多 P 视频按链接里的 ?p= 取那一 P（issue #6：贴第 13P 给的是第一 P，时长还是 30 小时的总和）。"""
+    pages = [{"page": i, "cid": i, "part": f"第{i}讲", "duration": i * 60} for i in range(1, 21)]
+    played = []
+
+    async def api(self, url):
+        if "pagelist" in url:
+            return {"code": 0, "data": pages}
+        return {"code": 0, "data": {"bvid": "BV1x", "title": "课", "duration": 99999, "pages": pages}}
+
+    async def play(self, video_id, c):
+        played.append(c)
+        return {"data": {}}, {"data": {"durl": [{"url": "https://upos.bilivideo.com/v.mp4"}], "quality": 64}}
+
+    async def noop(self):
+        return None
+
+    class ShortLink:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers):
+            return httpx.Response(302, headers={"location": "https://www.bilibili.com/video/BV1x/?p=13&share=1"})
+
+    monkeypatch.setattr(BiliBili, "_api", api)
+    monkeypatch.setattr(BiliBili, "_play_urls", play)
+    monkeypatch.setattr(BiliBili, "_ensure_buvid", noop)
+    monkeypatch.setattr(bilibili_mod, "create_async_client", lambda **kw: ShortLink())
+    if cid is None:
+        with pytest.raises(ParseError) as exc:
+            await BiliBili().parse_share_url(url)
+        assert exc.value.reason == "deleted" and "只有 20 P" in str(exc.value) and played == []
+        return
+    info = await BiliBili().parse_share_url(url)
+    assert played == [cid] and (info.title, info.page_url, info.duration) == (title, page_url, cid * 60)

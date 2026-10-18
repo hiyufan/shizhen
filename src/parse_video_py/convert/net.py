@@ -49,6 +49,10 @@ _REFERERS = {
 
 def referer_for(url: str) -> str | None:
     host = urlparse(url).hostname or ""
+    if host.startswith("upos-") and host.endswith(".akamaized.net"):
+        # B 站海外镜像（upos-hz-mirrorakam.akamaized.net），常在备用地址里。akamaized.net 是 Akamai
+        # 给所有客户的域名，只认 B 站的 upos- 前缀；以前没带 Referer，主地址一失败就全 403
+        return "https://www.bilibili.com/"
     for suffix, ref in _REFERERS.items():
         if host == suffix or host.endswith("." + suffix):
             return ref

@@ -5,7 +5,7 @@ import os
 import random
 import re
 import string
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
@@ -91,10 +91,10 @@ class BiliBili(BaseParser):
             pass
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        bvid = await self._get_bvid_from_url(share_url)
+        bvid, page = await self._video_ref(share_url)
         if bvid.startswith("opus"):
             return await self._parse_opus(bvid[4:])
-        return await self.parse_video_id(bvid)
+        return await self.parse_video_id(bvid, page)
 
     async def _parse_opus(self, opus_id: str) -> VideoInfo:
         """动态（opus）：图片和实况在 opus/detail 里（每张图的 live_url 就是实况视频），
@@ -129,11 +129,12 @@ class BiliBili(BaseParser):
             ),
         )
 
-    async def parse_video_id(self, video_id: str) -> VideoInfo:
+    async def parse_video_id(self, video_id: str, page: int = 1) -> VideoInfo:
+        """page 是分 P 的序号（链接里的 ?p=13）。"""
         await self._ensure_buvid()
 
         async def play_by_pagelist():
-            cid = await self._page_cid(video_id)
+            cid = await self._page_cid(video_id, page)
             return await self._play_urls(video_id, cid) if cid else None
 
         view, early = await asyncio.gather(
@@ -147,10 +148,15 @@ class BiliBili(BaseParser):
                 raise ParseError("deleted", msg)
             raise ParseError("restricted", f"B 站返回 code={code} {msg}")
         data = view.get("data") or {}
+        pages = data.get("pages") or [{}]
+        if not 1 <= page <= len(pages):
+            # 不悄悄换成第一 P：用户要的是第几 P 就给第几 P，没有就说清楚（issue #6）
+            raise ParseError("deleted", f"这个视频只有 {len(pages)} P，没有第 {page} P")
+        part = pages[page - 1]
 
         if early is None:
             # pagelist 没拿到, 退回 view 里的 cid 再要一次
-            cid = ((data.get("pages") or [{}])[0]).get("cid")
+            cid = part.get("cid")
             if not cid:
                 raise ParseError("parse", "view 接口没有返回 cid")
             early = await self._play_urls(video_id, cid)
@@ -164,7 +170,8 @@ class BiliBili(BaseParser):
         html5_data = html5.get("data") or {}
         video_url = ((html5_data.get("durl") or [{}])[0]).get("url", "")
         height = _QN_HEIGHT.get(html5_data.get("quality") or 0, 0)
-        duration = float(data.get("duration") or 0)
+        # 多 P 视频 view 里的 duration 是所有分 P 加起来的，体积按这个估就差几十倍
+        duration = float(part.get("duration") or data.get("duration") or 0)
         formats = dash_formats(dash.get("data") or {}, duration, above=height)
         if not video_url and not formats:
             code = dash.get("code") or html5.get("code")
@@ -172,15 +179,19 @@ class BiliBili(BaseParser):
             raise ParseError("restricted", f"B 站播放接口 code={code} {msg}")
 
         owner = data.get("owner") or {}
+        title = data.get("title", "")
+        if len(pages) > 1 and part.get("part"):
+            title = f"{title} P{page} {part['part']}"
+        bvid = data.get("bvid") or video_id
         return VideoInfo(
-            title=data.get("title", ""),
+            title=title,
             video_url=video_url,
             cover_url=data.get("pic", ""),
             duration=duration,
             height=height,
             formats=formats,
-            # 高清档位下载时 yt-dlp 按这个地址重新取
-            page_url=f"https://www.bilibili.com/video/{data.get('bvid') or video_id}",
+            # 高清档位下载时按这个地址重新取（convert/bili.py），分 P 要带上 ?p=
+            page_url=f"https://www.bilibili.com/video/{bvid}" + (f"?p={page}" if page > 1 else ""),
             author=VideoAuthor(
                 uid=str(owner.get("mid", "")),
                 name=owner.get("name", ""),
@@ -188,11 +199,12 @@ class BiliBili(BaseParser):
             ),
         )
 
-    async def _page_cid(self, video_id: str) -> int | None:
-        """第一 P 的 cid。拿不到返回 None，由调用方退回 view 里的那份。"""
+    async def _page_cid(self, video_id: str, page: int = 1) -> int | None:
+        """第 page P 的 cid。拿不到（含超出范围）返回 None，由调用方按 view 里的分 P 列表处理。"""
         try:
             resp = await self._api(f"https://api.bilibili.com/x/player/pagelist?{id_param(video_id, 'aid')}")
-            return ((resp.get("data") or [{}])[0]).get("cid") or None
+            pages = resp.get("data") or []
+            return (pages[page - 1].get("cid") or None) if 1 <= page <= len(pages) else None
         except Exception:  # noqa: BLE001
             return None
 
@@ -210,6 +222,10 @@ class BiliBili(BaseParser):
 
     async def _get_bvid_from_url(self, raw_url: str) -> str:
         """从URL中提取 BV 号（或老的 av 号）"""
+        return (await self._video_ref(raw_url))[0]
+
+    async def _video_ref(self, raw_url: str) -> tuple[str, int]:
+        """(BV 号 / av 号 / opus+动态 id, 分 P 序号)。2026-10-19 有人贴第 13P 的链接，以前一律给第一 P。"""
         try:
             parsed_url = urlparse(raw_url)
         except ValueError as err:
@@ -222,16 +238,16 @@ class BiliBili(BaseParser):
                 location = resp.headers.get("location")
                 if not location:
                     raise ValueError("无法从b23.tv获取重定向链接")
-                return await self._get_bvid_from_url(location)
+                return await self._video_ref(location)
 
         if "bilibili.com" in parsed_url.netloc:
             if _PGC_PATH.search(parsed_url.path):
                 raise ParseError("copyright")
             if opus := _OPUS_PATH.match(parsed_url.path):
-                return "opus" + opus.group(1)
+                return "opus" + opus.group(1), 1
             for part in parsed_url.path.split("/"):
                 if part[:2] in ("BV", "bv") or (part[:2] in ("av", "AV") and part[2:].isdigit()):
-                    return part
+                    return part, _page_number(parsed_url.query)
 
         raise ValueError("不是有效的B站视频链接")
 
@@ -252,6 +268,11 @@ class BiliBili(BaseParser):
             if response.status_code != 200:
                 raise ValueError(f"HTTP请求失败, 状态码: {response.status_code}")
             return response.json()
+
+
+def _page_number(query: str) -> int:
+    p = (parse_qs(query).get("p") or ["1"])[0]
+    return int(p) if p.isdigit() and int(p) >= 1 else 1
 
 
 def id_param(video_id: str, aid_key: str) -> str:

@@ -7,6 +7,7 @@ import pytest
 
 from parse_video_py.convert import bili
 from parse_video_py.convert.fetch import TooLarge
+from parse_video_py.convert.net import referer_for
 
 
 def _v(height, codecid, bw):
@@ -81,7 +82,7 @@ def test_handles(url, ok):
 
 async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
     """画面和声音一起下（以前先下完画面再下声音），进度按两条的合计算。"""
-    running, peak, reports, merged = [0], [0], [], []
+    running, peak, reports, merged, asked = [0], [0], [], [], []
 
     async def fake_download(url, dest, headers, on_bytes):
         running[0] += 1
@@ -100,25 +101,36 @@ async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
     async def noop(self):
         return None
 
-    async def bvid(self, url):
-        return "BV1"
-
-    async def cid(self, bvid):
+    async def cid(self, bvid, page):
+        asked.append((bvid, page))
         return 1
 
     async def play(self, bvid, cid):
         return {"data": {"timelength": 10_000, "dash": DASH}}, {}
 
     monkeypatch.setattr(parser, "_ensure_buvid", noop)
-    monkeypatch.setattr(parser, "_get_bvid_from_url", bvid)
     monkeypatch.setattr(parser, "_page_cid", cid)
     monkeypatch.setattr(parser, "_play_urls", play)
     monkeypatch.setattr(bili, "download_source", fake_download)
     monkeypatch.setattr(bili.ffmpeg, "run", fake_ffmpeg)
 
     out = await bili.download(
-        "https://www.bilibili.com/video/BV1", SPEC_1080, tmp_path, "s", lambda p, m: reports.append(p)
+        "https://www.bilibili.com/video/BV1?p=13", SPEC_1080, tmp_path, "s", lambda p, m: reports.append(p)
     )
     assert peak[0] == 2 and out.name == "s.mp4" and len(merged) == 1
+    assert asked == [("BV1", 13)]  # 高清下载取的是链接里那一 P（issue #6）
     assert reports == sorted(reports)  # 两条一起报，进度也不会往回跳
     assert not list(tmp_path.glob("*.m4s"))  # 分轨用完就删
+
+
+@pytest.mark.parametrize(
+    ("url", "referer"),
+    [
+        ("https://upos-sz-mirrorcosov.bilivideo.com/upgcxcode/1-30232.m4s", "https://www.bilibili.com/"),
+        # 海外镜像在备用地址里，以前没带 Referer 一律 403（2026-10-19 第 13P 主地址失败后全挂）
+        ("https://upos-hz-mirrorakam.akamaized.net/upgcxcode/1-30232.m4s", "https://www.bilibili.com/"),
+        ("https://example-a.akamaized.net/v.mp4", None),  # 别家客户的 Akamai 不带
+    ],
+)
+def test_bili_mirror_referer(url, referer):
+    assert referer_for(url) == referer
