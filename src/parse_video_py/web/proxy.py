@@ -101,6 +101,14 @@ async def _relay_body(resp: httpx.Response, slot: _StreamSlot, ip: str) -> Async
             await resp.aclose()
 
 
+def _outside_page(request: Request, download: int) -> bool:
+    """浏览器 UA、不带 Referer、又不是下载的代理请求：网页里的播放 / 预览都带 Referer。
+    2026-10-18 推特批量下载脚本被每日流量上限挡住后换着 IP（台湾的代理）继续拉，几千次请求全是这样；
+    真人不带 Referer 的只有 OPPO / vivo 浏览器自带的下载器接手下载，那些都带 download=1。"""
+    ua = request.headers.get("user-agent", "")
+    return not download and not request.headers.get("referer") and ua.startswith("Mozilla/")
+
+
 @router.get("/api/proxy", dependencies=SITE_AUTH)
 async def api_proxy(
     request: Request,
@@ -112,6 +120,8 @@ async def api_proxy(
 ):
     if not net.verify(url, sig):
         raise HTTPException(403, "这个地址不是解析结果里的，拒绝转发")
+    if _outside_page(request, download):
+        raise HTTPException(403, "请在网页里打开或下载")
     if not await is_safe_url_async(url):
         raise HTTPException(400, "不支持的地址")
     limits.proxy_daily.check(ip)
