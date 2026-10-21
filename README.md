@@ -15,11 +15,11 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-async-4DB899.svg)](https://fastapi.tiangolo.com/)
 [![yt-dlp](https://img.shields.io/badge/yt--dlp-auto--update-E8702A.svg)](https://github.com/yt-dlp/yt-dlp)
 [![Docker](https://img.shields.io/badge/docker-compose%20ready-1a1815.svg)](docker-compose.yml)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-6BAFDF.svg)](#-贡献)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-6BAFDF.svg)](#贡献)
 
 ### [🌐 在线体验 ynvan.com](https://ynvan.com)
 
-[快速开始](#-快速开始) · [功能](#-功能) · [部署](#-生产部署) · [性能](#-性能) · [配置](#%EF%B8%8F-配置) · [API](#-api) · [架构](#%EF%B8%8F-架构) · [安全](#-安全) · [贡献](#-贡献)
+[快速开始](#快速开始) · [功能](#功能) · [部署](#生产部署) · [性能](#性能) · [配置](#配置) · [API](#api) · [架构](#架构) · [安全](#安全) · [贡献](#贡献)
 
 </div>
 
@@ -46,13 +46,15 @@
 
 短视频平台把内容锁在 App 里：保存的视频带水印，图片被压缩，实况图只剩静态一帧，想做个表情包还得再找一个工具。求原图把这几步合成一次粘贴：
 
-**解析** — 贴上分享链接，拿到平台给网页端的无水印播放地址和原始尺寸图片
-**转换** — 在缩略图条上拖出想要的几秒，直接生成 GIF、实况照片或动态照片
-**原样打包** — 小红书 / 抖音自带的实况图，原图和短视频配好对，导入相册就会动
+| 步骤 | 做什么 |
+|---|---|
+| 解析 | 贴上分享链接，拿到平台给网页端的无水印播放地址和原始尺寸图片 |
+| 转换 | 在缩略图条上拖出想要的几秒，直接生成 GIF、实况照片或动态照片 |
+| 原样打包 | 小红书 / 抖音自带的实况图，原图和短视频配好对，导入相册就会动 |
 
 解析层基于 [parse-video-py](https://github.com/wujunwei928/parse-video-py) 和 [yt-dlp](https://github.com/yt-dlp/yt-dlp)；本项目把两者整合起来，补上转换能力，并做成一个可以公开部署的网站。
 
-## ✨ 功能
+## 功能
 
 <table>
 <tr><td width="33%" valign="top">
@@ -92,7 +94,7 @@
 </td></tr>
 </table>
 
-## 🌐 支持的平台
+## 支持的平台
 
 | 平台 | 视频 | 图集 | 实况图 | 清晰度 | 说明 |
 |---|:-:|:-:|:-:|---|---|
@@ -105,9 +107,9 @@
 | Instagram | ✅ | ✅ | – | 平台默认 | 多图帖取原图，图片和视频混着的也行 |
 | 微博、西瓜、皮皮虾、AcFun、TikTok … | ✅ | 部分 | – | | 30+ 平台，其余交给 yt-dlp 兜底 |
 
-> 解析依赖各平台网页结构，平台改版可能暂时失效。上游 parse-video-py 更新较勤，`parser/` 目录可直接同步。
+> 解析依赖各平台网页结构，平台改版可能暂时失效。上游 parse-video-py 更新较勤，修了某个平台时可以对照着改 `parser/` 里的解析器（不能直接覆盖，见[贡献](#贡献)）。
 
-## 🚀 快速开始
+## 快速开始
 
 需要 **Python 3.10+**。ffmpeg 不用单独装：PATH 里有就用系统的，没有就自动用 `imageio-ffmpeg` 自带的。
 
@@ -134,7 +136,7 @@ docker run -d -p 8000:8000 -v ./data:/app/data shizhen
 
 </details>
 
-## 🐳 生产部署
+## 生产部署
 
 一台 **4 核 / 8 GB / 100 Mbps** 的 VPS 就能跑。`docker-compose.yml` 带了三个服务：应用、[Caddy](https://caddyserver.com/)（自动 HTTPS 反代）、[bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)（YouTube PO Token）。
 
@@ -150,7 +152,7 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 push 到 main、测试通过后自动上线，自检不过自动回滚：配置方法见 [docs/deploy.md](docs/deploy.md)。
 
 <details>
-<summary><b>海外服务器必看</b> — 小红书 / B站 会拒绝海外和机房 IP</summary>
+<summary><b>海外服务器必看</b>：小红书 / B站 会拒绝海外和机房 IP</summary>
 
 <br>
 
@@ -196,17 +198,17 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 </details>
 
 <details>
-<summary><b>风控</b> — YouTube 提示「确认不是机器人」</summary>
+<summary><b>风控</b>：YouTube 提示「确认不是机器人」</summary>
 
 <br>
 
 接 PO Token 服务（compose 已配好 `PARSE_VIDEO_POT_URL=http://bgutil:4416`），或放一份 `cookies.txt` 并设 `PARSE_VIDEO_COOKIES_FILE`。
 
-`PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS=7` 会每周升级 yt-dlp 并在空闲时原地重启——平台改版全靠它跟进。
+`PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS=7` 会每周升级 yt-dlp 并在空闲时原地重启，平台改版全靠它跟进。
 
 </details>
 
-## ⚡ 性能
+## 性能
 
 出站连接全程复用（解析、中继、CDN 下载共用连接池），省掉重复的 DNS + TCP + TLS 握手。同一台机器上实测的前后对比：
 
@@ -245,7 +247,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 
 </details>
 
-## ⚙️ 配置
+## 配置
 
 全部通过环境变量，都可不填。
 
@@ -329,7 +331,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 
 </details>
 
-## 🔌 API
+## API
 
 网页用的就是这几个接口，快捷指令、脚本、自己的 App 都能接。上游 parse-video-py 的 `/video/share/url/parse`、`/video/id/parse`、`/mcp` 原样保留。
 
@@ -370,7 +372,7 @@ curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/8x0AeP8prW8/"
 
 任务接口都返回 `{id, status: queued|running|done|error, progress, message, filename, filesize}`，轮询 `/api/jobs/{id}` 直到 `done` 后取 `/file`。限流触发时返回 `429` 并带 `Retry-After`。
 
-## 🏗️ 架构
+## 架构
 
 ```mermaid
 flowchart LR
@@ -419,20 +421,22 @@ scripts/subset_fonts.py          改文案后重建衬线字体子集
 docker-compose.yml · Caddyfile   一台机器的 HTTPS 部署
 ```
 
-## 🔒 安全
+## 安全
 
 这是一个会替用户抓任意链接、再把文件转发回去的服务，公开部署时主要防两件事：被当成开放代理 / SSRF 跳板，以及被恶意媒体文件打崩。
 
-- **链接签名** — 代理、准备、下载、实况打包只接受 `/api/parse` 签过名的地址（HMAC），别人不能拿你的服务器代理任意网址
-- **SSRF 防护** — 字面内网 IP、localhost、`.internal`、云元数据地址一律拒绝；域名先解析再放行；302 跳转每一跳都检查，上游解析器同样覆盖
-- **连接隔离** — 出站连接池复用连接但不共享 Cookie jar，不同请求之间不会串会话
-- **响应头** — CSP、`X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy`；`/docs` `/openapi.json` 关闭
-- **进程** — 容器以非 root 运行；ffmpeg / yt-dlp 走参数列表不经 shell；任务超时或取消会杀掉子进程；错误信息不带服务器路径
-- **配额** — 按 IP 限流、并发任务数、上传与原视频上限、磁盘配额
+| 措施 | 做法 |
+| --- | --- |
+| 链接签名 | 代理、准备、下载、实况打包只接受 `/api/parse` 签过名的地址（HMAC），别人不能拿你的服务器代理任意网址 |
+| SSRF 防护 | 字面内网 IP、localhost、`.internal`、云元数据地址一律拒绝；域名先解析再放行；302 跳转每一跳都检查，上游解析器同样覆盖 |
+| 连接隔离 | 出站连接池复用连接但不共享 Cookie jar，不同请求之间不会串会话 |
+| 响应头 | CSP、`X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy`；`/docs` `/openapi.json` 关闭 |
+| 进程 | 容器以非 root 运行；ffmpeg / yt-dlp 走参数列表不经 shell；任务超时或取消会杀掉子进程；错误信息不带服务器路径 |
+| 配额 | 按 IP 限流、并发任务数、上传与原视频上限、磁盘配额 |
 
 仍需注意：ffmpeg 和 yt-dlp 处理的是不可信媒体，应保持更新（yt-dlp 可自动升级，ffmpeg 通过重建镜像更新）；`cookies.txt` 属于账号凭证，只应存放在服务器上；服务本身没有登录机制，限流针对的是脚本滥用，带宽成本需要部署者自行评估。
 
-## 🗺️ 路线图
+## 路线图
 
 - [x] 30+ 平台解析，yt-dlp 兜底
 - [x] GIF / iPhone 实况 / 安卓动态照片
@@ -446,7 +450,7 @@ docker-compose.yml · Caddyfile   一台机器的 HTTPS 部署
 - [ ] 多实例扩容：任务状态外置 + 产物共享存储（两件都要做，只搬状态解决不了产物在本机磁盘的问题）
 - [ ] 把抖音多档清晰度、小红书原图、X 兜底回馈给上游 parse-video-py
 
-## 🤝 贡献
+## 贡献
 
 欢迎 Issue 和 PR。
 
@@ -456,25 +460,24 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 .venv/bin/python main.py
 ```
 
-- **规范** — Python 用 ruff 格式化和检查（规则在 `pyproject.toml`：行宽 120、圈复杂度 ≤ 10、import 排序、常见 bug 写法），前端脚本用 ESLint（`eslint.config.mjs`：复杂度 ≤ 10、嵌套 ≤ 4 层、函数 ≤ 80 行），CI 里任何一项不过就不部署。`pre-commit install` 后每次提交自动跑 ruff；前端提交前跑 `npx eslint@10 src/parse_video_py/static/js`。测试：`python -m pytest -q`，不碰外网。
-- **分层** — `parser/` 只管「链接 → VideoInfo」，不碰 HTTP 接口；`convert/` 是下载、转换、任务队列，不认识 FastAPI；`web/` 只做参数校验、鉴权、限流，把活交给前两层。前端脚本在 `static/js/`，按功能分模块，不往模板里写内联脚本。
-
-- **加平台** — 在 `src/parse_video_py/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
-- **改文案** — 落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
-- **同步上游** — `parser/` 里的解析器都已按本项目的写法重写过（统一用 `BaseParser.get_json / get_text` 发请求、失败抛带原因的 `ParseError`），不能再拿上游文件直接覆盖；上游修了某个平台时对照着改，并补上 `tests/test_small_parsers.py` 里的离线用例。
-- **发起出站请求** — 一律用 `utils.create_async_client()` 或 `convert.net.safe_client()`，它们带 SSRF 逐跳检查并复用连接池。不要直接 `httpx.AsyncClient()`。
+- **规范**：Python 用 ruff 格式化和检查（规则在 `pyproject.toml`：行宽 120、圈复杂度 ≤ 10、import 排序、常见 bug 写法），前端脚本用 ESLint（`eslint.config.mjs`：复杂度 ≤ 10、嵌套 ≤ 4 层、函数 ≤ 80 行），CI 里任何一项不过就不部署。`pre-commit install` 后每次提交自动跑 ruff；前端提交前跑 `npx eslint@10 src/parse_video_py/static/js`。测试：`python -m pytest -q`，不碰外网。
+- **分层**：`parser/` 只管「链接 → VideoInfo」，不碰 HTTP 接口；`convert/` 是下载、转换、任务队列，不认识 FastAPI；`web/` 只做参数校验、鉴权、限流，把活交给前两层。前端脚本在 `static/js/`，按功能分模块，不往模板里写内联脚本。
+- **加平台**：在 `src/parse_video_py/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
+- **改文案**：落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
+- **同步上游**：`parser/` 里的解析器都已按本项目的写法重写过（统一用 `BaseParser.get_json / get_text` 发请求、失败抛带原因的 `ParseError`），不能再拿上游文件直接覆盖；上游修了某个平台时对照着改，并补上 `tests/test_small_parsers.py` 里的离线用例。
+- **发起出站请求**：一律用 `utils.create_async_client()` 或 `convert.net.safe_client()`，它们带 SSRF 逐跳检查并复用连接池。不要直接 `httpx.AsyncClient()`。
 - 提交前用真实链接验证：抖音、小红书、X、B站 各一条，三种转换格式各一次。
 
-## 🙏 致谢
+## 致谢
 
-- [parse-video-py](https://github.com/wujunwei928/parse-video-py) — 国内平台解析器，本项目的地基
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube 与兜底解析
-- [FFmpeg](https://ffmpeg.org/) / [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) — 所有转换
+- [parse-video-py](https://github.com/wujunwei928/parse-video-py)：国内平台解析器，本项目的地基
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)：YouTube 与兜底解析
+- [FFmpeg](https://ffmpeg.org/) / [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg)：所有转换
 - [FastAPI](https://fastapi.tiangolo.com/) · [httpx](https://www.python-httpx.org/) · [piexif](https://github.com/hMatoba/Piexif) · [fontTools](https://github.com/fonttools/fonttools)
 - [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) · [fxtwitter](https://github.com/FixTweet/FxTwitter)
 - 字体：[Noto Serif SC](https://fonts.google.com/noto/specimen/Noto+Serif+SC)、[Inter](https://rsms.me/inter/)、[Playfair Display](https://github.com/clauseggers/Playfair)、[JetBrains Mono](https://www.jetbrains.com/lp/mono/)
 
-## ⚖️ 免责声明与许可
+## 免责声明与许可
 
 本项目仅供个人学习与研究，请尊重内容创作者的版权，不要用于任何侵权用途。使用本项目部署的服务由部署者自行承担责任。
 
