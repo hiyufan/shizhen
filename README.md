@@ -101,7 +101,7 @@
 | 抖音 | ✅ | ✅ | ✅ | 720p – 1080p，H.265 | 背景音乐可单独下载 |
 | 小红书 | ✅ | ✅ | ✅ | 最高档 | 链接需带有效 `xsec_token`，现复制现用 |
 | 快手 | ✅ | ✅ | – | 平台默认 | |
-| YouTube | ✅ | – | – | 360p 直链，720p – 4K 服务端合并 | 需要时配置 PO Token / cookies |
+| YouTube | ✅ | – | – | 可读直链，720p – 4K 服务端合并 | Docker 内置原生会话 / SABR 失败兜底 |
 | X (Twitter) | ✅ | ✅ | – | 最高码率 | 敏感推文走 fxtwitter 兜底 |
 | B站 | ✅ | ✅ | ✅ | 480p 直链，720p / 1080p 服务端合并 | b23.tv 短链可用；动态里的图和实况也能取；番剧、电影不支持 |
 | Instagram | ✅ | ✅ | – | 平台默认 | 多图帖取原图，图片和视频混着的也行 |
@@ -138,7 +138,7 @@ docker run -d -p 8000:8000 -v ./data:/app/data shizhen
 
 ## 生产部署
 
-一台 **4 核 / 8 GB / 100 Mbps** 的 VPS 就能跑。`docker-compose.yml` 带了三个服务：应用、[Caddy](https://caddyserver.com/)（自动 HTTPS 反代）、[bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)（YouTube PO Token）。
+一台 **4 核 / 8 GB / 100 Mbps** 的 VPS 就能跑。`docker-compose.yml` 带了四个服务：应用、[Caddy](https://caddyserver.com/)（自动 HTTPS 反代）、[bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)（YouTube PO Token）和 WARP 备用出口。
 
 ```bash
 # 域名先解析到这台机器
@@ -202,7 +202,17 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 
 <br>
 
-接 PO Token 服务（compose 已配好 `PARSE_VIDEO_POT_URL=http://bgutil:4416`），或放一份 `cookies.txt` 并设 `PARSE_VIDEO_COOKIES_FILE`。
+完整的 YouTube 支持需要 EJS 脚本、JS 运行时和可用出口。Docker 已装 Deno；手动安装用 `pip install -e ".[web,cli,youtube]"`。`/api/health` 的 `js_runtime` 应为 `deno` 或受支持的 `node`，不能是 `null`。
+
+compose 已配好 `PARSE_VIDEO_POT_URL=http://bgutil:4416`，插件与服务端固定为相同版本。升级时要一起更新，不要只拉一个 `latest`。
+
+Docker 还包含独立解释器中的原生 Chromium 会话 / SABR 兜底。普通解析失败，或返回的媒体地址不可读时，会用同一浏览器会话生成内容绑定 Token，通过现有 WARP 完整下载、校验并缓存视频，随后复用预览、下载和转换。已在两个此前触发机器人验证的公开视频上验证完整下载，不需要账号 Cookie。高分辨率和音频下载失败时也可调用这条路径。
+
+同一链接的并发解析会合并为一次抓取；已验证的 YouTube 视频按视频 ID 复用缓存，长链接、短链接和时间戳分享都能命中，缓存读取无需等待其它视频的浏览器任务。默认路径失败后，备用解析和原生兜底并行恢复，接受先完成且通过媒体验证的结果。
+
+PO Token 不保证解除 IP 风控。其它部署可配置 `PARSE_VIDEO_PROXY_YOUTUBE`，只让 YouTube 的解析和媒体走这个出口；需要登录的内容仍需有效的 `cookies.txt`。自检会检查两条视频并读取媒体片段，单条解析成功不会把整个平台报成正常。
+
+实测结果、限制与排查方法见 [YouTube 排障](docs/youtube.md)。
 
 `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS=7` 会每周升级 yt-dlp 并在空闲时原地重启，平台改版全靠它跟进。
 
@@ -271,6 +281,7 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PARSE_VIDEO_PROXY` | – | 解析时使用的 HTTP 代理（所有平台） |
+| `PARSE_VIDEO_PROXY_YOUTUBE` | – | YouTube 页面、视频和图片的专用 HTTP 代理；优先于通用代理，PO Token 插件会使用同一个出口 |
 | `PARSE_VIDEO_PROXY_CN` | – | 只给国内平台（抖音 / 小红书 / 快手 / B站 / 微博…）的解析用的代理，海外服务器必备 |
 | `PARSE_VIDEO_PROXY_CN_MEDIA` | `0` | 设 `1` 时视频 / 图片本体的转发也走 `PROXY_CN`（CDN 被 403 时才需要，会吃代理带宽） |
 | `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | 边缘函数中继地址与口令（`scripts/esa-relay.js`） |
@@ -280,6 +291,9 @@ F12 → Network → 请求头里的 Cookie。B站 不登录也会自动领一份
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | yt-dlp 用的 Netscape 格式 cookies |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | 直接从浏览器读 cookies：`firefox` / `edge` / `chrome` |
 | `PARSE_VIDEO_POT_URL` | – | YouTube PO Token 服务地址，如 `http://bgutil:4416` |
+| `PARSE_VIDEO_YOUTUBE_NATIVE` | `1` | Docker 原生会话 / SABR 兜底；设 `0` 关闭，手动安装还须配置隔离解释器 |
+| `PARSE_VIDEO_YOUTUBE_NATIVE_PROXY` | – | 兜底专用的无认证 HTTP 代理；默认依次使用 YouTube 专用出口、WARP、通用出口 |
+| `PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT` | `75` | 单次原生会话下载与完整校验的秒数上限；还受接口 / 任务总超时约束 |
 | `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS` | `0` | 每隔几天自动升级 yt-dlp 并在空闲时重启 |
 | `PARSE_VIDEO_PARSE_CACHE` | `600` | 解析结果缓存秒数 |
 | `PARSE_VIDEO_DNS_TTL` | `300` | SSRF 检查的域名解析缓存秒数 |

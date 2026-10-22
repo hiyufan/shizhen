@@ -5,6 +5,7 @@ YouTube / TikTok / Instagram 以及其它没有专用解析器的站点, 统一�
 更高的清晰度需要服务端用 ffmpeg 合并, 放进 formats 里让前端按需下载。
 """
 
+import asyncio
 import contextlib
 from http.cookies import CookieError, SimpleCookie
 from typing import Any
@@ -12,7 +13,7 @@ from typing import Any
 from ..convert import config as convert_config
 from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
-from ..utils import fallback_proxy, proxy_for, run_ytdlp, wants_fallback
+from ..utils import fallback_proxy, proxy_for, run_ytdlp, wants_fallback, youtube_proxy
 from . import instagram
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 
@@ -21,20 +22,86 @@ _HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
 
 class YtDlp(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
+        from ..convert import youtube_native
+
+        if youtube_native.cached(share_url):
+            return await youtube_native.parse(share_url)
         try:
             info = await run_ytdlp(self._extract, share_url)
+            return await self._usable_info(info, share_url)
         except Exception as err:
-            # Instagram 图片帖：yt-dlp 只认视频，图片项全报 No video formats found
-            if "No video formats found" in str(err) and (post := await instagram.image_post(share_url)):
-                return post
-            if not wants_fallback(err):
-                raise
-            # 被 YouTube 抽查到了：换备用出口再来一次，直链也记下来走同一个出口（见 net.remember_fallback）
-            info = await run_ytdlp(self._extract, share_url, fallback_proxy())
-            result = self._to_video_info(info, share_url)
-            net.remember_fallback([result.video_url, *(f.url for f in result.formats)])
-            return result
-        return self._to_video_info(info, share_url)
+            # 图片帖会报 No video formats found 或 There is no video in this post；
+            # 空媒体响应也可能只是 yt-dlp 的接口没拿到，公开页面仍然有原图。
+            # 兜底失败不能盖掉原错误（例如本来是限龄，兜底却撞上网络超时）。
+            if instagram.post_code(share_url):
+                with contextlib.suppress(Exception):
+                    if post := await instagram.image_post(share_url):
+                        return post
+            if wants_fallback(err, share_url):
+                if youtube_native.should_try(err, share_url):
+                    return await self._race_fallbacks(share_url)
+                try:
+                    info = await run_ytdlp(self._extract, share_url, fallback_proxy())
+                    return await self._usable_info(info, share_url, fallback=True)
+                except Exception as fallback_err:
+                    err = fallback_err
+            if youtube_native.should_try(err, share_url):
+                return await self._native_info(share_url, err)
+            raise err
+
+    @staticmethod
+    async def _native_info(share_url: str, err: Exception) -> VideoInfo:
+        from ..convert import youtube_native
+
+        try:
+            return await youtube_native.parse(share_url)
+        except asyncio.TimeoutError:
+            raise
+        except Exception as native_err:
+            # SABR 的泛化 unavailable 不能把原先的风控误报为视频已删除。
+            raise err from native_err
+
+    async def _fallback_info(self, share_url: str) -> VideoInfo:
+        info = await run_ytdlp(self._extract, share_url, fallback_proxy())
+        return await self._usable_info(info, share_url, fallback=True)
+
+    async def _race_fallbacks(self, share_url: str) -> VideoInfo:
+        """默认路径失败后并行恢复；只接受可读媒体或完整验证的缓存。"""
+        from ..convert import youtube_native
+
+        fallback = asyncio.create_task(self._fallback_info(share_url))
+        native = asyncio.create_task(youtube_native.parse(share_url))
+        attempts = (fallback, native)
+        try:
+            for finished in asyncio.as_completed(attempts):
+                try:
+                    return await finished
+                except Exception:
+                    if (
+                        fallback.done()
+                        and (err := fallback.exception())
+                        and not youtube_native.should_try(err, share_url)
+                    ):
+                        raise err from None
+            error = native.exception()
+            if isinstance(error, asyncio.TimeoutError):
+                raise error
+            raise fallback.exception() from error
+        finally:
+            for attempt in attempts:
+                if not attempt.done():
+                    attempt.cancel()
+            await asyncio.gather(*attempts, return_exceptions=True)
+
+    async def _usable_info(self, info: dict, share_url: str, *, fallback: bool = False) -> VideoInfo:
+        from ..convert import youtube_native
+
+        result = self._to_video_info(info, share_url)
+        if fallback:
+            net.remember_fallback([share_url, result.page_url, result.video_url, *(f.url for f in result.formats)])
+        if youtube_native.enabled() and youtube_native.video_id(share_url):
+            await youtube_native.check_media(result)
+        return result
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         # 没有统一的 id 规则, 只接受完整链接
@@ -53,8 +120,9 @@ class YtDlp(BaseParser):
             "socket_timeout": 25,
             "ffmpeg_location": ffmpeg_dir(),
             **convert_config.ytdlp_cookie_opts(),
+            **convert_config.ytdlp_runtime_opts(),
         }
-        if proxy := proxy or proxy_for():
+        if proxy := proxy or youtube_proxy(url) or proxy_for():
             opts["proxy"] = proxy
         # yt-dlp 自己跟跳转、抓页面里嵌的地址；连内网由 net 里换掉的 getaddrinfo 拦
         with yt_dlp.YoutubeDL(opts) as ydl:

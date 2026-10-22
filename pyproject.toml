@@ -34,7 +34,8 @@ cli = [
     "rich>=13.0",
 ]
 youtube = [
-    "bgutil-ytdlp-pot-provider>=1.0",
+    "bgutil-ytdlp-pot-provider==2.0.2",  # 和 compose 的 HTTP 服务保持一致
+    "deno>=2.6.6",                    # yt-dlp-ejs 的 JS 运行时；只装脚本包不够
 ]
 douyin = [
     # 抖音图文兜底解析：无痕 Chromium 渲染 PC 版页面（见 douyin.py _note_via_browser）

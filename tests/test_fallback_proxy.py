@@ -59,6 +59,7 @@ def test_parse_retries_through_fallback_and_remembers_urls(warp, monkeypatch):
     assert calls == [None, "http://warp:1080"]
     assert info.video_url == "https://rr1.googlevideo.com/a"
     assert net.proxy_for_url(info.video_url) == "http://warp:1080"
+    assert net.proxy_for_url("https://www.youtube.com/watch?v=abc") == "http://warp:1080"
     assert net.proxy_for_url("https://rr1.googlevideo.com/other") != "http://warp:1080"
 
 

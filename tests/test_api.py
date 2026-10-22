@@ -130,6 +130,73 @@ def test_success_is_cached(client, calls, recorded):
     assert recorded[1] == ("parse", {"source": "douyin", "ok": True, "reason": "cache"})
 
 
+@pytest.mark.asyncio
+async def test_concurrent_parses_share_one_upstream_request(client, monkeypatch, recorded):
+    entered, release = asyncio.Event(), asyncio.Event()
+    urls = []
+
+    async def parse(url):
+        urls.append(url)
+        entered.set()
+        await release.wait()
+        return _info()
+
+    async def safe(_url):
+        return True
+
+    monkeypatch.setattr(parse_api, "parse_video_share_url", parse)
+    monkeypatch.setattr(parse_api, "is_safe_url_async", safe)
+    monkeypatch.setattr(limits.parse_upstream_global, "burst", 1)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=web.app), base_url="http://test") as http:
+        first = asyncio.create_task(http.get("/api/parse", params={"url": SHARE}))
+        await asyncio.wait_for(entered.wait(), 1)
+        rest = [asyncio.create_task(http.get("/api/parse", params={"url": SHARE})) for _ in range(5)]
+        await asyncio.sleep(0)
+        release.set()
+        results = await asyncio.gather(first, *rest)
+    assert urls == [SHARE] and all(r.status_code == 200 and r.json()["code"] == 200 for r in results)
+    assert len(recorded) == 6 and not parse_api._pending
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_all", [False, True])
+async def test_shared_parse_cancellation_tracks_remaining_waiters(client, monkeypatch, cancel_all):
+    entered, release, stopped = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def parse(_url):
+        entered.set()
+        try:
+            await release.wait()
+            return {"code": 200}
+        finally:
+            stopped.set()
+
+    monkeypatch.setattr(parse_api, "_parse", parse)
+    first = asyncio.create_task(parse_api._shared_parse(SHARE))
+    await asyncio.wait_for(entered.wait(), 1)
+    second = asyncio.create_task(parse_api._shared_parse(SHARE))
+    await asyncio.sleep(0)
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    assert not stopped.is_set() and not second.done()
+    if cancel_all:
+        second.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await second
+    else:
+        release.set()
+        assert await second == {"code": 200}
+    assert stopped.is_set() and not parse_api._pending
+
+
+def test_youtube_failure_is_counted_under_youtube(client, calls, recorded):
+    calls["result"] = ParseError("blocked")
+    body = client.get("/api/parse", params={"url": "https://youtu.be/example"}).json()
+    assert body["reason"] == "blocked"
+    assert recorded[0][1]["source"] == "youtube" and not recorded[0][1]["ok"]
+
+
 def test_edge_image_urls_only_for_whitelisted_cdns(client, calls, recorded, monkeypatch):
     monkeypatch.setattr(relay, "RELAY_URL", "https://edge.example.com/relay")
     monkeypatch.setattr(relay, "RELAY_TOKEN", "tok")

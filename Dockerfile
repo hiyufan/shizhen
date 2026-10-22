@@ -12,10 +12,20 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 # 先放一个空包让 pip 按 pyproject 把依赖装上，再卸掉它，真正的代码在后面装
 COPY pyproject.toml ./
 RUN mkdir -p src/parse_video_py && touch src/parse_video_py/__init__.py \
-    && pip install --no-cache-dir ".[web,cli,douyin]" bgutil-ytdlp-pot-provider \
+    && pip install --no-cache-dir ".[web,cli,douyin,youtube]" \
     && pip uninstall -y parse-video-py && rm -rf src \
     && playwright install --with-deps chromium \
     && chmod -R a+rX /opt/pw-browsers
+
+# SABR 尚在上游实验分支：只装到隔离解释器，普通平台继续使用上面的正式 yt-dlp。
+COPY docker/youtube/requirements.txt /opt/youtube-native/requirements.txt
+RUN python -m venv /opt/youtube-native/venv \
+    && /opt/youtube-native/venv/bin/pip install --no-cache-dir -r /opt/youtube-native/requirements.txt \
+    && /opt/youtube-native/venv/bin/playwright install chromium \
+    && chmod -R a+rX /opt/pw-browsers
+COPY docker/youtube/probe.py /opt/youtube-native/probe.py
+ENV PARSE_VIDEO_YOUTUBE_NATIVE_PYTHON=/opt/youtube-native/venv/bin/python \
+    PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT=/opt/youtube-native/probe.py
 
 # yt-dlp 要跟着平台改版勤更新，以前靠每次部署重装顺带拿到最新版。上面那层缓存住以后单独刷：
 # deploy.sh 把 YTDLP_REFRESH 设成当天日期，一天之内的部署共用缓存，换一天就重新拉一次

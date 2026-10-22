@@ -11,11 +11,11 @@ from urllib.parse import quote
 import anyio
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import stats
-from ..convert import net
+from ..convert import net, youtube_native
 from ..convert.net import headers_for, is_safe_url_async, safe_filename
 from . import limits
 from .auth import SITE_AUTH
@@ -49,6 +49,29 @@ class _StreamSlot:
             self._held = False
             limits.proxy_streams.release(self._ip)
             limits.proxy_streams_global.release(limits.GLOBAL)
+
+
+class _CachedVideoResponse(FileResponse):
+    """本地兜底文件照样透传 Range，并按实际发送字节计入代理配额。"""
+
+    def __init__(self, path: str, slot: _StreamSlot, ip: str, headers: dict):
+        super().__init__(path, media_type="video/mp4", headers=headers)
+        self.slot, self.ip = slot, ip
+
+    async def __call__(self, scope, receive, send):
+        async def counted(message):
+            if message["type"] == "http.response.body":
+                limits.proxy_daily.add(self.ip, len(message.get("body", b"")))
+            await send(message)
+
+        # pathsend 会绕过 body 回调；此处需要逐块计量和释放名额。
+        scope = scope | {
+            "extensions": {k: v for k, v in scope.get("extensions", {}).items() if k != "http.response.pathsend"}
+        }
+        try:
+            await super().__call__(scope, receive, counted)
+        finally:
+            self.slot.release()
 
 
 async def _open_upstream(url: str, headers: dict[str, str]) -> httpx.Response:
@@ -109,6 +132,14 @@ def _outside_page(request: Request, download: int) -> bool:
     return not download and not request.headers.get("referer") and ua.startswith("Mozilla/")
 
 
+def _cached_video(path: str, filename: str, download: int, url: str, ip: str):
+    headers = {"cache-control": "private, max-age=3600"}
+    if download:
+        headers["content-disposition"] = _attachment(filename, "video/mp4")
+        stats.record_download(ip, url, source="youtube")
+    return _CachedVideoResponse(path, _StreamSlot(ip, counted=True), ip, headers)
+
+
 @router.get("/api/proxy", dependencies=SITE_AUTH)
 async def api_proxy(
     request: Request,
@@ -122,9 +153,15 @@ async def api_proxy(
         raise HTTPException(403, "这个地址不是解析结果里的，拒绝转发")
     if _outside_page(request, download):
         raise HTTPException(403, "请在网页里打开或下载")
-    if not await is_safe_url_async(url):
+    cached = youtube_native.source_for_asset(url)
+    if youtube_native.is_asset_url(url) and not cached:
+        raise HTTPException(410, "原视频已过期，请重新解析")
+    if not cached and not await is_safe_url_async(url):
         raise HTTPException(400, "不支持的地址")
     limits.proxy_daily.check(ip)
+
+    if cached:
+        return _cached_video(cached.path, filename, download, url, ip)
 
     upstream_headers = headers_for(url)
     if byte_range := request.headers.get("range"):

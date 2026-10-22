@@ -1,0 +1,6 @@
+# 独立解释器中的 YouTube 兜底，不替换主应用的 yt-dlp。
+yt-dlp[default] @ https://github.com/bashonly/yt-dlp/archive/54f9a7b75e2b4a7611fdf47aa3227b809382386e.tar.gz
+playwright==1.64.0
+deno==2.9.8
+yt-dlp-ejs==0.8.0
+protobug==1.0.0

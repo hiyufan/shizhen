@@ -63,14 +63,32 @@ def proxy_for(source: str | None = None) -> str | None:
 # PARSE_VIDEO_FALLBACK_PROXY 一般指向 docker-compose 里的 warp 服务（Cloudflare WARP）：
 # 平时直连，只有被抽查到的才绕一下
 _BOT_CHECK = re.compile(r"confirm you.{0,3}re not a bot", re.I)
+_YOUTUBE_HTTP_BLOCK = re.compile(r"HTTP (?:Error )?(?:403|429)\b", re.I)
+
+
+def is_youtube_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    domains = ("youtube.com", "youtu.be", "youtube-nocookie.com", "googlevideo.com", "ytimg.com")
+    return any(host == domain or host.endswith("." + domain) for domain in domains)
+
+
+def youtube_proxy(url: str) -> str | None:
+    """YouTube 页面、PO Token 和媒体使用同一个专用出口，其它平台不受影响。"""
+    if is_youtube_url(url):
+        return os.getenv("PARSE_VIDEO_PROXY_YOUTUBE", "").strip() or None
+    return None
 
 
 def fallback_proxy() -> str:
     return os.getenv("PARSE_VIDEO_FALLBACK_PROXY", "").strip()
 
 
-def wants_fallback(err: BaseException) -> bool:
-    return bool(fallback_proxy()) and bool(_BOT_CHECK.search(str(err)))
+def wants_fallback(err: BaseException, url: str = "") -> bool:
+    text = str(err)
+    status = getattr(getattr(err, "response", None), "status_code", None)
+    return bool(fallback_proxy()) and bool(
+        _BOT_CHECK.search(text) or (is_youtube_url(url) and (status in (403, 429) or _YOUTUBE_HTTP_BLOCK.search(text)))
+    )
 
 
 # 链接一直到空白、引号、中文（含全角标点）或表情为止。以前的写法只认字母数字和 / - 这几个，

@@ -31,7 +31,7 @@ class ParseError(Exception):
 
 _RULES: list[tuple[str, re.Pattern[str]]] = [
     # yt-dlp 在只有图片的帖子（Instagram 图片帖之类）上报这个，以前被归成「页面结构变了」
-    ("empty", re.compile(r"No video formats found", re.I)),
+    ("empty", re.compile(r"No video formats found|There is no video in this post", re.I)),
     # Instagram 对未登录访客隐藏的敏感 / 限龄内容（2026-10-08 被归成了「页面结构变了」）
     ("restricted", re.compile(r"isn't available to everyone|seen by certain audiences", re.I)),
     (
@@ -42,6 +42,8 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
             re.I,
         ),
     ),
+    # YouTube 的反机器人报错也带 Sign in / cookies；不能先被通用登录规则收走。
+    ("blocked", re.compile(r"confirm you.{0,3}re not a bot", re.I)),
     ("login", re.compile(r"sign in|log ?in|login|cookies|authentication|登录|账号|需要.*登录", re.I)),
     (
         "blocked",

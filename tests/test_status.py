@@ -2,10 +2,13 @@
 
 import asyncio
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from parse_video_py import status, web
+from parse_video_py.convert import net, youtube_native
+from parse_video_py.parser.base import VideoInfo
 from parse_video_py.parser.errors import ParseError
 
 
@@ -39,6 +42,61 @@ def _parser(results: dict):
 def test_probe_one(results, expected):
     ok, reason, _ = asyncio.run(status.probe_one("douyin", list(results), _parser(results)))
     assert (ok, reason) == expected
+
+
+@pytest.mark.parametrize("platform,enabled", [("youtube", True), ("youtube", False), ("douyin", True)])
+async def test_native_probe_has_time_for_complete_download(monkeypatch, platform, enabled):
+    budgets = []
+
+    async def wait_for(coro, timeout):
+        budgets.append(timeout)
+        return await coro
+
+    async def media(_info):
+        pass
+
+    monkeypatch.setattr(youtube_native, "enabled", lambda: enabled)
+    monkeypatch.setattr(status.asyncio, "wait_for", wait_for)
+    monkeypatch.setattr(status, "_probe_youtube_media", media)
+    ok, _, _ = await status.probe_one(platform, ["a"], _parser({"a": "info"}))
+    expected = status.PROBE_TIMEOUT
+    if platform == "youtube" and enabled:
+        expected += status.config.YOUTUBE_NATIVE_TIMEOUT
+    assert ok and budgets == [expected]
+
+
+@pytest.mark.parametrize("code,body,expected", [(206, b"media", True), (403, b"denied", False), (200, b"", False)])
+async def test_youtube_probe_reads_media_not_just_metadata(monkeypatch, code, body, expected):
+    info = VideoInfo(video_url="https://cdn.example/video.mp4", cover_url="", video_headers={"Cookie": "session=test"})
+
+    async def parse(_url):
+        return info
+
+    def respond(request):
+        assert request.headers["Range"] == "bytes=0-1023"
+        assert request.headers["Cookie"] == "session=test"
+        return httpx.Response(code, headers={"content-type": "video/mp4"}, stream=httpx.ByteStream(body))
+
+    monkeypatch.setattr(net, "safe_client", lambda **_kw: httpx.AsyncClient(transport=httpx.MockTransport(respond)))
+    ok, reason, _ = await status.probe_one("youtube", ["video"], parse)
+    assert ok is expected
+    if code == 403:
+        assert reason == "blocked"
+    elif not body:
+        assert reason == "empty"
+
+
+@pytest.mark.parametrize("second_error,expected", [("blocked", False), ("deleted", True)])
+async def test_youtube_checks_second_sample_after_first_succeeds(monkeypatch, second_error, expected):
+    checked = []
+
+    async def media(info):
+        checked.append(info)
+
+    monkeypatch.setattr(status, "_probe_youtube_media", media)
+    parse = _parser({"a": "working-media", "b": ParseError(second_error)})
+    ok, _, _ = await status.probe_one("youtube", ["a", "b"], parse)
+    assert ok is expected and checked == ["working-media"]
 
 
 def test_probe_links_from_env(monkeypatch):
