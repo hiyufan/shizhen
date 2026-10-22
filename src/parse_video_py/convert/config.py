@@ -29,6 +29,11 @@ YOUTUBE_NATIVE_TIMEOUT = float(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOU
 # 解析时整条视频要在上面的时间里下完：开浏览器约 15 秒，经 WARP 实测 6.7 MB/s（2026-10-22，
 # 10 分钟 720p60 共 182 MB 下了 27 秒）。估算超过这个大小就自动降一档清晰度，最低一档也放不下就直说
 YOUTUBE_NATIVE_PARSE_BYTES = int(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_PARSE_BYTES", 120 * 1024 * 1024))
+# 开浏览器之前先经同一出口用 yt-dlp 并发拉 HLS 分片：受限视频的 TV 直链经 WARP 一律 403，HLS 却能下，
+# 实测 10 分钟 720p 18 MB 8 秒、161 MB 13 秒（2026-10-22，约 12 MB/s）。设 0 关闭
+YOUTUBE_HLS = os.environ.get("PARSE_VIDEO_YOUTUBE_HLS", "1") != "0"
+# 解析时 HLS 能下多大：比浏览器路径快得多，给得比上面宽；HLS 没走通时还要留时间开浏览器
+YOUTUBE_HLS_PARSE_BYTES = int(os.environ.get("PARSE_VIDEO_YOUTUBE_HLS_PARSE_BYTES", 200 * 1024 * 1024))
 # 同时开几个浏览器会话：每个约 0.5 GB 内存
 YOUTUBE_NATIVE_CONCURRENCY = int(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_CONCURRENCY", "2"))
 

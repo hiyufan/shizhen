@@ -21,6 +21,7 @@ from parse_video_py.web import proxy as proxy_api
 
 VIDEO_ID = "iN1N8o3Miv4"
 PAGE = f"https://www.youtube.com/watch?v={VIDEO_ID}"
+_REAL_HLS = native._hls  # 夹具默认换成「没有 HLS」，测 HLS 本身时用这个
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +34,12 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "UPLOADS_DIR", tmp_path / "uploads")
     monkeypatch.setattr(config, "BIN_DIR", tmp_path / "bin")
     monkeypatch.setattr(native, "enabled", lambda: True)
+
+    # 默认没有 HLS，用例走浏览器那条路；测 HLS 的用例自己换掉
+    async def no_hls(*_a, **_kw):
+        raise native._NoHls("没有可用的 HLS 格式")
+
+    monkeypatch.setattr(native, "_hls", no_hls)
 
 
 class _Calls(list):
@@ -384,18 +391,16 @@ async def test_timeout_or_cancellation_reaps_worker_child_process(monkeypatch, t
 @pytest.mark.asyncio
 async def test_parse_fits_its_time_budget_but_jobs_get_the_full_limit(worker, tmp_path):
     info = await native.parse(PAGE)
-    assert worker.budgets[0] == {
-        "fit": True,
-        "max_bytes": config.YOUTUBE_NATIVE_PARSE_BYTES,
-        "timeout": config.YOUTUBE_NATIVE_TIMEOUT,
-        "on_event": None,
-    }
+    budget = worker.budgets[0]
+    assert budget.pop("timeout") == pytest.approx(config.YOUTUBE_NATIVE_TIMEOUT, abs=1)
+    assert budget == {"fit": True, "max_bytes": config.YOUTUBE_NATIVE_PARSE_BYTES, "on_event": None}
     reports = []
     out = await native.download(PAGE, "youtube-native:1080", tmp_path / "out", "v", lambda *a: reports.append(a))
     assert worker[-1][1] == 1080 and out.is_file()
     budget = worker.budgets[-1]
     assert "fit" not in budget and budget["max_bytes"] == config.MAX_SOURCE_BYTES
-    assert budget["timeout"] == config.YOUTUBE_NATIVE_JOB_TIMEOUT > config.YOUTUBE_NATIVE_TIMEOUT
+    assert budget["timeout"] == pytest.approx(config.YOUTUBE_NATIVE_JOB_TIMEOUT, abs=1)
+    assert config.YOUTUBE_NATIVE_JOB_TIMEOUT > config.YOUTUBE_NATIVE_TIMEOUT
     # 解析时下好的那份清晰度一样就直接用，不再开浏览器
     same = await native.download(PAGE, "youtube-native:720", tmp_path / "out", "same")
     assert len(worker) == 2 and same.read_bytes() == Path(native.source_for_asset(info.video_url).path).read_bytes()
@@ -489,3 +494,204 @@ def test_hardlinked_copies_count_once_toward_disk_quota(monkeypatch):
     src.write_bytes(b"x" * 1000)
     native.link_or_copy(src, config.OUTPUTS_DIR / "b.mp4")
     assert store.disk_usage() == 1000
+
+
+# --------------------------------------------------------------------------- HLS（不开浏览器）
+
+
+def _hls_result(work, vid=VIDEO_ID, height=720):
+    path = work / "video.mp4"
+    path.write_bytes(b"hls-media" * 200)
+    return {
+        "id": vid,
+        "via": "hls",
+        "file": str(path),
+        "title": "韩语课程",
+        "duration": 592.0,
+        "heights": [360, 720, 1080],
+        "streams": [
+            {"codec_type": "video", "width": 1280, "height": height, "avg_frame_rate": "30.0"},
+            {"codec_type": "audio"},
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_hls_success_skips_the_browser(worker, monkeypatch):
+    budgets = []
+
+    async def hls(vid, height, work, proxy, **budget):
+        budgets.append(budget)
+        return _hls_result(work, vid, height)
+
+    monkeypatch.setattr(native, "_hls", hls)
+    info = await native.parse(PAGE)
+    assert not worker and info.height == 720 and native.cached(PAGE)
+    assert budgets[0] == {
+        "fit": True,
+        "max_bytes": config.YOUTUBE_HLS_PARSE_BYTES,
+        "timeout": config.YOUTUBE_NATIVE_TIMEOUT - native._BROWSER_RESERVE,
+        "on_event": None,
+    }
+    assert [f.format_spec for f in info.formats] == ["youtube-native:1080", "youtube-native:audio"]
+    await native.download(PAGE, "youtube-native:1080", config.OUTPUTS_DIR, "v")
+    assert budgets[1]["max_bytes"] == config.MAX_SOURCE_BYTES and budgets[1]["fit"] is False
+
+
+@pytest.mark.asyncio
+async def test_hls_failure_clears_partial_files_then_opens_browser(worker, monkeypatch):
+    seen = []
+
+    async def broken(vid, height, work, proxy, **budget):
+        (work / "video.f232.mp4.part").write_bytes(b"x")
+        raise RuntimeError("HTTP Error 403: Forbidden")
+
+    async def fake_worker(vid, height, work, proxy, **budget):
+        seen.append(sorted(p.name for p in work.iterdir()))
+        return await worker_impl(vid, height, work, proxy, **budget)
+
+    worker_impl = native._worker
+    monkeypatch.setattr(native, "_hls", broken)
+    monkeypatch.setattr(native, "_worker", fake_worker)
+    info = await native.parse(PAGE)
+    assert seen == [[]] and len(worker) == 1 and info.height == 720
+
+
+@pytest.mark.asyncio
+async def test_hls_too_large_is_final_for_parse_but_jobs_ask_the_browser(worker, monkeypatch):
+    async def too_large(*_a, **_kw):
+        raise native._too_large({"height": 144, "bytes": 5e8, "duration": 7200, "limit": 1.5e8})
+
+    monkeypatch.setattr(native, "_hls", too_large)
+    with pytest.raises(native.Refused) as err:
+        await native.parse(PAGE)
+    assert err.value.reason == "too_large" and not worker
+    # 任务的估算偏保守：浏览器有准确大小，让它再判断
+    await native.download(PAGE, "youtube-native:1080", config.OUTPUTS_DIR, "v")
+    assert [c[1] for c in worker] == [1080]
+
+
+def _fmt(fid, height=0, vcodec="none", acodec="none", tbr=0, protocol="m3u8_native"):
+    return {
+        "format_id": fid,
+        "height": height,
+        "vcodec": vcodec,
+        "acodec": acodec,
+        "tbr": tbr,
+        "protocol": protocol,
+        "url": "https://manifest.googlevideo.com/x",
+    }
+
+
+_HLS_INFO = {
+    "duration": 600,
+    "formats": [
+        # 真实的 HLS 音轨 acodec / tbr 都是空的
+        _fmt("233", acodec=None, tbr=None),
+        _fmt("234", acodec=None, tbr=None),
+        _fmt("232", 720, "avc1.4D401F", tbr=1500),
+        _fmt("311", 720, "avc1.4D4020", tbr=3000),  # 720p60
+        _fmt("609", 720, "vp09.00.31.08", tbr=2000),  # 1080p 以内不要 VP9
+        _fmt("231", 480, "avc1.4D401E", tbr=800),
+        _fmt("270", 1080, "avc1.640028", tbr=4500),
+        _fmt("136", 720, "avc1.4D401F", tbr=1000, protocol="https"),  # TV 直链经 WARP 403，不用
+    ],
+}
+
+
+def test_hls_plan_prefers_exact_sizes_of_matching_https_tracks():
+    exact = {
+        "duration": 600,
+        "formats": [
+            *_HLS_INFO["formats"],
+            {
+                "format_id": "298",
+                "height": 720,
+                "fps": 60,
+                "vcodec": "avc1.4D4020",
+                "acodec": "none",
+                "filesize": 150_000_000,
+            },
+            {
+                "format_id": "136",
+                "height": 720,
+                "fps": 30,
+                "vcodec": "avc1.4D401F",
+                "acodec": "none",
+                "filesize": 80_000_000,
+            },
+            {"format_id": "140", "vcodec": "none", "acodec": "mp4a.40.2", "filesize": 10_000_000},
+        ],
+    }
+    for f in exact["formats"]:
+        if f["format_id"] == "311":
+            f["fps"] = 60.0
+    # 311（720p60 H.264）对应 298，234 对应 140；按码率估会是 (3000 + 128) * 125 * 600 = 234.6 MB
+    assert native._hls_plan(exact, 720, 300 << 20, fit=True) == ("311+234", 720, 160_000_000)
+
+
+def test_hls_plan_picks_h264_and_steps_down_to_fit():
+    # 720p 挑码率高的 60 帧：(3000 + 128) kbit/s * 600 s
+    assert native._hls_plan(_HLS_INFO, 720, 300 << 20, fit=True) == ("311+234", 720, 234_600_000)
+    assert native._hls_plan(_HLS_INFO, 720, 100 << 20, fit=True)[:2] == ("231+234", 480)
+    assert native._hls_plan(_HLS_INFO, 1080, 1 << 30, fit=False)[:2] == ("270+234", 1080)
+    with pytest.raises(native.Refused) as err:
+        native._hls_plan(_HLS_INFO, 720, 1 << 20, fit=True)
+    assert err.value.reason == "too_large" and "480p" in str(err.value)
+    with pytest.raises(native.Refused):  # 用户点名的清晰度放不下不偷偷降
+        native._hls_plan(_HLS_INFO, 720, 100 << 20, fit=False)
+    with pytest.raises(native._NoHls):  # 没有 HLS 音轨
+        video_only = [f for f in _HLS_INFO["formats"] if f["vcodec"] != "none"]
+        native._hls_plan({"duration": 600, "formats": video_only}, 720, 1 << 30, fit=True)
+
+
+def test_hls_hooks_stop_on_cancel_and_size_limit():
+    import yt_dlp
+
+    events = []
+    hooks = native._HlsHooks(1000, events.append)
+    hooks.progress({"status": "downloading", "filename": "v", "downloaded_bytes": 600})
+    with pytest.raises(RuntimeError, match="大小上限"):
+        hooks.progress({"status": "downloading", "filename": "a", "downloaded_bytes": 600})
+    hooks.stop.set()
+    with pytest.raises(yt_dlp.utils.DownloadCancelled):
+        hooks.progress({"status": "downloading", "filename": "v", "downloaded_bytes": 700})
+    assert events == [{"stage": "bytes", "done": 600}]
+
+
+@pytest.mark.asyncio
+async def test_hls_timeout_stops_the_download_thread(monkeypatch, tmp_path):
+    """超时后 yt-dlp 的线程要真停下来，不能在后台接着下、往删掉的目录里写。"""
+    import threading
+
+    import yt_dlp
+
+    finished = threading.Event()
+
+    class FakeYDL:
+        def __init__(self, params):
+            self.params = params
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def extract_info(self, url, download, process):
+            return {"id": VIDEO_ID, **_HLS_INFO}
+
+        def process_ie_result(self, info, download):
+            try:
+                for i in range(10_000):
+                    for hook in self.params["progress_hooks"]:
+                        hook({"status": "downloading", "filename": "v", "downloaded_bytes": i})
+                    threading.Event().wait(0.01)
+            finally:
+                finished.set()
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", FakeYDL)
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(asyncio.TimeoutError):
+        await _REAL_HLS(VIDEO_ID, 720, tmp_path, "", timeout=0.3)
+    assert finished.is_set() and asyncio.get_running_loop().time() - started < 5
