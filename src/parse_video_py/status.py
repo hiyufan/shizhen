@@ -116,6 +116,7 @@ REASON_LABELS = {
     "empty": "没拿到内容",
     "unsupported": "不支持",
     "copyright": "版权内容",
+    "too_large": "视频太大",
 }
 
 FAQ = [
@@ -183,6 +184,17 @@ def _probe_timeout(platform: str) -> float:
     return PROBE_TIMEOUT
 
 
+async def _fresh_parse(platform: str, parse, link: str):
+    """YouTube 兜底下好的文件会缓存、被用到就续期；自检每小时一次，要是读缓存，
+    第一次走通以后就永远报正常。自检时绕开缓存，现拿一份最低清晰度的。"""
+    from .convert import youtube_native
+
+    if platform != "youtube":
+        return await parse(link)
+    with youtube_native.fresh():
+        return await parse(link)
+
+
 async def probe_one(platform: str, links: list[str], parse) -> tuple[bool, str, float]:
     """YouTube 的有效样本都要能读媒体；其它平台第一条有效样本成功即可。"""
     reason, ms = "canary", 0.0
@@ -190,7 +202,7 @@ async def probe_one(platform: str, links: list[str], parse) -> tuple[bool, str, 
     for link in links:
         started = time.monotonic()
         try:
-            info = await asyncio.wait_for(parse(link), _probe_timeout(platform))
+            info = await asyncio.wait_for(_fresh_parse(platform, parse, link), _probe_timeout(platform))
             if platform == "youtube":
                 await _probe_youtube_media(info)
                 youtube_ok = True

@@ -67,11 +67,18 @@ def known_paths() -> set[Path]:
     return known
 
 
+def _file_size(f: Path) -> int:
+    # YouTube 兜底下好的原视频会硬链接给任务用（youtube_native.link_or_copy）：同一份数据
+    # 有几个名字就按几份平摊，加起来才是真实占用，不然配额会被重复计算、提前清缓存
+    st = f.stat()
+    return st.st_size // max(1, st.st_nlink)
+
+
 def _size(p: Path) -> int:
     try:
         if p.is_dir():
-            return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
-        return p.stat().st_size
+            return sum(_file_size(f) for f in p.rglob("*") if f.is_file())
+        return _file_size(p)
     except OSError:
         return 0
 

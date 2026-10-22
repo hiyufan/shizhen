@@ -18,6 +18,7 @@ const REASON_TIPS = {
   copyright: '这类内容整集体积大，没登录能拿到的画质也低。UP 主自己投稿的视频不受影响。',
   restricted: '这条是平台单独限制的，换一条链接通常就正常。不是你的网络问题。',
   parse: '平台可能刚改版，可以过两天再试。',
+  too_large: 'YouTube 把服务器拦下时只能走备用线路，太长的视频暂时搬不了，换一条短些的试试。',
 };
 
 const form = $('#paste-form');

@@ -32,7 +32,7 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
     from . import youtube_native
 
     if youtube_native.handles_format(page_url, format_spec):
-        return await youtube_native.download(page_url, format_spec, out_dir, stem)
+        return await youtube_native.download(page_url, format_spec, out_dir, stem, report)
     if bili.handles(page_url):
         # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bili.py）
         return await bili.download(page_url, format_spec, out_dir, stem, report, fit=fit)
@@ -58,7 +58,7 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
             if height
             else "youtube-native:720"
         )
-        return await youtube_native.download(page_url, native_format, out_dir, stem)
+        return await youtube_native.download(page_url, native_format, out_dir, stem, report)
 
 
 def _source_format(format_spec: str) -> str:
@@ -79,8 +79,7 @@ async def _download_source_file(
         if not src:
             raise ValueError("YouTube 视频已过期，请重新解析")
         path = config.SOURCES_DIR / f"{source_id}.mp4"
-        if Path(src.path).resolve() != path.resolve():
-            await asyncio.to_thread(shutil.copyfile, src.path, path)
+        await asyncio.to_thread(youtube_native.link_or_copy, src.path, path)
         return path
     if page_url:
         return await _ytdlp(job, page_url, _source_format(format_spec), config.SOURCES_DIR, source_id, fit=True)

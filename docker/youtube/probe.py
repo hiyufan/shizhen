@@ -113,27 +113,21 @@ def verify(path: Path, expected_duration: float, max_bytes: int = 300 << 20) -> 
     if not {"video", "audio"}.issubset(kinds) or abs(actual_duration - expected_duration) > 2:
         raise RuntimeError("音轨、视频轨或完整时长校验失败")
     report("verify_decode_start")
-    decoded = subprocess.run(
-        [
-            "ffmpeg",
-            "-v",
-            "error",
-            "-xerror",
-            "-threads",
-            "4",
-            "-i",
-            str(path),
-            "-f",
-            "null",
-            "-",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        timeout=180,
-    )
+    # 整条只解封装（几秒）能发现缺段、截断；完整解码 10 分钟 720p60 要 39 秒，超过解析的时间预算，
+    # 所以画面只抽开头、中间、结尾各 2 秒真正解码
+    checks = [["-i", str(path), "-map", "0", "-c", "copy"]]
+    for start in (0, max(0, actual_duration / 2 - 1), max(0, actual_duration - 3)):
+        checks.append(["-ss", f"{start:.2f}", "-i", str(path), "-t", "2"])
+    for check in checks:
+        decoded = subprocess.run(
+            ["ffmpeg", "-v", "error", "-xerror", "-threads", "4", *check, "-f", "null", "-"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=60,
+        )
+        if decoded.returncode:
+            raise RuntimeError("完整文件解码失败")
     report("verify_decode_end")
-    if decoded.returncode:
-        raise RuntimeError("完整文件解码失败")
     return {
         "file": str(path),
         "bytes": path.stat().st_size,
@@ -155,6 +149,48 @@ def size_guard(limit: int):
         downloaded[key] = max(downloaded.get(key, 0), event.get("downloaded_bytes") or 0)
         if sum(downloaded.values()) > limit:
             raise RuntimeError("原视频超过服务器大小上限")
+
+    return hook
+
+
+def plan(response: dict, height: int, max_bytes: int, duration: float, *, fit: bool) -> tuple[int, int]:
+    """按 player 响应里的大小估算 (清晰度, 字节数)。fit=True 时放不下就往低一档退。"""
+    formats = response.get("streamingData", {}).get("adaptiveFormats", [])
+
+    def size(f: dict) -> int:
+        if f.get("contentLength"):
+            return int(f["contentLength"])
+        return int((f.get("averageBitrate") or f.get("bitrate") or 0) * duration / 8)
+
+    audio = max((size(f) for f in formats if f.get("mimeType", "").startswith("audio/mp4")), default=0)
+    by_height: dict[int, int] = {}
+    for f in formats:
+        h, mime = int(f.get("height") or 0), f.get("mimeType", "")
+        if not h or not mime.startswith("video/") or (h <= 1080 and "avc1" not in mime):
+            continue
+        by_height[h] = max(by_height.get(h, 0), size(f) + audio)
+    candidates = sorted((h for h in by_height if h <= height), reverse=True)
+    if not candidates:
+        raise RuntimeError("没有这个清晰度")
+    for h in candidates if fit else candidates[:1]:
+        if by_height[h] <= max_bytes:
+            return h, by_height[h]
+    h = candidates[-1] if fit else candidates[0]
+    report("too_large", height=h, bytes=by_height[h], duration=duration, limit=max_bytes)
+    raise RuntimeError(f"这个清晰度约 {by_height[h] / 1e6:.0f} MB，超过了 {max_bytes / 1e6:.0f} MB 的上限")
+
+
+def bytes_reporter():
+    """下载进度：每秒最多报一次两条分轨合计下了多少。"""
+    done: dict[str, int] = {}
+    last = [0.0]
+
+    def hook(event):
+        key = event.get("filename") or (event.get("info_dict") or {}).get("format_id", "video")
+        done[key] = max(done.get(key, 0), event.get("downloaded_bytes") or 0)
+        if time.monotonic() - last[0] >= 1 or event.get("status") == "finished":
+            last[0] = time.monotonic()
+            report("bytes", done=sum(done.values()))
 
     return hook
 
@@ -335,6 +371,8 @@ async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
                 duration = float(details.get("lengthSeconds") or 0)
                 if duration <= 0:
                     raise RuntimeError("本实验仅验收有完整时长的非直播视频")
+                height, expected = plan(response, args.height, args.max_bytes, duration, fit=args.fit)
+                report("plan", height=height, bytes=expected, duration=duration)
                 snapshot["response"] = response
                 config = snapshot["config"]
                 raw_html = await navigation.text() if navigation else await page.content()
@@ -448,7 +486,7 @@ async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
 
                 def download():
                     # 1080p 以内优先 H.264；更高分辨率通常只有 VP9 / AV1，不能悄悄降到 1080p。
-                    codec = "[vcodec^=avc1]" if args.height <= 1080 else ""
+                    codec = "[vcodec^=avc1]" if height <= 1080 else ""
                     opts = {
                         "logger": Logger(),
                         "quiet": True,
@@ -459,13 +497,13 @@ async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
                         "retries": 0,
                         "extractor_retries": 0,
                         "max_filesize": args.max_bytes,
-                        "progress_hooks": [size_guard(args.max_bytes)],
+                        "progress_hooks": [size_guard(args.max_bytes), bytes_reporter()],
                         "postprocessor_hooks": [postprocess],
                         "cookiefile": str(cookiefile),
                         "http_headers": {"User-Agent": snapshot["ua"]},
                         "js_runtimes": {"deno": {"path": str(find_deno_bin())}},
                         "extractor_args": {"youtube": {"player_client": ["web"], "player_js_variant": ["actual"]}},
-                        "format": f"bv[protocol=sabr][height<={args.height}]{codec}+ba[protocol=sabr][ext=m4a]",
+                        "format": f"bv[protocol=sabr][height<={height}]{codec}+ba[protocol=sabr][ext=m4a]",
                         "merge_output_format": "mp4",
                         "outtmpl": str(work / "video.%(ext)s"),
                     }
@@ -525,6 +563,7 @@ def main() -> int:
     parser.add_argument("--pot-url", default="", help="仅让 bgutil 生成媒体 Token，播放器仍使用原生浏览器")
     parser.add_argument("--compatibility", action="store_true", help="使用原来的对照预热与固定等待流程")
     parser.add_argument("--activate", action="store_true", help="通过播放器快捷键激活浏览器页面")
+    parser.add_argument("--fit", action="store_true", help="估算超过 --max-bytes 时自动降一档清晰度")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", args.video_id):
         parser.error("必须提供 11 位 YouTube 视频 ID")

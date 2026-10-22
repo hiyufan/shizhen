@@ -45,6 +45,11 @@ async def _reparse(link: str):
     return await asyncio.wait_for(parse_video_share_url(extract_url(link) or link), parse.PARSE_TIMEOUT)
 
 
+async def _probe_parse(link: str):
+    """状态自检：时限由 status 按平台自己定（YouTube 兜底要多给时间），这里不再套解析的 90 秒。"""
+    return await parse_video_share_url(extract_url(link) or link)
+
+
 def _background_jobs() -> list:
     """进程活着期间一直跑的后台任务，按配置决定开哪些。"""
     coros = [
@@ -63,7 +68,7 @@ def _background_jobs() -> list:
         coros.append(updater.loop(config.YTDLP_AUTOUPDATE_DAYS))
     if os.environ.get("PARSE_VIDEO_STATUS_PROBE", "1") == "1":
         # 公开的 /status 页：每小时拿固定链接把各平台自检一遍
-        coros.append(status.loop(_reparse))
+        coros.append(status.loop(_probe_parse))
     if feedback.enabled():
         # 反馈：同步 GitHub issue、issue 关了先复测再发邮件
         coros.append(feedback.loop(_reparse))
