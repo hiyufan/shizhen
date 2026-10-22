@@ -20,7 +20,7 @@ RUN mkdir -p src/parse_video_py && touch src/parse_video_py/__init__.py \
 # SABR 尚在上游实验分支：只装到隔离解释器，普通平台继续使用上面的正式 yt-dlp。
 COPY docker/youtube/requirements.txt /opt/youtube-native/requirements.txt
 RUN python -m venv /opt/youtube-native/venv \
-    && /opt/youtube-native/venv/bin/pip install --no-cache-dir -r /opt/youtube-native/requirements.txt \
+    && /opt/youtube-native/venv/bin/pip install --no-cache-dir --retries 5 --timeout 60 -r /opt/youtube-native/requirements.txt \
     && /opt/youtube-native/venv/bin/playwright install chromium \
     && chmod -R a+rX /opt/pw-browsers
 COPY docker/youtube/probe.py /opt/youtube-native/probe.py
