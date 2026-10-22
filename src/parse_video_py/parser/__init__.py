@@ -2,6 +2,7 @@ import asyncio
 import logging
 from urllib.parse import urlparse
 
+from .. import progress
 from ..utils import current_source
 from .acfun import AcFun
 from .base import VideoInfo, VideoSource
@@ -196,6 +197,7 @@ async def _ytdlp_extra(share_url: str):
 
     if relay.enabled() and not proxy_for():
         return None
+    progress.emit("fallback", fallback=True)
     try:
         return await asyncio.wait_for(YtDlp().parse_share_url(share_url), 25)
     except Exception:

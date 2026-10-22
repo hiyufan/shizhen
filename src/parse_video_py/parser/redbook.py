@@ -49,7 +49,11 @@ class RedBook(BaseParser):
         mobile_first = RedBook._prefer_mobile or self._mobile_first()
         order = ("mobile", "desktop") if mobile_first else ("desktop", "mobile")
         last_error: Exception | None = None
-        for mode in order:
+        for index, mode in enumerate(order):
+            if index:
+                from ..progress import emit
+
+                emit("fallback", fallback=True)
             try:
                 return await (self._parse_mobile if mode == "mobile" else self._parse_desktop)(share_url)
             except _LoginWall as e:

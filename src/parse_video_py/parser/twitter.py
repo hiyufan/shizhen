@@ -100,6 +100,9 @@ class Twitter(BaseParser):
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         tweet = await self._fetch_syndication(video_id)
         if _is_missing(tweet) or not (tweet.get("mediaDetails") or tweet.get("video")):
+            from ..progress import emit
+
+            emit("fallback", fallback=True)
             # 敏感 / 墓碑 / 需要登录的推文 syndication 拿不到，换 fxtwitter 试一次
             if fx := await self._fetch_fxtwitter(video_id):
                 return fx

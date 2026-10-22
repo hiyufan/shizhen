@@ -579,6 +579,9 @@ class DouYin(BaseParser):
             # 判定不可靠；真视频进来也会被浏览器里 /note/{id}→/video/{id} 的
             # 归一跳转识别出来交回原错。浏览器这条路也没有（没装 playwright /
             # 页面拿不到数据）才把 slidesinfo 的错误抛出去。
+            from ..progress import emit
+
+            emit("fallback", fallback=True)
             info = await (early or self._note_via_browser(video_id))
             if info is None:
                 raise
@@ -821,6 +824,9 @@ class DouYin(BaseParser):
         实况：从播放器 React 组件的 awemeInfo.images[].video.playAddr 取，多张实况
         也能逐张配上；拿不到 awemeInfo 时只给单张图配播放器里那段 <video>。
         """
+        from ..progress import emit
+
+        emit("browser")
         page_url = f"https://www.douyin.com/note/{video_id}"
         dom = downscaled = None
         # 每一步花了多久记进日志：图文的长尾（真实用户 6~24 秒，自检只要 4 秒）到底卡在打开页面、

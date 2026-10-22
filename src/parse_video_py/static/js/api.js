@@ -8,7 +8,8 @@ async function fetchOnce(path, opts) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fetch(path, opts);
-    } catch (_) {
+    } catch (err) {
+      if (opts.signal && opts.signal.aborted) throw err;
       if (attempt >= retry) throw new Error('网络连接中断了，检查一下网络再试');
       await sleep(1000);
     }
@@ -21,6 +22,41 @@ export async function api(path, opts = {}) {
   try { body = await res.json(); } catch (_) { /* 非 JSON 的错误页 */ }
   if (!res.ok) throw new Error((body && (body.detail || body.msg)) || '请求失败 ' + res.status);
   return body;
+}
+
+async function* streamEvents(response) {
+  const reader = response.body.getReader();
+  const decoder = new window.TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (frame.startsWith('data: ')) yield JSON.parse(frame.slice(6));
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
+export async function parseWithProgress(path, update, signal) {
+  const response = await fetchOnce(path, { signal });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || body.msg || '请求失败 ' + response.status);
+  }
+  for await (const event of streamEvents(response)) {
+    if (event.type === 'result') return event.result;
+    if (event.type === 'progress') update(event);
+  }
+  throw new Error('解析连接中断了，请重新试一次');
 }
 
 export const postJSON = (path, data) =>

@@ -1,8 +1,9 @@
 // 首页工具的入口：粘贴链接 → 解析 → 展示结果；本地视频上传后直接进转换器
 
-import { api, useSignatures } from './api.js';
+import { api, parseWithProgress, useSignatures } from './api.js';
 import { openConverter } from './converter.js';
 import { $, el, notice } from './dom.js';
+import { parseHints } from './parse-progress.js';
 import { renderResult } from './result.js';
 import { askForStarAfterDownload, feedbackBox } from './ui.js';
 
@@ -25,6 +26,7 @@ const parseBtn = $('#parse-btn');
 const pasteBtn = $('#paste-btn');
 const clearBtn = $('#clear-btn');
 const hasLink = (text) => /https?:\/\//.test(text);
+let activeParse = null;
 
 askForStarAfterDownload($('#result'), $('#converter'));
 
@@ -33,47 +35,27 @@ function hideOutputs() {
   $('#converter').hidden = true;
 }
 
-// 解析超过两秒就轮播几句话：只有个转圈的话用户以为卡了会反复点或者直接走。
-// 抖音图文要在服务端开浏览器渲染，3–5 秒，先说清楚为什么慢。
-// 实况图的分享文案只写「# live实况」「#livephoto」，没有「图文作品」
-const WAIT_LINES = [
-  '原图在路上了，它腿短，再等等它',
-  '正在翻箱底，找最清楚的那一版',
-  '水印留在原地，只带走干净的',
-  '顺着链接摸过去了，马上回来',
-  '去平台那边排个队，前面就几个人',
-  '正在跟平台那头握手，对方有点慢热',
-  '快了快了，比泡面快',
-];
-const NOTE_LINE = '抖音图文得打开网页一张张捡图，三五秒，别走开';
-const SLOW_LINES = [
-  '平台今天有点磨蹭，我们再敲敲门',
-  '比平时久不少，不过还在努力，没卡住',
-];
-
-function slowParseHints(text) {
-  const isNote = /douyin\.com\/(note|share\/(note|slides))\//.test(text)
-    || (/douyin\.com/.test(text) && /图文作品|实况|live/i.test(text));
-  const lines = WAIT_LINES.slice().sort(() => Math.random() - 0.5);
-  if (isNote) lines.unshift(NOTE_LINE);
-  const start = Date.now();
-  let i = 0;
-  const show = () => {
-    const slow = Date.now() - start > 15000;
-    notice(slow ? SLOW_LINES[i++ % SLOW_LINES.length] : lines[i++ % lines.length], 'info');
-  };
-  let rotate;
-  const first = setTimeout(() => { show(); rotate = setInterval(show, 4000); }, isNote ? 1000 : 2000);
-  return () => { clearTimeout(first); clearInterval(rotate); };
-}
-
 // 从 GitHub issue 的「在线复现」点进来的，解析请求也带上来源，服务端不计入统计
 const FROM = new URLSearchParams(location.search).get('src') === 'issue' ? '&src=issue' : '';
 
-async function parse(text) {
-  const r = await api('/api/parse?url=' + encodeURIComponent(text) + FROM);
+async function parse(text, hints, signal) {
+  const r = await parseWithProgress('/api/parse/stream?url=' + encodeURIComponent(text) + FROM, hints.update, signal);
   if (r.code !== 200) throw Object.assign(new Error(r.msg || '解析失败'), { reason: r.reason, feedback: r.feedback });
   return r.data;
+}
+
+function parseBusy(busy) {
+  parseBtn.disabled = busy;
+  parseBtn.setAttribute('aria-busy', String(busy));
+  parseBtn.setAttribute('aria-label', busy ? '正在解析' : '解析');
+  parseBtn.replaceChildren(busy ? el('span', { class: 'spin' }) : '解析');
+}
+
+function cancelParse() {
+  if (!activeParse) return;
+  activeParse.controller.abort();
+  activeParse.hints.stop();
+  activeParse = null;
 }
 
 function showParseError(err) {
@@ -90,23 +72,33 @@ form.addEventListener('submit', async (e) => {
     urlBox.focus();
     return;
   }
-  parseBtn.disabled = true;
-  parseBtn.replaceChildren(el('span', { class: 'spin' }));
+  cancelParse();
+  const controller = new AbortController();
+  parseBusy(true);
   notice('');
   // 上一条的结果和转换器先收起来：新链接解析要几秒，期间旧结果的按钮还能点，容易点到上一条的「转 GIF」
   hideOutputs();
-  const stopHints = slowParseHints(text);
+  const hints = parseHints();
+  const request = { controller, hints };
+  activeParse = request;
   try {
-    const data = await parse(text);
+    const data = await parse(text, hints, controller.signal);
+    if (activeParse !== request) return;
+    hints.stop();
     useSignatures(data);
     notice('');
     renderResult(data);
   } catch (err) {
-    showParseError(err);
+    if (!controller.signal.aborted && activeParse === request) {
+      hints.stop();
+      showParseError(err);
+    }
   } finally {
-    stopHints();
-    parseBtn.disabled = false;
-    parseBtn.textContent = '解析';
+    hints.stop();
+    if (activeParse === request) {
+      activeParse = null;
+      parseBusy(false);
+    }
   }
 });
 
@@ -128,6 +120,8 @@ urlBox.addEventListener('keydown', (e) => {
 urlBox.addEventListener('paste', () => setTimeout(() => { if (hasLink(urlBox.value)) form.requestSubmit(); }, 30));
 
 clearBtn.addEventListener('click', () => {
+  cancelParse();
+  parseBusy(false);
   urlBox.value = '';
   syncTools();
   notice('');

@@ -10,6 +10,7 @@ import contextlib
 from http.cookies import CookieError, SimpleCookie
 from typing import Any
 
+from .. import progress
 from ..convert import config as convert_config
 from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
@@ -25,6 +26,7 @@ class YtDlp(BaseParser):
         from ..convert import youtube_native
 
         if youtube_native.cached(share_url):
+            progress.emit("cached")
             return await youtube_native.parse(share_url)
         try:
             info = await run_ytdlp(self._extract, share_url)
@@ -34,10 +36,12 @@ class YtDlp(BaseParser):
             # 空媒体响应也可能只是 yt-dlp 的接口没拿到，公开页面仍然有原图。
             # 兜底失败不能盖掉原错误（例如本来是限龄，兜底却撞上网络超时）。
             if instagram.post_code(share_url):
+                progress.emit("fallback", fallback=True)
                 with contextlib.suppress(Exception):
                     if post := await instagram.image_post(share_url):
                         return post
             if wants_fallback(err, share_url):
+                progress.emit("fallback", fallback=True)
                 if youtube_native.should_try(err, share_url):
                     return await self._race_fallbacks(share_url)
                 try:
@@ -46,6 +50,7 @@ class YtDlp(BaseParser):
                 except Exception as fallback_err:
                     err = fallback_err
             if youtube_native.should_try(err, share_url):
+                progress.emit("fallback", fallback=True)
                 return await self._native_info(share_url, err)
             raise err
 
@@ -100,6 +105,7 @@ class YtDlp(BaseParser):
         if fallback:
             net.remember_fallback([share_url, result.page_url, result.video_url, *(f.url for f in result.formats)])
         if youtube_native.enabled() and youtube_native.video_id(share_url):
+            progress.emit("checking")
             await youtube_native.check_media(result)
         return result
 

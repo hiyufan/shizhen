@@ -15,6 +15,7 @@ from fractions import Fraction
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .. import progress
 from ..utils import fallback_proxy, proxy_for, youtube_proxy
 from . import config, net, store
 
@@ -24,6 +25,14 @@ _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}\Z")
 _FORMAT = re.compile(r"youtube-native:(audio|144|240|360|480|720|1080|1440|2160)\Z")
 _HEIGHTS = (2160, 1440, 1080, 720, 480, 360, 240, 144)
 _results: dict[str, dict] = {}
+_STAGES = {
+    "chromium_ready": "browser",
+    "navigation": "browser",
+    "download_start": "downloading",
+    "download": "downloading",
+    "merging": "merging",
+    "verify_decode_start": "verifying",
+}
 
 
 def enabled() -> bool:
@@ -145,6 +154,11 @@ async def _stop_worker(process, groups: set[int]) -> None:
         await process.wait()
 
 
+def _report_stage(event: dict) -> None:
+    if stage := _STAGES.get(event.get("stage")):
+        progress.emit(stage, fallback=True)
+
+
 async def _worker(vid: str, height: int, work: Path, proxy: str) -> dict:
     command = [
         config.YOUTUBE_NATIVE_PYTHON,
@@ -179,6 +193,7 @@ async def _worker(vid: str, height: int, work: Path, proxy: str) -> dict:
                 continue
             if not isinstance(event, dict):
                 continue
+            _report_stage(event)
             if event.get("stage") == "_process" and isinstance(event.get("group"), int):
                 groups.add(event["group"])
             elif event.get("stage") == "verified":
@@ -202,12 +217,16 @@ async def ensure(url: str, height: int = 720) -> tuple[store.Source, dict]:
     if not vid or height not in _HEIGHTS or not enabled():
         raise RuntimeError("YouTube 原生会话兜底未配置或链接不受支持")
     if hit := cached(url, height):
+        progress.emit("cached")
         return hit
     sid = store.source_id_for("youtube-native", vid, str(height))
+    if _semaphore().locked():
+        progress.emit("queued", fallback=True)
     async with _semaphore():
         if hit := cached(url, height):
             return hit
         config.ensure_dirs()
+        progress.emit("browser", fallback=True)
         proxy = (
             os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_PROXY")
             or youtube_proxy(url)

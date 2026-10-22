@@ -159,6 +159,11 @@ def size_guard(limit: int):
     return hook
 
 
+def postprocess(event: dict) -> None:
+    if event.get("status") == "started" and event.get("postprocessor") == "Merger":
+        report("merging")
+
+
 async def prepare_session(page, video: str, *, activate: bool, compatibility: bool):
     for video_id in ("dQw4w9WgXcQ", video):
         navigation = await page.goto(
@@ -455,6 +460,7 @@ async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
                         "extractor_retries": 0,
                         "max_filesize": args.max_bytes,
                         "progress_hooks": [size_guard(args.max_bytes)],
+                        "postprocessor_hooks": [postprocess],
                         "cookiefile": str(cookiefile),
                         "http_headers": {"User-Agent": snapshot["ua"]},
                         "js_runtimes": {"deno": {"path": str(find_deno_bin())}},

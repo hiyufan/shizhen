@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import logging
 import time
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import failures, feedback, stats
+from .. import failures, feedback, progress, stats
 from ..convert import config, net, relay
 from ..convert.net import is_safe_url_async
 from ..parser import detect_source, parse_video_share_url
@@ -73,6 +75,7 @@ cache = ParseCache()
 @dataclasses.dataclass
 class _ParseFlight:
     task: asyncio.Task
+    progress: progress.Progress
     waiters: int = 0
 
 
@@ -85,19 +88,26 @@ async def _shared_parse(share_url: str) -> dict:
     if flight is None:
         limits.parse_upstream_global.hit(limits.GLOBAL, "现在解析的人太多了，{wait} 秒后再试")
 
+        shared_progress = progress.Progress()
+
         async def fetch() -> dict:
-            result = await _parse(share_url)
+            with progress.track(shared_progress):
+                result = await _parse(share_url)
             cache.put(share_url, result)
             return result
 
-        flight = _ParseFlight(asyncio.create_task(fetch()))
+        flight = _ParseFlight(asyncio.create_task(fetch()), shared_progress)
         _pending[share_url] = flight
+    observer = progress.current()
+    unsubscribe = flight.progress.subscribe(observer.receive) if observer else lambda: None
     flight.waiters += 1
     try:
         return await asyncio.shield(flight.task)
     finally:
+        unsubscribe()
         flight.waiters -= 1
         if flight.waiters == 0:
+            flight.progress.closed = True
             if _pending.get(share_url) is flight:
                 _pending.pop(share_url)
             if not flight.task.done():
@@ -163,6 +173,7 @@ def _client_data(info: VideoInfo, share_url: str) -> dict:
 
 
 async def _parse(share_url: str) -> dict:
+    progress.emit("extracting")
     try:
         info = await asyncio.wait_for(parse_video_share_url(share_url), PARSE_TIMEOUT)
     except asyncio.TimeoutError:
@@ -201,6 +212,7 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
     # 失败时没有 VideoInfo.source，不能把 YouTube 的风控全记成通用的 ytdlp。
     platform = "youtube" if is_youtube_url(share_url) else detect_source(share_url).value
     if cached := cache.get(share_url):
+        progress.emit("cached")
         stats.record("parse", ip, source=_result_source(cached, platform), ok=cached["code"] == 200, reason="cache")
         return cached
     # 国内平台走中继时是边缘节点去连，本机查 DNS 白花时间（见 net.is_safe_url_relayed）
@@ -224,6 +236,66 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
         ms=(time.monotonic() - started) * 1000,
     )
     return result
+
+
+def _stream_event(event: dict) -> str:
+    return "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+
+
+async def _stream_run(url: str, ip: str, state: progress.Progress, send) -> None:
+    try:
+        with progress.track(state):
+            result = await api_parse(url, ip)
+    except HTTPException as err:
+        result = _failure(err.status_code, str(err.detail), "")
+    except Exception:  # noqa: BLE001 - 已开始的流不能再发送 HTTP 错误响应
+        log.exception("解析状态流失败")
+        result = _failure(500, "解析暂时出了点状况，请稍后再试", "parse")
+    state.closed = True
+    send({"type": "result", "result": result})
+
+
+async def _parse_events(url: str, ip: str):
+    state = progress.Progress()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=16)
+
+    def send(event: dict) -> None:
+        if queue.full():
+            queue.get_nowait()
+        queue.put_nowait(event)
+
+    state.subscribe(lambda event: send({"type": "progress", **event}))
+    task = asyncio.create_task(_stream_run(url, ip, state, send))
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), 10)
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                continue
+            yield _stream_event(event)
+            if event["type"] == "result":
+                return
+    finally:
+        state.closed = True
+        state.listeners.clear()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@router.get("/api/parse/stream", dependencies=SITE_AUTH)
+async def api_parse_stream(url: str, ip: str = Depends(limits.parse_limit)):
+    """阶段通知与最终结果共用一条连接；原 JSON 接口继续可用。"""
+    return StreamingResponse(
+        _parse_events(url, ip),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Content-Encoding": "identity",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 class FeedbackRequest(BaseModel):
