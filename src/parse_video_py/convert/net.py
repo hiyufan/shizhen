@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ..utils import fallback_proxy, is_cn_url
+from ..utils import fallback_proxy, is_cn_url, youtube_proxy
 from . import config, relay
 
 # 各家 CDN 直链需要带的 Referer，缺了会 403
@@ -214,7 +214,13 @@ _GUARD = os.environ.get("PARSE_VIDEO_SSRF_GUARD", "1") == "1"
 
 def _trusted_hosts() -> set[str]:
     """配置里写死的内网服务可以连：YouTube PO Token 服务（bgutil）、代理。"""
-    urls = (config.POT_URL, os.getenv("PARSE_VIDEO_PROXY"), os.getenv("PARSE_VIDEO_PROXY_CN"), fallback_proxy())
+    urls = (
+        config.POT_URL,
+        os.getenv("PARSE_VIDEO_PROXY"),
+        os.getenv("PARSE_VIDEO_PROXY_CN"),
+        os.getenv("PARSE_VIDEO_PROXY_YOUTUBE"),
+        fallback_proxy(),
+    )
     return {host.lower() for url in urls if url and (host := urlparse(url).hostname)}
 
 
@@ -275,8 +281,12 @@ def proxy_for_url(url: str) -> str | None:
     默认不走 PARSE_VIDEO_PROXY_CN：国内平台的 CDN 对海外 IP 一般放行，而视频流量大，
     别把家里宽带 / 小 VPS 的国内出口占满。确实被 CDN 403 时设 PARSE_VIDEO_PROXY_CN_MEDIA=1。
     """
-    if url in _FALLBACK_URLS and (fallback := fallback_proxy()):
-        return fallback
+    if (remembered := _FALLBACK_URLS.get(url)) is not None:
+        if time.monotonic() - remembered < _FALLBACK_TTL and (fallback := fallback_proxy()):
+            return fallback
+        _FALLBACK_URLS.pop(url, None)
+    if proxy := youtube_proxy(url):
+        return proxy
     cn = is_cn_url(referer_for(url) or "")
     if cn and os.environ.get("PARSE_VIDEO_PROXY_CN") and os.environ.get("PARSE_VIDEO_PROXY_CN_MEDIA", "0") == "1":
         return os.environ["PARSE_VIDEO_PROXY_CN"]

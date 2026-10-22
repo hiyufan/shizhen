@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import re
 import shutil
 import zipfile
 from collections.abc import Awaitable, Callable
@@ -28,19 +29,36 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
     def report(progress: float, message: str) -> None:
         job.set(progress=progress, message=message)
 
+    from . import youtube_native
+
+    if youtube_native.handles_format(page_url, format_spec):
+        return await youtube_native.download(page_url, format_spec, out_dir, stem)
     if bili.handles(page_url):
         # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bili.py）
         return await bili.download(page_url, format_spec, out_dir, stem, report, fit=fit)
-    return await run_ytdlp(
-        ytdlp_download,
-        page_url,
-        format_spec,
-        out_dir,
-        stem,
-        report=report,
-        cancelled=lambda: job.abort,
-        fit=fit,
-    )
+    try:
+        return await run_ytdlp(
+            ytdlp_download,
+            page_url,
+            format_spec,
+            out_dir,
+            stem,
+            report=report,
+            cancelled=lambda: job.abort,
+            fit=fit,
+        )
+    except Exception as err:
+        if not youtube_native.should_try(err, page_url):
+            raise
+        height = re.search(r"height\s*<=\s*(\d+)", format_spec)
+        native_format = (
+            "youtube-native:audio"
+            if format_spec.startswith("ba")
+            else f"youtube-native:{height[1]}"
+            if height
+            else "youtube-native:720"
+        )
+        return await youtube_native.download(page_url, native_format, out_dir, stem)
 
 
 def _source_format(format_spec: str) -> str:
@@ -54,6 +72,16 @@ def _source_format(format_spec: str) -> str:
 async def _download_source_file(
     job: Job, source_id: str, url: str, headers: dict[str, str], page_url: str, format_spec: str
 ) -> Path:
+    from . import youtube_native
+
+    if youtube_native.is_asset_url(url):
+        src = youtube_native.source_for_asset(url)
+        if not src:
+            raise ValueError("YouTube 视频已过期，请重新解析")
+        path = config.SOURCES_DIR / f"{source_id}.mp4"
+        if Path(src.path).resolve() != path.resolve():
+            await asyncio.to_thread(shutil.copyfile, src.path, path)
+        return path
     if page_url:
         return await _ytdlp(job, page_url, _source_format(format_spec), config.SOURCES_DIR, source_id, fit=True)
     if not url:

@@ -12,10 +12,11 @@ import asyncio
 import dataclasses
 import re
 import sys
+from importlib.metadata import PackageNotFoundError, version
 
 from . import parse_video_share_url
 from .parser.errors import ParseError
-from .utils import create_async_client, current_source, extract_url
+from .utils import create_async_client, current_source, extract_url, is_youtube_url
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 
@@ -57,6 +58,23 @@ async def raw(url: str, source: str) -> None:
         current_source.reset(token)
 
 
+def youtube_setup() -> None:
+    """只报告依赖与配置是否存在，不输出 cookies、代理凭证或 PO Token。"""
+    from .convert import config, youtube_native
+    from .utils import youtube_proxy
+
+    for package in ("yt-dlp", "yt-dlp-ejs", "bgutil-ytdlp-pot-provider"):
+        try:
+            installed = version(package)
+        except PackageNotFoundError:
+            installed = "未安装"
+        print(f"[YouTube 依赖] {package}={installed}")
+    runtime = next(iter(config.ytdlp_runtime_opts().get("js_runtimes", {})), "未安装")
+    route = "专用代理" if youtube_proxy("https://www.youtube.com/") else "默认出口"
+    print(f"[YouTube 配置] JS={runtime} PO服务={'已配置' if config.POT_URL else '未配置'} 出口={route}")
+    print(f"[YouTube 兜底] 原生会话={'已配置' if youtube_native.enabled() else '未配置或已关闭'}")
+
+
 async def main() -> None:
     if len(sys.argv) < 2:
         print(__doc__)
@@ -72,6 +90,8 @@ async def main() -> None:
         else ("代理 " + proxy_for("bilibili") if proxy_for("bilibili") else "服务器直连")
     )
     print(f"国内平台走: {route}")
+    if is_youtube_url(url):
+        youtube_setup()
     await egress()
     print()
     try:

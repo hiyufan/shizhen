@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from ..convert import config, ffmpeg, jobs, net, store, tasks
+from ..convert import config, ffmpeg, jobs, net, store, tasks, youtube_native
 from ..convert.net import is_safe_url_async
 from . import limits
 from .auth import SITE_AUTH
@@ -79,6 +79,10 @@ async def _require_parsed_url(url: str, sig: str) -> None:
     """只处理 /api/parse 签过名、并且仍然指向公网的地址。"""
     if not net.verify(url, sig):
         raise HTTPException(403, "这个地址不是解析结果里的")
+    if youtube_native.is_asset_url(url):
+        if not youtube_native.source_for_asset(url):
+            raise HTTPException(410, "原视频已过期，请重新解析")
+        return
     if not await is_safe_url_async(url):
         raise HTTPException(400, "不支持的地址")
 
@@ -126,6 +130,8 @@ async def api_prepare(req: PrepareRequest, ip: str = Depends(limits.job_limit)):
     if not target:
         raise HTTPException(400, "缺少视频地址")
     await _require_parsed_url(target, req.sig)
+    if not req.page_url and (src := youtube_native.source_for_asset(req.url)):
+        return {"ready": True, "source": src.view()}
     if req.page_url:
         sid = store.source_id_for(req.page_url, req.format_spec or "default")
     else:

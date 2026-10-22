@@ -10,9 +10,9 @@ from pathlib import Path
 
 import httpx
 
-from ..utils import fallback_proxy, is_cn_url, proxy_for, wants_fallback
+from ..utils import fallback_proxy, is_cn_url, is_youtube_url, proxy_for, wants_fallback
 from . import config, ffmpeg, relay
-from .net import headers_for, safe_client
+from .net import headers_for, proxy_for_url, safe_client
 
 # (已下载字节, 总字节；不知道总大小时为 0)
 ByteProgress = Callable[[int, int], None]
@@ -179,8 +179,12 @@ def _ytdlp_opts(page_url: str, format_spec: str, out_dir: Path, stem: str, *, fi
         "format": _sized_format(format_spec, config.MAX_SOURCE_BYTES, fit),
         "outtmpl": str(out_dir / f"{stem}.%(ext)s"),
         **config.ytdlp_cookie_opts(),
+        **config.ytdlp_runtime_opts(),
     }
-    if proxy := proxy_for("bilibili" if is_cn_url(page_url) else "ytdlp"):
+    proxy = proxy_for("bilibili" if is_cn_url(page_url) else "ytdlp")
+    if is_youtube_url(page_url):
+        proxy = proxy_for_url(page_url) or proxy
+    if proxy:
         opts["proxy"] = proxy
     return opts
 
@@ -251,7 +255,7 @@ def ytdlp_download(
     try:
         info = _ytdlp_run(opts, page_url, out_dir, stem)
     except Exception as err:
-        if not wants_fallback(err):
+        if not wants_fallback(err, page_url) or opts.get("proxy") == fallback_proxy():
             raise
         # YouTube 抽查「确认不是机器人」：换备用出口重下（见 utils.wants_fallback）
         info = _ytdlp_run(opts | {"proxy": fallback_proxy()}, page_url, out_dir, stem)

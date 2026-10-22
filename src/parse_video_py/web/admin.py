@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from .. import failures, stats
-from ..convert import config, jobs, store, updater
+from ..convert import config, jobs, store, updater, youtube_native
 from . import limits, parse
 from .auth import require_stats_enabled, require_stats_token
 from .rendering import PRIVATE_PAGE_HEADERS, page_context, render
@@ -37,6 +37,8 @@ async def api_health():
         "disk_quota": config.DISK_QUOTA_BYTES,
         "ytdlp": updater.current_version(),
         "pot": bool(config.POT_URL),
+        "js_runtime": next(iter(config.ytdlp_runtime_opts().get("js_runtimes", {})), None),
+        "youtube_native": youtube_native.enabled(),
         "cache": len(parse.cache),
     }
 

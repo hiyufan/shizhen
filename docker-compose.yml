@@ -2,6 +2,7 @@
 # 用法：把 DOMAIN 换成你的域名（DNS 先指到这台机器），然后 docker compose up -d
 services:
   app:
+    init: true
     build:
       context: .
       args:
@@ -26,11 +27,15 @@ services:
       # PARSE_VIDEO_BILI_COOKIE: "SESSDATA=...; buvid3=...; ..."
       # 所有平台都走的代理（可选）
       # PARSE_VIDEO_PROXY: "http://user:pass@host:port"
+      # 默认出口 / WARP 被 YouTube 限制时，配置一个可用的专用出口；页面和媒体都会走它
+      # PARSE_VIDEO_PROXY_YOUTUBE: "http://user:pass@host:port"
       # YouTube 风控：PO Token 服务（下面的 bgutil 容器）+ 可选 cookies
       PARSE_VIDEO_POT_URL: "http://bgutil:4416"
       # PARSE_VIDEO_COOKIES_FILE: "/app/cookies.txt"
       # YouTube 对机房 IP 按视频抽查「确认不是机器人」，cookies / PO Token 都不管用时换 WARP 出口重试
       PARSE_VIDEO_FALLBACK_PROXY: "http://warp:1080"
+      # 镜像内置原生 Chromium / SABR 失败兜底，同一会话的所有请求复用 WARP；设 0 可关闭
+      # PARSE_VIDEO_YOUTUBE_NATIVE: "0"
       # 每 7 天自动升级 yt-dlp 并在空闲时重启（平台改版全靠它跟进）
       PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS: "7"
       # 站长统计页：设了就记录，打开 https://域名/stats?token=<它> 看每小时 / 每天多少人在用
@@ -49,7 +54,8 @@ services:
 
   # YouTube PO Token 生成器，给 yt-dlp 用；没有它服务器 IP 很快会被 YouTube 要求"登录确认不是机器人"
   bgutil:
-    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    # 插件和 HTTP 服务必须一起升级，版本见 pyproject.toml 的 youtube extra
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
     restart: unless-stopped
     init: true
 

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from . import alerts, db, stats
 from .convert import config
+from .parser.base import VideoInfo
 from .parser.errors import ParseError, classify
 
 log = logging.getLogger(__name__)
@@ -96,8 +97,11 @@ PLATFORMS = (
         "YouTube",
         "youtube",
         "/youtube",
-        "YouTube 会随机要求服务器「确认不是机器人」，碰上了换个时间再试。",
-        ("https://www.youtube.com/watch?v=dQw4w9WgXcQ",),
+        "自检同时读取一小段媒体。YouTube 可能按出口和视频要求机器人验证，单条成功不代表全部可用。",
+        (
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://www.youtube.com/watch?v=iN1N8o3Miv4",
+        ),
     ),
 )
 PLATFORM_BY_KEY = {p.key: p for p in PLATFORMS}
@@ -170,13 +174,28 @@ def record(platform: str, ok: bool, reason: str = "", ms: float = 0, ts: float |
         )
 
 
+def _probe_timeout(platform: str) -> float:
+    from .convert import youtube_native
+
+    # Allow the bounded native download after ordinary extraction, as well as metadata requests.
+    if platform == "youtube" and youtube_native.enabled():
+        return PROBE_TIMEOUT + config.YOUTUBE_NATIVE_TIMEOUT
+    return PROBE_TIMEOUT
+
+
 async def probe_one(platform: str, links: list[str], parse) -> tuple[bool, str, float]:
-    """按顺序试，第一条能给出平台真实状态的为准。返回 (成功, 原因, 毫秒)。"""
+    """YouTube 的有效样本都要能读媒体；其它平台第一条有效样本成功即可。"""
     reason, ms = "canary", 0.0
+    youtube_ok = False
     for link in links:
         started = time.monotonic()
         try:
-            await asyncio.wait_for(parse(link), PROBE_TIMEOUT)
+            info = await asyncio.wait_for(parse(link), _probe_timeout(platform))
+            if platform == "youtube":
+                await _probe_youtube_media(info)
+                youtube_ok = True
+                ms = (time.monotonic() - started) * 1000
+                continue
             return True, "", (time.monotonic() - started) * 1000
         except asyncio.TimeoutError:
             reason = "timeout"
@@ -187,7 +206,14 @@ async def probe_one(platform: str, links: list[str], parse) -> tuple[bool, str, 
             return False, reason, ms
         log.warning("状态自检：%s 的自检链接失效了（%s），换一条", platform, link)
         reason = "canary"
-    return False, reason, ms
+    return (True, "", ms) if youtube_ok else (False, reason, ms)
+
+
+async def _probe_youtube_media(info: VideoInfo) -> None:
+    """只读 1 KB 并关闭连接，不能把仅能列出清晰度、实际下载 403 的结果报成正常。"""
+    from .convert import youtube_native
+
+    await youtube_native.check_media(info)
 
 
 async def run_once(parse) -> None:

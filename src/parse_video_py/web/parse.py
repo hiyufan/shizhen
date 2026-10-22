@@ -17,7 +17,7 @@ from ..convert.net import is_safe_url_async
 from ..parser import detect_source, parse_video_share_url
 from ..parser.base import VideoInfo
 from ..parser.errors import ParseError, classify
-from ..utils import CN_SOURCES, extract_url
+from ..utils import CN_SOURCES, extract_url, is_youtube_url
 from . import limits
 from .auth import SITE_AUTH
 
@@ -50,6 +50,12 @@ class ParseCache:
         if time.time() - stored_at > ttl:
             self._items.pop(key, None)
             return None
+        from ..convert import youtube_native
+
+        media = (value.get("data") or {}).get("video_url", "")
+        if youtube_native.is_asset_url(media) and not youtube_native.source_for_asset(media):
+            self._items.pop(key, None)
+            return None
         return value
 
     def put(self, key: str, value: dict) -> None:
@@ -62,6 +68,41 @@ class ParseCache:
 
 
 cache = ParseCache()
+
+
+@dataclasses.dataclass
+class _ParseFlight:
+    task: asyncio.Task
+    waiters: int = 0
+
+
+_pending: dict[str, _ParseFlight] = {}
+
+
+async def _shared_parse(share_url: str) -> dict:
+    """同一链接共用一次抓取；单个请求取消不影响仍在等待的请求。"""
+    flight = _pending.get(share_url)
+    if flight is None:
+        limits.parse_upstream_global.hit(limits.GLOBAL, "现在解析的人太多了，{wait} 秒后再试")
+
+        async def fetch() -> dict:
+            result = await _parse(share_url)
+            cache.put(share_url, result)
+            return result
+
+        flight = _ParseFlight(asyncio.create_task(fetch()))
+        _pending[share_url] = flight
+    flight.waiters += 1
+    try:
+        return await asyncio.shield(flight.task)
+    finally:
+        flight.waiters -= 1
+        if flight.waiters == 0:
+            if _pending.get(share_url) is flight:
+                _pending.pop(share_url)
+            if not flight.task.done():
+                flight.task.cancel()
+                await asyncio.gather(flight.task, return_exceptions=True)
 
 
 # --------------------------------------------------------------------------- 结果组装
@@ -157,7 +198,8 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
         stats.record("parse", ip, ok=False, reason="unsupported")
         return _failure(400, "没有找到链接，请粘贴完整的分享内容", "unsupported")
 
-    platform = detect_source(share_url).value
+    # 失败时没有 VideoInfo.source，不能把 YouTube 的风控全记成通用的 ytdlp。
+    platform = "youtube" if is_youtube_url(share_url) else detect_source(share_url).value
     if cached := cache.get(share_url):
         stats.record("parse", ip, source=_result_source(cached, platform), ok=cached["code"] == 200, reason="cache")
         return cached
@@ -168,9 +210,8 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
         return _failure(400, "不支持这个地址", "unsupported")
 
     # 到这儿才真去平台抓：全站总量在这里扣，缓存命中和不支持的链接不占
-    limits.parse_upstream_global.hit(limits.GLOBAL, "现在解析的人太多了，{wait} 秒后再试")
     started = time.monotonic()
-    result = await _parse(share_url)
+    result = await _shared_parse(share_url)
     ok = result["code"] == 200
     if not ok:
         await _handle_failure(result, share_url, platform, ip)
@@ -182,7 +223,6 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
         reason=result.get("reason", ""),
         ms=(time.monotonic() - started) * 1000,
     )
-    cache.put(share_url, result)
     return result
 
 

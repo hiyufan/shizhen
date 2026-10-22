@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[3]
@@ -18,6 +19,13 @@ COOKIES_BROWSER = os.environ.get("PARSE_VIDEO_COOKIES_BROWSER", "")
 
 # YouTube PO Token 服务 (bgutil-ytdlp-pot-provider 的 HTTP 服务地址), 公网部署防 "Sign in to confirm you're not a bot"
 POT_URL = os.environ.get("PARSE_VIDEO_POT_URL", "")
+
+# 原生 YouTube 会话 / SABR 兜底使用隔离解释器，不能替换普通平台的 yt-dlp。
+YOUTUBE_NATIVE_PYTHON = os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_PYTHON", "")
+YOUTUBE_NATIVE_SCRIPT = Path(
+    os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT", PROJECT_DIR / "docker/youtube/probe.py")
+)
+YOUTUBE_NATIVE_TIMEOUT = float(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT", "75"))
 
 # 每隔几天自动 pip 升级 yt-dlp 并在空闲时重启; 0 = 关闭
 YTDLP_AUTOUPDATE_DAYS = float(os.environ.get("PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS", 0))
@@ -63,3 +71,21 @@ def ytdlp_cookie_opts() -> dict:
     if POT_URL:
         opts["extractor_args"] = {"youtubepot-bgutilhttp": {"base_url": [POT_URL]}}
     return opts
+
+
+def ytdlp_runtime_opts() -> dict:
+    """EJS 需要本机 JS 运行时。直接用 .venv/bin/python 启动时，deno 未必在 PATH。"""
+    deno = shutil.which("deno")
+    if not deno:
+        try:
+            from deno import find_deno_bin
+        except ImportError:
+            pass
+        else:
+            deno = find_deno_bin()
+    if deno:
+        return {"js_runtimes": {"deno": {"path": str(deno)}}}
+    # Node 由 yt-dlp 检查是否满足 >=22；它默认只启用 Deno，需要显式打开。
+    if node := shutil.which("node"):
+        return {"js_runtimes": {"node": {"path": node}}}
+    return {}
