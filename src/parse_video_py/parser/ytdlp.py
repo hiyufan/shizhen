@@ -82,11 +82,7 @@ class YtDlp(BaseParser):
                 try:
                     return await finished
                 except Exception:
-                    if (
-                        fallback.done()
-                        and (err := fallback.exception())
-                        and not youtube_native.should_try(err, share_url)
-                    ):
+                    if fallback.done() and (err := fallback.exception()) and _definitive(err, share_url):
                         raise err from None
             error = native.exception()
             if isinstance(error, (asyncio.TimeoutError, youtube_native.Refused)):
@@ -165,6 +161,17 @@ class YtDlp(BaseParser):
             formats=_merge_options(formats, height),
             video_headers=headers,
         )
+
+
+def _definitive(err: Exception, share_url: str) -> bool:
+    """备用出口的这个报错能不能直接定论、不用等原生兜底：限龄、要登录这类是视频本身的问题。
+
+    「已删除」不算：走到这一步，默认出口已经报了机器人验证，视频是在的；WARP 偶尔对正常视频
+    回 Video unavailable（2026-10-22 iN1N8o3Miv4 被报成「已删除」，紧接着连试 15 次又全成功）。"""
+    from ..convert import youtube_native
+    from .errors import classify
+
+    return not youtube_native.should_try(err, share_url) and classify(err).reason != "deleted"
 
 
 # 纯图片帖：yt-dlp 把图当 thumbnails 或 formats(ext=jpg) 返回
