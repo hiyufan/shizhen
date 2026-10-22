@@ -136,6 +136,11 @@ a.card { display: block; text-decoration: none; }
 .supports b { color: var(--ink-2); font-weight: 600; }
 .notice { margin: 18px auto 0; max-width: 760px; padding: 14px 18px; border-radius: 16px; background: rgba(232,112,42,.08); border: 1px solid rgba(232,112,42,.25); color: #9a4415; font-size: 14px; text-align: left; }
 .notice.info { background: rgba(107,175,223,.1); border-color: rgba(107,175,223,.3); color: var(--ink); }
+.parse-wait:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.parse-stage { flex: 1 1 260px; }
+.parse-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 12px; }
+.parse-elapsed { color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.parse-fallback { padding: 2px 8px; border-radius: 999px; background: rgba(232,112,42,.1); color: #9a4415; }
 
 /* ---------- 解析结果 */
 #result, #converter { text-align: left; scroll-margin-top: 92px; }
