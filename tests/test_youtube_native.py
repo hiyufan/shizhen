@@ -135,7 +135,7 @@ async def test_parse_cache_drops_evicted_local_media(worker):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("winner", ["native", "fallback", "restricted", "cancel"])
+@pytest.mark.parametrize("winner", ["native", "fallback", "restricted", "unavailable", "cancel"])
 async def test_recovery_overlaps_attempts_and_stops_unused_work(monkeypatch, winner):
     native_started, fallback_started = asyncio.Event(), asyncio.Event()
     stopped = []
@@ -149,6 +149,9 @@ async def test_recovery_overlaps_attempts_and_stops_unused_work(monkeypatch, win
                 return info
             if winner == "restricted":
                 raise RuntimeError("Sign in to confirm your age")
+            if winner == "unavailable":
+                # WARP 偶尔对正常视频这么说，不能据此放弃原生兜底
+                raise RuntimeError("Video unavailable. This content isn't available.")
             await asyncio.Event().wait()
         finally:
             stopped.append("fallback")
@@ -157,7 +160,8 @@ async def test_recovery_overlaps_attempts_and_stops_unused_work(monkeypatch, win
         native_started.set()
         try:
             await fallback_started.wait()
-            if winner == "native":
+            if winner in ("native", "unavailable"):
+                await asyncio.sleep(0.05)
                 return info
             await asyncio.Event().wait()
         finally:
