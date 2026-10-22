@@ -28,7 +28,6 @@
 <p align="center">
   <img src="docs/demo.webp" width="100%" alt="演示：粘贴 YouTube 链接解析，再截 4 秒做成 GIF">
 </p>
-<p align="center"><sub>本机服务的真实录制，等待部分快进播放；用 <a href="scripts/record_demo.py">scripts/record_demo.py</a> 重新录制。演示视频：<a href="https://peach.blender.org/">Big Buck Bunny</a> © Blender Foundation，CC BY 3.0</sub></p>
 
 <table>
   <tr>
@@ -495,6 +494,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 - [FastAPI](https://fastapi.tiangolo.com/) · [httpx](https://www.python-httpx.org/) · [piexif](https://github.com/hMatoba/Piexif) · [fontTools](https://github.com/fonttools/fonttools)
 - [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) · [fxtwitter](https://github.com/FixTweet/FxTwitter)
 - 字体：[Noto Serif SC](https://fonts.google.com/noto/specimen/Noto+Serif+SC)、[Inter](https://rsms.me/inter/)、[Playfair Display](https://github.com/clauseggers/Playfair)、[JetBrains Mono](https://www.jetbrains.com/lp/mono/)
+- 开头演示动画里的视频：[Big Buck Bunny](https://peach.blender.org/) © Blender Foundation，[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
 
 ## 免责声明与许可
 
