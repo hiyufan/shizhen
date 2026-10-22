@@ -26,8 +26,9 @@
 <br>
 
 <p align="center">
-  <img src="docs/screenshot-home.png" width="100%" alt="首页：粘贴链接即可解析">
+  <img src="docs/demo.webp" width="100%" alt="演示：粘贴 YouTube 链接解析，再截 4 秒做成 GIF">
 </p>
+<p align="center"><sub>本机服务的真实录制，等待部分快进播放；用 <a href="scripts/record_demo.py">scripts/record_demo.py</a> 重新录制。演示视频：<a href="https://peach.blender.org/">Big Buck Bunny</a> © Blender Foundation，CC BY 3.0</sub></p>
 
 <table>
   <tr>
