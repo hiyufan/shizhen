@@ -35,12 +35,20 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(native, "enabled", lambda: True)
 
 
+class _Calls(list):
+    """(视频, 清晰度, 出口) 的列表；.budgets 是每次传给下载器的大小 / 时限参数。"""
+
+    budgets: list
+
+
 @pytest.fixture
 def worker(monkeypatch):
-    calls = []
+    calls = _Calls()
+    calls.budgets = budgets = []
 
-    async def fake(vid, height, work, proxy):
+    async def fake(vid, height, work, proxy, **budget):
         calls.append((vid, height, proxy))
+        budgets.append(budget)
         path = work / "native" / "video.mp4"
         path.parent.mkdir()
         path.write_bytes(b"verified-media" * 200)
@@ -169,8 +177,8 @@ async def test_recovery_overlaps_attempts_and_stops_unused_work(monkeypatch, win
 async def test_rejects_unverified_worker_result(worker, monkeypatch, tmp_path, bad):
     original = native._worker
 
-    async def corrupt(*args):
-        result = await original(*args)
+    async def corrupt(*args, **kwargs):
+        result = await original(*args, **kwargs)
         if bad == "other_id":
             result["id"] = "dQw4w9WgXcQ"
         elif bad == "escaped_file":
@@ -368,3 +376,116 @@ async def test_timeout_or_cancellation_reaps_worker_child_process(monkeypatch, t
     child = int(pidfile.read_text())
     state = Path(f"/proc/{child}/stat")
     assert not state.exists() or state.read_text().split()[2] == "Z"
+
+
+# --------------------------------------------------------------------------- 解析 / 任务的预算
+
+
+@pytest.mark.asyncio
+async def test_parse_fits_its_time_budget_but_jobs_get_the_full_limit(worker, tmp_path):
+    info = await native.parse(PAGE)
+    assert worker.budgets[0] == {
+        "fit": True,
+        "max_bytes": config.YOUTUBE_NATIVE_PARSE_BYTES,
+        "timeout": config.YOUTUBE_NATIVE_TIMEOUT,
+        "on_event": None,
+    }
+    reports = []
+    out = await native.download(PAGE, "youtube-native:1080", tmp_path / "out", "v", lambda *a: reports.append(a))
+    assert worker[-1][1] == 1080 and out.is_file()
+    budget = worker.budgets[-1]
+    assert "fit" not in budget and budget["max_bytes"] == config.MAX_SOURCE_BYTES
+    assert budget["timeout"] == config.YOUTUBE_NATIVE_JOB_TIMEOUT > config.YOUTUBE_NATIVE_TIMEOUT
+    # 解析时下好的那份清晰度一样就直接用，不再开浏览器
+    same = await native.download(PAGE, "youtube-native:720", tmp_path / "out", "same")
+    assert len(worker) == 2 and same.read_bytes() == Path(native.source_for_asset(info.video_url).path).read_bytes()
+
+
+@pytest.mark.asyncio
+async def test_native_files_are_hardlinked_not_copied(worker, tmp_path):
+    info = await native.parse(PAGE)
+    src = Path(native.source_for_asset(info.video_url).path)
+    out = await native.download(PAGE, "youtube-native:720", tmp_path / "out", "v")
+    path = await tasks._download_source_file(None, "another", info.video_url, {}, PAGE, "")
+    assert out.stat().st_ino == path.stat().st_ino == src.stat().st_ino
+    src.unlink()  # 缓存过期删掉原文件，已经交给任务的那份还在
+    assert out.read_bytes() and path.read_bytes()
+
+
+@pytest.mark.asyncio
+async def test_status_probe_skips_cache_and_takes_lowest_quality(worker, monkeypatch):
+    await native.parse(PAGE)
+
+    def blocked(_url, proxy=None):
+        raise RuntimeError("Sign in to confirm you’re not a bot")
+
+    monkeypatch.setattr(YtDlp, "_extract", staticmethod(blocked))
+    monkeypatch.setenv("PARSE_VIDEO_FALLBACK_PROXY", "http://warp:1080")
+    # 用户再解析：命中缓存
+    await YtDlp().parse_share_url(PAGE)
+    assert len(worker) == 1
+    # 自检：每次都真去 YouTube 拿一份 144p，不被缓存续期骗成「正常」
+    for _ in range(2):
+        ok, reason, _ = await status.probe_one("youtube", [PAGE], YtDlp().parse_share_url)
+        assert (ok, reason) == (True, "")
+    assert [c[1] for c in worker] == [720, 144, 144]
+    assert native.cached(PAGE)[0].height == 720  # 用户的缓存没被自检换掉
+
+
+@pytest.mark.asyncio
+async def test_busy_browser_slots_refuse_parse_quickly(worker, monkeypatch):
+    monkeypatch.setattr(native, "_PARSE_SLOT_WAIT", 0.05)
+    monkeypatch.setattr(config, "YOUTUBE_NATIVE_CONCURRENCY", 1)
+    native._semaphore.cache_clear()
+    async with native._semaphore():
+        with pytest.raises(native.Refused) as err:
+            await native.parse(PAGE)
+    assert err.value.reason == "timeout" and "正忙" in str(err.value)
+
+
+@pytest.mark.asyncio
+async def test_too_large_is_reported_instead_of_the_bot_check(worker, monkeypatch):
+    monkeypatch.setenv("PARSE_VIDEO_FALLBACK_PROXY", "http://warp:1080")
+
+    def blocked(_url, proxy=None):
+        raise RuntimeError("Sign in to confirm you’re not a bot")
+
+    async def too_large(_url):
+        raise native.Refused("too_large", "40 分钟的视频在 144p 也有约 150 MB")
+
+    monkeypatch.setattr(YtDlp, "_extract", staticmethod(blocked))
+    monkeypatch.setattr(native, "parse", too_large)
+    with pytest.raises(ParseError) as err:
+        await YtDlp().parse_share_url(PAGE)
+    assert err.value.reason == "too_large" and "40 分钟" in str(err.value)
+
+
+@pytest.mark.asyncio
+async def test_worker_reports_size_plan_bytes_and_too_large(monkeypatch, tmp_path):
+    script = tmp_path / "helper.py"
+    script.write_text(
+        "import json,sys\n"
+        "assert '--fit' in sys.argv and sys.argv[sys.argv.index('--max-bytes')+1] == '1000'\n"
+        "for e in [{'stage':'plan','bytes':400},{'stage':'bytes','done':200},{'stage':'merging'},"
+        "{'stage':'too_large','height':144,'bytes':5e8,'duration':2400,'limit':1000},{'stage':'failed','error':'x'}]:\n"
+        " print(json.dumps(e),flush=True)\n"
+        "sys.exit(1)\n"
+    )
+    monkeypatch.setattr(config, "YOUTUBE_NATIVE_SCRIPT", script)
+    monkeypatch.setattr(config, "YOUTUBE_NATIVE_PYTHON", sys.executable)
+    reports = []
+    with pytest.raises(native.Refused) as err:
+        on_event = native._job_progress(lambda *a: reports.append(a))
+        await native._worker(VIDEO_ID, 720, tmp_path, "", fit=True, max_bytes=1000, on_event=on_event)
+    assert err.value.reason == "too_large" and "40 分钟的视频在 144p 约 500 MB" in str(err.value)
+    assert [round(p, 2) for p, _ in reports] == [0.02, 0.45, 0.92]
+
+
+def test_hardlinked_copies_count_once_toward_disk_quota(monkeypatch):
+    monkeypatch.setattr(store, "_DATA_DIRS", (config.SOURCES_DIR, config.OUTPUTS_DIR))
+    config.SOURCES_DIR.mkdir(parents=True)
+    config.OUTPUTS_DIR.mkdir(parents=True)
+    src = config.SOURCES_DIR / "a.mp4"
+    src.write_bytes(b"x" * 1000)
+    native.link_or_copy(src, config.OUTPUTS_DIR / "b.mp4")
+    assert store.disk_usage() == 1000

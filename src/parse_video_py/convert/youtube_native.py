@@ -11,11 +11,14 @@ import re
 import shutil
 import signal
 import tempfile
+from collections.abc import Callable, Iterator
+from contextvars import ContextVar
 from fractions import Fraction
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .. import progress
+from ..parser.errors import ParseError
 from ..utils import fallback_proxy, proxy_for, youtube_proxy
 from . import config, net, store
 
@@ -25,6 +28,10 @@ _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}\Z")
 _FORMAT = re.compile(r"youtube-native:(audio|144|240|360|480|720|1080|1440|2160)\Z")
 _HEIGHTS = (2160, 1440, 1080, 720, 480, 360, 240, 144)
 _results: dict[str, dict] = {}
+# 解析时等浏览器名额最多等几秒：解析总共只有 90 秒，排太久轮到了也下不完
+_PARSE_SLOT_WAIT = 10
+# 状态页自检：不读缓存、拿最低清晰度（只验证这条路还通，省流量）
+_FRESH: ContextVar[bool] = ContextVar("youtube_native_fresh", default=False)
 _STAGES = {
     "chromium_ready": "browser",
     "navigation": "browser",
@@ -91,14 +98,41 @@ def handles_format(url: str, format_spec: str) -> bool:
     return bool(video_id(url) and _FORMAT.fullmatch(format_spec))
 
 
-def cached(url: str, height: int = 720) -> tuple[store.Source, dict] | None:
-    """缓存命中不等待其它视频的浏览器任务；不同分享形式复用同一个视频 ID。"""
-    if not enabled() or not (vid := video_id(url)):
+def cached(url: str, key: str = "parse") -> tuple[store.Source, dict] | None:
+    """缓存命中不等待其它视频的浏览器任务；不同分享形式复用同一个视频 ID。
+
+    key：解析结果用 "parse"，下载任务按清晰度（"1080"），状态页自检时一律不命中。"""
+    if not enabled() or _FRESH.get() or not (vid := video_id(url)):
         return None
-    sid = store.source_id_for("youtube-native", vid, str(height))
+    sid = store.source_id_for("youtube-native", vid, key)
     if sid in _results and (src := store.get(sid)):
         return src, _results[sid]
     return None
+
+
+@contextlib.contextmanager
+def fresh() -> Iterator[None]:
+    """状态页自检用：缓存会续期，一直命中的话 YouTube 封了也报正常。"""
+    token = _FRESH.set(True)
+    try:
+        yield
+    finally:
+        _FRESH.reset(token)
+
+
+class Refused(ParseError):
+    """备用线路明确做不了（太大、正忙）。比原先的风控报错更能告诉用户该怎么办，要原样往外报。"""
+
+
+def link_or_copy(src: str | Path, dest: Path) -> None:
+    """同一块盘上建硬链接，几百 MB 的原视频不用再复制一份；跨盘才真复制。"""
+    if Path(src).resolve() == dest.resolve():
+        return
+    dest.unlink(missing_ok=True)
+    try:
+        os.link(src, dest)
+    except OSError:
+        shutil.copyfile(src, dest)
 
 
 async def check_media(info) -> None:
@@ -130,7 +164,7 @@ async def check_media(info) -> None:
 
 @functools.cache
 def _semaphore() -> asyncio.Semaphore:
-    return asyncio.Semaphore(1)
+    return asyncio.Semaphore(max(1, config.YOUTUBE_NATIVE_CONCURRENCY))
 
 
 def _kill_group(group: int, sig: int) -> None:
@@ -159,7 +193,57 @@ def _report_stage(event: dict) -> None:
         progress.emit(stage, fallback=True)
 
 
-async def _worker(vid: str, height: int, work: Path, proxy: str) -> dict:
+class _Events:
+    """下载器 stdout 的一行行 JSON：记下要用的结果，其余转给阶段提示和进度条。"""
+
+    def __init__(self, pid: int, on_event: Callable[[dict], None] | None) -> None:
+        self.groups = {pid}
+        self.on_event = on_event
+        self.verified: dict | None = None
+        self.too_large: dict | None = None
+        self.error = "YouTube 原生会话未完成下载"
+
+    def feed(self, line: bytes) -> None:
+        try:
+            event = json.loads(line)
+        except (ValueError, UnicodeDecodeError):
+            return
+        if not isinstance(event, dict):
+            return
+        _report_stage(event)
+        if self.on_event:
+            self.on_event(event)
+        stage = event.get("stage")
+        if stage == "too_large":
+            self.too_large = event
+        elif stage == "_process" and isinstance(event.get("group"), int):
+            self.groups.add(event["group"])
+        elif stage == "verified":
+            self.verified = event
+        elif stage == "failed":
+            self.error = str(event.get("error") or self.error)[:350]
+
+    def refusal(self) -> Refused | None:
+        if not (e := self.too_large):
+            return None
+        minutes = float(e.get("duration") or 0) / 60
+        size, limit = int(e.get("bytes") or 0) / 1e6, int(e.get("limit") or 0) / 1e6
+        return Refused(
+            "too_large", f"{minutes:.0f} 分钟的视频在 {e.get('height')}p 约 {size:.0f} MB，超过了 {limit:.0f} MB"
+        )
+
+
+async def _worker(
+    vid: str,
+    height: int,
+    work: Path,
+    proxy: str,
+    *,
+    fit: bool = False,
+    max_bytes: int | None = None,
+    timeout: float | None = None,
+    on_event: Callable[[dict], None] | None = None,
+) -> dict:
     command = [
         config.YOUTUBE_NATIVE_PYTHON,
         str(config.YOUTUBE_NATIVE_SCRIPT),
@@ -169,10 +253,12 @@ async def _worker(vid: str, height: int, work: Path, proxy: str) -> dict:
         "--height",
         str(height),
         "--max-bytes",
-        str(config.MAX_SOURCE_BYTES),
+        str(max_bytes or config.MAX_SOURCE_BYTES),
         "--report-resources",
         "--activate",
     ]
+    if fit:
+        command.append("--fit")
     if proxy:
         command += ["--proxy", proxy]
     process = await asyncio.create_subprocess_exec(
@@ -181,29 +267,19 @@ async def _worker(vid: str, height: int, work: Path, proxy: str) -> dict:
         stderr=asyncio.subprocess.STDOUT,
         start_new_session=True,
     )
-    groups = {process.pid}
-    verified, error = None, "YouTube 原生会话未完成下载"
+    events = _Events(process.pid, on_event)
+    groups = events.groups
 
     async def read() -> None:
-        nonlocal verified, error
         async for line in process.stdout:
-            try:
-                event = json.loads(line)
-            except (ValueError, UnicodeDecodeError):
-                continue
-            if not isinstance(event, dict):
-                continue
-            _report_stage(event)
-            if event.get("stage") == "_process" and isinstance(event.get("group"), int):
-                groups.add(event["group"])
-            elif event.get("stage") == "verified":
-                verified = event
-            elif event.get("stage") == "failed":
-                error = str(event.get("error") or error)[:350]
+            events.feed(line)
         await process.wait()
 
     try:
-        await asyncio.wait_for(read(), config.YOUTUBE_NATIVE_TIMEOUT)
+        await asyncio.wait_for(read(), timeout or config.YOUTUBE_NATIVE_TIMEOUT)
+        if refusal := events.refusal():
+            raise refusal
+        verified, error = events.verified, events.error
         if process.returncode != 0 or not verified:
             raise RuntimeError(error)
         return verified
@@ -212,18 +288,30 @@ async def _worker(vid: str, height: int, work: Path, proxy: str) -> dict:
         await _stop_worker(process, groups)
 
 
-async def ensure(url: str, height: int = 720) -> tuple[store.Source, dict]:
+async def ensure(
+    url: str, height: int = 720, *, key: str = "", job: bool = False, on_event: Callable[[dict], None] | None = None
+) -> tuple[store.Source, dict]:
+    """下好并校验一份原视频。
+
+    解析时（job=False）要在 90 秒的解析时限里下完：估算超过 YOUTUBE_NATIVE_PARSE_BYTES 自动降清晰度，
+    名额最多等几秒。下载 / 转换任务（job=True）按用户选的清晰度、用任务的时限。"""
     vid = video_id(url)
     if not vid or height not in _HEIGHTS or not enabled():
         raise RuntimeError("YouTube 原生会话兜底未配置或链接不受支持")
-    if hit := cached(url, height):
+    key = key or str(height)
+    if hit := cached(url, key):
         progress.emit("cached")
         return hit
-    sid = store.source_id_for("youtube-native", vid, str(height))
-    if _semaphore().locked():
+    sid = store.source_id_for("youtube-native", vid, key)
+    sem = _semaphore()
+    if sem.locked():
         progress.emit("queued", fallback=True)
-    async with _semaphore():
-        if hit := cached(url, height):
+    try:
+        await asyncio.wait_for(sem.acquire(), None if job else _PARSE_SLOT_WAIT)
+    except asyncio.TimeoutError:
+        raise Refused("timeout", "YouTube 备用线路正忙，过一分钟再试") from None
+    try:
+        if hit := cached(url, key):
             return hit
         config.ensure_dirs()
         progress.emit("browser", fallback=True)
@@ -234,9 +322,14 @@ async def ensure(url: str, height: int = 720) -> tuple[store.Source, dict]:
             or proxy_for("youtube")
             or ""
         )
+        budget = (
+            {"max_bytes": config.MAX_SOURCE_BYTES, "timeout": config.YOUTUBE_NATIVE_JOB_TIMEOUT}
+            if job
+            else {"fit": True, "max_bytes": config.YOUTUBE_NATIVE_PARSE_BYTES, "timeout": config.YOUTUBE_NATIVE_TIMEOUT}
+        )
         with tempfile.TemporaryDirectory(prefix=".youtube-native-", dir=config.SOURCES_DIR) as tmp:
             work = Path(tmp).resolve()
-            result = await _worker(vid, height, work, proxy)
+            result = await _worker(vid, height, work, proxy, on_event=on_event, **budget)
             path = Path(result.get("file") or "").resolve()
             streams = result.get("streams") or []
             video = next((s for s in streams if s.get("codec_type") == "video"), {})
@@ -269,16 +362,19 @@ async def ensure(url: str, height: int = 720) -> tuple[store.Source, dict]:
         )
         _results[sid] = result | {"file": str(dest)}
         # Source 被正常清理后，相应的元数据也释放。
-        for key in list(_results):
-            if key != sid and not Path(_results[key]["file"]).is_file():
-                _results.pop(key, None)
+        for k in list(_results):
+            if k != sid and not Path(_results[k]["file"]).is_file():
+                _results.pop(k, None)
         return src, _results[sid]
+    finally:
+        sem.release()
 
 
 async def parse(url: str):
     from ..parser.base import FormatInfo, VideoAuthor, VideoInfo
 
-    src, result = await ensure(url)
+    probing = _FRESH.get()
+    src, result = await ensure(url, 144 if probing else 720, key="probe" if probing else "parse")
     heights = set(result.get("heights") or [])
     formats = [
         FormatInfo(label=f"{h}p", height=h, ext="mp4", format_spec=f"youtube-native:{h}")
@@ -300,18 +396,48 @@ async def parse(url: str):
     )
 
 
-async def download(url: str, format_spec: str, out_dir: Path, stem: str) -> Path:
+def _job_progress(report: Callable[[float, str], None] | None) -> Callable[[dict], None] | None:
+    """把下载器的事件翻成任务进度条：估算总大小来自 plan，已下字节来自 bytes。"""
+    if report is None:
+        return None
+    expected = [0]
+
+    def on_event(event: dict) -> None:
+        stage = event.get("stage")
+        if stage == "plan":
+            expected[0] = int(event.get("bytes") or 0)
+            report(0.02, "原视频搬运中")
+        elif stage == "bytes" and expected[0]:
+            report(min(0.9, max(0.02, int(event.get("done") or 0) / expected[0] * 0.9)), "原视频搬运中")
+        elif stage == "merging":
+            report(0.92, "把声音和画面缝到一起")
+        elif stage == "verify_decode_start":
+            report(0.95, "检查一下有没有缺帧")
+
+    return on_event
+
+
+async def download(
+    url: str, format_spec: str, out_dir: Path, stem: str, report: Callable[[float, str], None] | None = None
+) -> Path:
     from . import ffmpeg
 
     match = _FORMAT.fullmatch(format_spec)
-    height = int(match[1]) if match and match[1] != "audio" else 720
-    src, _ = await ensure(url, height)
+    audio = bool(match and match[1] == "audio")
+    height = int(match[1]) if match and not audio else 720
+    hit = cached(url)
+    if hit and (audio or hit[0].height == height):
+        # 解析时下好的那份正好能用：仅音频从任何一份里抽都一样
+        src = hit[0]
+    elif audio:
+        src, _ = await ensure(url, 360, key="audio", job=True, on_event=_job_progress(report))
+    else:
+        src, _ = await ensure(url, height, job=True, on_event=_job_progress(report))
     out_dir.mkdir(parents=True, exist_ok=True)
-    if match and match[1] == "audio":
+    if audio:
         dest = out_dir / f"{stem}.m4a"
         await ffmpeg.run(["-i", src.path, "-vn", "-c:a", "copy", str(dest)])
     else:
         dest = out_dir / f"{stem}.mp4"
-        if Path(src.path).resolve() != dest.resolve():
-            await asyncio.to_thread(shutil.copyfile, src.path, dest)
+        await asyncio.to_thread(link_or_copy, src.path, dest)
     return dest

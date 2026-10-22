@@ -26,6 +26,11 @@ YOUTUBE_NATIVE_SCRIPT = Path(
     os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT", PROJECT_DIR / "docker/youtube/probe.py")
 )
 YOUTUBE_NATIVE_TIMEOUT = float(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT", "75"))
+# 解析时整条视频要在上面的时间里下完：开浏览器约 15 秒，经 WARP 实测 6.7 MB/s（2026-10-22，
+# 10 分钟 720p60 共 182 MB 下了 27 秒）。估算超过这个大小就自动降一档清晰度，最低一档也放不下就直说
+YOUTUBE_NATIVE_PARSE_BYTES = int(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_PARSE_BYTES", 120 * 1024 * 1024))
+# 同时开几个浏览器会话：每个约 0.5 GB 内存
+YOUTUBE_NATIVE_CONCURRENCY = int(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_CONCURRENCY", "2"))
 
 # 每隔几天自动 pip 升级 yt-dlp 并在空闲时重启; 0 = 关闭
 YTDLP_AUTOUPDATE_DAYS = float(os.environ.get("PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS", 0))
@@ -40,6 +45,8 @@ SOURCE_TTL_SECONDS = int(os.environ.get("PARSE_VIDEO_SOURCE_TTL", 2 * 60 * 60)) 
 MAX_CONCURRENT_JOBS = int(os.environ.get("PARSE_VIDEO_MAX_JOBS", max(1, (os.cpu_count() or 2) - 1)))
 MAX_QUEUED_JOBS = int(os.environ.get("PARSE_VIDEO_MAX_QUEUE", 50))  # 排队上限，超了直接拒绝
 JOB_TIMEOUT_SECONDS = int(os.environ.get("PARSE_VIDEO_JOB_TIMEOUT", 300))  # 单个任务最长 5 分钟
+# 下载 / 转换任务里的原生兜底：不受解析的 90 秒限制，给到任务上限前留 30 秒合并、转换
+YOUTUBE_NATIVE_JOB_TIMEOUT = max(YOUTUBE_NATIVE_TIMEOUT, JOB_TIMEOUT_SECONDS - 30)
 MAX_UPLOAD_BYTES = int(os.environ.get("PARSE_VIDEO_MAX_UPLOAD", 300 * 1024 * 1024))
 MAX_SOURCE_BYTES = int(os.environ.get("PARSE_VIDEO_MAX_SOURCE", 300 * 1024 * 1024))  # 为转换拉取的原视频上限
 DISK_QUOTA_BYTES = int(os.environ.get("PARSE_VIDEO_DISK_QUOTA", 8 * 1024**3))  # data/ 超过就删最旧的

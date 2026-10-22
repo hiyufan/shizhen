@@ -60,7 +60,7 @@ class YtDlp(BaseParser):
 
         try:
             return await youtube_native.parse(share_url)
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, youtube_native.Refused):
             raise
         except Exception as native_err:
             # SABR 的泛化 unavailable 不能把原先的风控误报为视频已删除。
@@ -89,7 +89,7 @@ class YtDlp(BaseParser):
                     ):
                         raise err from None
             error = native.exception()
-            if isinstance(error, asyncio.TimeoutError):
+            if isinstance(error, (asyncio.TimeoutError, youtube_native.Refused)):
                 raise error
             raise fallback.exception() from error
         finally:

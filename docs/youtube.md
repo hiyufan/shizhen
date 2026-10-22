@@ -82,9 +82,9 @@ docker run --rm --memory=2g \
 
 主镜像使用 `/opt/youtube-native/venv` 安装冻结版本的下载器，普通平台继续使用正式 yt-dlp。原来的自动升级仅更新正式版本，避免把实验分支混入其它平台。原生路径不依赖 bgutil；独立实验中的 bgutil 只用于对照。
 
-解析优先使用已有验证缓存或现有下载器，并对 YouTube 返回的直链读取 1 KB。默认路径解析失败、没有合流直链或媒体被拒绝时，备用出口和原生会话并行恢复，只接受先完成且通过媒体验证的结果；已知删除、私密、限龄和需要登录的内容不进入该兜底。原生路径完整下载默认 720p，校验后注册现有 Source 缓存。应用只返回已签名的缓存标识，通过原来的 `/api/proxy` 提供 Range 预览和下载；GIF / 实况转换直接复用本地文件。更高清晰度按需重新下载，仅音频从已验证缓存提取。
+解析优先使用已有验证缓存或现有下载器，并对 YouTube 返回的直链读取 1 KB。默认路径解析失败、没有合流直链或媒体被拒绝时，备用出口和原生会话并行恢复，只接受先完成且通过媒体验证的结果；已知删除、私密、限龄和需要登录的内容不进入该兜底。原生路径在解析时下载整条视频（默认 720p，估算超过解析预算就自动降清晰度，见下文「时间预算」），校验后注册现有 Source 缓存。应用只返回已签名的缓存标识，通过原来的 `/api/proxy` 提供 Range 预览和下载；GIF / 实况转换直接复用本地文件。更高清晰度按需重新下载，仅音频从已验证缓存提取。
 
-单进程最多启动一个原生会话，受现有源文件大小、磁盘配额和超时约束。临时会话退出后删除，超时和取消会回收本次登记的 Chromium / Xvfb 进程组；Compose 的 `init: true` 负责子进程回收。缓存过期返回 410，提示重新解析，不把缓存标识当成外部地址访问。
+单进程默认最多同时启动 2 个原生会话（每个约 0.5 GB 内存），受现有源文件大小、磁盘配额和超时约束。临时会话退出后删除，超时和取消会回收本次登记的 Chromium / Xvfb 进程组；Compose 的 `init: true` 负责子进程回收。缓存过期返回 410，提示重新解析，不把缓存标识当成外部地址访问。
 
 配置项：
 
@@ -94,9 +94,11 @@ docker run --rm --memory=2g \
 | `PARSE_VIDEO_YOUTUBE_NATIVE_PYTHON` | Docker 为 `/opt/youtube-native/venv/bin/python`；手动部署须指向独立安装原生下载器依赖的解释器 |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT` | Docker 为 `/opt/youtube-native/probe.py`；源码运行默认为 `docker/youtube/probe.py` |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_PROXY` | 可选无认证 HTTP 代理；默认依次使用专用 YouTube 代理、备用 WARP、通用代理；Chromium 与下载器均使用同一个地址 |
-| `PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT` | `75` 秒，包含下载与完整解码；接口总超时仍为 90 秒 |
+| `PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT` | `75` 秒，解析时的兜底上限，包含开浏览器、下载和校验；接口总超时仍为 90 秒 |
+| `PARSE_VIDEO_YOUTUBE_NATIVE_PARSE_BYTES` | `125829120`（120 MiB）；解析时估算超过就降一档清晰度，最低一档也放不下时报「视频太大」 |
+| `PARSE_VIDEO_YOUTUBE_NATIVE_CONCURRENCY` | `2`；同时运行的浏览器会话数。解析最多等 10 秒名额，下载任务一直等 |
 
-自检的普通解析预算为 60 秒；启用原生兜底的 YouTube 自检额外保留一次原生下载预算，避免把实测约 64 秒的成功误判为超时。其它平台的自检上限不变。
+自检的普通解析预算为 60 秒；启用原生兜底的 YouTube 自检额外保留一次原生下载预算。自检不读原生缓存（缓存被读到就续期，自检每小时一次，读缓存的话第一次成功后会一直报正常），每次现拿一份 144p。其它平台的自检上限不变。
 
 应用镜像的实际接口验收（Python 3.12，独立数据目录，复用现有 WARP，不连接 bgutil、不提供账号 Cookie）：
 
@@ -135,6 +137,27 @@ docker run --rm --memory=2g \
 手动部署需要 `docker/youtube/requirements.txt` 中的独立依赖、FFmpeg、Xvfb 和 Playwright Chromium。只安装普通 `youtube` extra 不会自动启用原生路径。该 helper 目前只支持无认证 HTTP 代理，适用于项目现有的 `http://warp:1080`；带账号密码的专用出口可为 helper 配置独立的无认证内网代理。
 
 该路径首次解析会实际下载整条视频，延迟与文件大小相关；长视频或慢网络可能触发配额 / 超时。播放器内部接口及 SABR 分支仍可能随 YouTube 改版而失效，需要保留固定样本持续验证。高于 1080p 会使用可用的 VP9 / AV1 视频轨，不强行选择最高只有 1080p 的 H.264。
+
+### 时间预算（2026-10-22）
+
+上面的方案在解析时下载并完整解码整条 720p。用 10 分 35 秒的 720p60 视频 `aqz-KE-bpKQ` 经 WARP 实测：开浏览器到拿到 player 响应 15 秒，下载 182 MB 用 27 秒（约 6.7 MB/s），完整解码 39 秒，合计 82 秒，超过 75 秒的兜底上限，解析失败。
+
+调整：
+
+- 校验改为整条只解封装（检查缺段、截断），画面只在开头、中间、结尾各解码 2 秒。同一视频同一清晰度从 82 秒降到 38.9 秒。
+- 下载前按 player 响应里各分轨的 `contentLength` 估算大小。解析时超过 `PARSE_VIDEO_YOUTUBE_NATIVE_PARSE_BYTES` 就降一档：上面的视频解析 31.2 秒拿到 480p，720p 及以上作为下载选项。最低一档也放不下就报 `too_large`，不白等到超时。
+- 下载 / 转换任务（用户选的 720p、1080p、仅音频）不受解析的 90 秒限制，上限为任务时限减 30 秒（默认 270 秒），按选的清晰度严格下载，超过 300 MB 上限直接报错。同一视频 720p 任务 42.8 秒、181,649,549 字节，进度条按估算大小推进。解析时下好的那份清晰度一样就直接用，原视频交给任务时用硬链接，不再复制。
+- 状态页自检绕开缓存，取 144p，实测 27.4 秒。
+
+### 升级原生下载器
+
+`docker/youtube/requirements.txt` 里的 yt-dlp 是 SABR 实验分支的固定提交，带 sha256 校验，不在 `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS` 的自动升级范围里。状态页 YouTube 报失败、日志里原生会话报错时，先去 [bashonly/yt-dlp](https://github.com/bashonly/yt-dlp) 看 SABR 分支有没有新提交，或者上游是否已合并 SABR；换提交时重新计算哈希：
+
+```bash
+curl -sL https://github.com/bashonly/yt-dlp/archive/<提交>.tar.gz | sha256sum
+```
+
+同时更新 `experiments/youtube-sabr/Dockerfile` 里的同一行。
 
 ## 配置与验证
 
