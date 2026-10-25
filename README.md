@@ -441,7 +441,6 @@ src/qiuyuantu/
                                  site（全站动效）、stats（统计页）。整目录按内容哈希挂在 /js/<版本>/ 下
 scripts/push_urls.py             百度主动推送 + sitemap ping
 scripts/esa-relay.js             阿里云 ESA 边缘函数：/probe 探测出口，/relay 给海外服务器当国内中继
-scripts/cf-worker-probe.js       Cloudflare Worker 探测（结论：出口在海外，B站 412）
 scripts/subset_fonts.py          改文案后重建衬线字体子集
 docker/youtube/worker.py         独立解释器中的 YouTube 原生会话下载与媒体验证
 docker-compose.yml · Caddyfile   一台机器的 HTTPS 部署
