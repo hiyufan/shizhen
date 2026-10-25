@@ -2,7 +2,7 @@ import os
 
 import uvicorn
 
-from parse_video_py.web import app
+from qiuyuantu.web import app
 
 if __name__ == "__main__":
     # 放在 Nginx / Caddy 后面时设 PARSE_VIDEO_TRUST_PROXY=1，限流才能拿到真实客户端 IP

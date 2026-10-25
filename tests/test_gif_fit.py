@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 from pathlib import Path
 
-from parse_video_py.convert import ffmpeg, jobs, store, tasks
+from qiuyuantu.convert import ffmpeg, jobs, store, tasks
 
 
 def test_first_steps_cost_little_quality():

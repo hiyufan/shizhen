@@ -5,8 +5,8 @@ import threading
 
 import pytest
 
-from parse_video_py import utils
-from parse_video_py.convert import net
+from qiuyuantu import utils
+from qiuyuantu.convert import net
 
 
 def test_ytdlp_runs_in_its_own_pool_and_keeps_context():

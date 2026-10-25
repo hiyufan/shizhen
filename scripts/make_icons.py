@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-STATIC = Path(__file__).resolve().parent.parent / "src" / "parse_video_py" / "static"
+STATIC = Path(__file__).resolve().parent.parent / "src" / "qiuyuantu" / "static"
 INK = "#1a1815"
 SKY = "#6BAFDF"
 PAPER = "#fafaf9"  # 站点底色（site.css 的 --cold）；iOS 主屏图标不认透明，要垫底色

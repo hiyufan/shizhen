@@ -5,7 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from parse_video_py.convert import fetch, relay
+from qiuyuantu.convert import fetch, relay
 
 DOUYIN_IMG = "https://p95-zjwztc-sign.douyinpic.com/tos-cn-i-0813c000-ce/abc~tplv-dy-aweme-images:q75.jpeg"
 VIDEO = "https://v95-se-zjwztc-default.365yg.com/x/video/tos/cn/tos-cn-ve-15/abc/"

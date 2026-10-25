@@ -5,10 +5,10 @@ import asyncio
 import httpx
 import pytest
 
-from parse_video_py.parser import instagram
-from parse_video_py.parser.base import ImgInfo, VideoInfo
-from parse_video_py.parser.errors import classify
-from parse_video_py.parser.ytdlp import YtDlp
+from qiuyuantu.parser import instagram
+from qiuyuantu.parser.base import ImgInfo, VideoInfo
+from qiuyuantu.parser.errors import classify
+from qiuyuantu.parser.ytdlp import YtDlp
 
 POST = "https://www.instagram.com/p/example/?img_index=2"
 

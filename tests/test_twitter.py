@@ -2,7 +2,7 @@
 
 import pytest
 
-from parse_video_py.parser.twitter import Twitter, _from_fxtwitter, _from_syndication
+from qiuyuantu.parser.twitter import Twitter, _from_fxtwitter, _from_syndication
 
 
 def _variants(*pairs):

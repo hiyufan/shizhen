@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from parse_video_py import utils
-from parse_video_py.convert import net
-from parse_video_py.parser import ytdlp
+from qiuyuantu import utils
+from qiuyuantu.convert import net
+from qiuyuantu.parser import ytdlp
 
 BOT = "ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies-from-browser"
 

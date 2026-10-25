@@ -5,8 +5,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import web
-from parse_video_py.web import rendering
+from qiuyuantu import web
+from qiuyuantu.web import rendering
 
 
 @pytest.fixture

@@ -15,13 +15,13 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import stats, web
-from parse_video_py.convert import config, ffmpeg, net, relay
-from parse_video_py.parser.base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo
-from parse_video_py.parser.errors import ParseError
-from parse_video_py.web import limits
-from parse_video_py.web import parse as parse_api
-from parse_video_py.web import proxy as proxy_api
+from qiuyuantu import stats, web
+from qiuyuantu.convert import config, ffmpeg, net, relay
+from qiuyuantu.parser.base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo
+from qiuyuantu.parser.errors import ParseError
+from qiuyuantu.web import limits
+from qiuyuantu.web import parse as parse_api
+from qiuyuantu.web import proxy as proxy_api
 
 SHARE = "https://v.douyin.com/abc123/"
 

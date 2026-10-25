@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from parse_video_py import utils
-from parse_video_py.convert import config, fetch, net
-from parse_video_py.parser.errors import classify
-from parse_video_py.parser.ytdlp import YtDlp
+from qiuyuantu import utils
+from qiuyuantu.convert import config, fetch, net
+from qiuyuantu.parser.errors import classify
+from qiuyuantu.parser.ytdlp import YtDlp
 
 PAGE = "https://www.youtube.com/watch?v=example"
 MEDIA = "https://rr1.googlevideo.com/videoplayback"

@@ -190,7 +190,7 @@ class BiliBili(BaseParser):
             duration=duration,
             height=height,
             formats=formats,
-            # 高清档位下载时按这个地址重新取（convert/bili.py），分 P 要带上 ?p=
+            # 高清档位下载时按这个地址重新取（convert/bilibili.py），分 P 要带上 ?p=
             page_url=f"https://www.bilibili.com/video/{bvid}" + (f"?p={page}" if page > 1 else ""),
             author=VideoAuthor(
                 uid=str(owner.get("mid", "")),

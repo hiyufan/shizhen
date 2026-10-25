@@ -1,5 +1,5 @@
 [project]
-name = "parse-video-py"
+name = "qiuyuantu"
 version = "0.1.0"
 description = "求原图：抖音 / 小红书 / 快手 / YouTube / X 等平台视频图片提取，一键转 GIF 与实况照片（基于 parse-video-py）"
 requires-python = ">=3.10"
@@ -49,17 +49,18 @@ dev = [
     "pre-commit>=3.7",
     "fonttools[woff]>=4.50",   # 衬线字体子集：scripts/subset_fonts.py 和 tests/test_fonts.py
 ]
-all = ["parse-video-py[web,cli,youtube,douyin]"]
+all = ["qiuyuantu[web,cli,youtube,douyin]"]
 
 [project.scripts]
-parse-video-py = "parse_video_py.cli:app"
+qiuyuantu = "qiuyuantu.cli:app"
+parse-video-py = "qiuyuantu.cli:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/parse_video_py"]
+packages = ["src/qiuyuantu", "src/parse_video_py"]
 
 [tool.ruff]
 line-length = 120
@@ -82,8 +83,8 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 # 页面文案表：一段文案一行，按行宽切开反而不好搜、不好改
-"src/parse_video_py/seo.py" = ["E501"]
-"src/parse_video_py/guides.py" = ["E501"]
+"src/qiuyuantu/seo.py" = ["E501"]
+"src/qiuyuantu/guides.py" = ["E501"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
@@ -96,7 +97,7 @@ max-returns = 8
 extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Query", "typer.Argument", "typer.Option"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["parse_video_py"]
+known-first-party = ["qiuyuantu", "parse_video_py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

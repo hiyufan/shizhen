@@ -3,8 +3,8 @@
 
 import pytest
 
-from parse_video_py.convert import fetch
-from parse_video_py.convert.fetch import TooLarge
+from qiuyuantu.convert import fetch
+from qiuyuantu.convert.fetch import TooLarge
 
 MB = 10**6
 SPEC_1080 = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080]/" + fetch.MERGE_FORMAT

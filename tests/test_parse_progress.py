@@ -7,12 +7,12 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import progress, web
-from parse_video_py.convert import config, youtube_native
-from parse_video_py.parser.base import VideoInfo
-from parse_video_py.parser.errors import ParseError
-from parse_video_py.web import limits
-from parse_video_py.web import parse as api
+from qiuyuantu import progress, web
+from qiuyuantu.convert import config, youtube_native
+from qiuyuantu.parser.base import VideoInfo
+from qiuyuantu.parser.errors import ParseError
+from qiuyuantu.web import limits
+from qiuyuantu.web import parse as api
 
 PAGE = "https://www.youtube.com/watch?v=iN1N8o3Miv4"
 INFO = VideoInfo(video_url="https://cdn.example/video.mp4", cover_url="", title="示例", source="youtube")

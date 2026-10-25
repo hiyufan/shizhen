@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from parse_video_py import seo  # noqa: E402
+from qiuyuantu import seo  # noqa: E402
 
 site = os.environ.get("PARSE_VIDEO_SITE_URL", "").rstrip("/")
 if not site:

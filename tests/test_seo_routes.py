@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import web
+from qiuyuantu import web
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def test_pages_answer_head(client, path):
 
 
 def test_head_does_not_count_as_a_page_view(client, monkeypatch):
-    from parse_video_py import stats
+    from qiuyuantu import stats
 
     seen = []
     monkeypatch.setattr(stats, "enabled", lambda: True)
@@ -73,8 +73,8 @@ def test_unknown_pages_are_still_404(client):
 
 
 def test_every_guide_renders_and_links_resolve(client):
-    from parse_video_py.guides import GUIDE_BY_SLUG, GUIDES
-    from parse_video_py.seo import PAGES
+    from qiuyuantu.guides import GUIDE_BY_SLUG, GUIDES
+    from qiuyuantu.seo import PAGES
 
     assert all(r in GUIDE_BY_SLUG for g in GUIDES for r in g.related)
     assert all(r in GUIDE_BY_SLUG for p in PAGES for r in p.guides)
@@ -87,7 +87,7 @@ def test_every_guide_renders_and_links_resolve(client):
 
 
 def test_guide_table_marks_number_cells():
-    from parse_video_py.guides import table
+    from qiuyuantu.guides import table
 
     html = table(["时长", "大小"], [["3 秒", "0.4 MB"]], "2026-10-04 实测")
     assert '<td class="n">3 秒</td>' in html and '<p class="note">2026-10-04 实测</p>' in html

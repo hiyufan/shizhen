@@ -4,7 +4,7 @@ import dataclasses
 import json
 import sys
 
-from parse_video_py.parser.base import VideoInfo
+from qiuyuantu.parser.base import VideoInfo
 
 
 def format_text_output(info: VideoInfo) -> str:

@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-PKG = os.path.join(ROOT, "src", "parse_video_py")
+PKG = os.path.join(ROOT, "src", "qiuyuantu")
 BRAND = "求原图"
 # 标点和 ASCII 一律带上，标题里随手加个符号不至于掉字
 _ALWAYS = set("0123456789+-–—·…（）()[]{}“”‘’、。，：；！？%×") | {chr(c) for c in range(0x20, 0x7F)}
@@ -45,7 +45,7 @@ def page_text() -> str:
 def heading_text() -> str:
     """所有页面 h1 的文字 + 品牌名，即全站用到 900 字重的文字。"""
     sys.path.insert(0, os.path.join(ROOT, "src"))
-    from parse_video_py import guides, seo
+    from qiuyuantu import guides, seo
 
     text = BRAND + "".join(p.h1 for p in seo.PAGES) + "".join(g.h1 for g in guides.GUIDES)
     for f in glob.glob(os.path.join(PKG, "templates", "*.html")):  # 写死在模板里的 h1（教程列表、404、统计页）
@@ -62,7 +62,7 @@ def entry_text() -> str:
     from fastapi.testclient import TestClient
     from lxml import html as lxml_html
 
-    from parse_video_py import seo, web
+    from qiuyuantu import seo, web
 
     client = TestClient(web.app)
     text = ""

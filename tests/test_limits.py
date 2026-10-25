@@ -3,7 +3,7 @@
 import pytest
 from fastapi import HTTPException
 
-from parse_video_py.web import limits
+from qiuyuantu.web import limits
 
 
 @pytest.mark.parametrize(

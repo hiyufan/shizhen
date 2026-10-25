@@ -5,8 +5,8 @@ import contextlib
 
 import pytest
 
-from parse_video_py.parser import douyin
-from parse_video_py.parser.douyin import DouYin, _WarmBrowser
+from qiuyuantu.parser import douyin
+from qiuyuantu.parser.douyin import DouYin, _WarmBrowser
 
 
 class FakePage:

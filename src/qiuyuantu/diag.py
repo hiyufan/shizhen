@@ -1,7 +1,7 @@
 """站长诊断：在服务器上看看各平台到底返回了什么。
 
-    python -m parse_video_py.diag <分享链接>
-    docker compose exec app python -m parse_video_py.diag <分享链接>
+    python -m qiuyuantu.diag <分享链接>
+    docker compose exec app python -m qiuyuantu.diag <分享链接>
 
 会打印：出口 IP 与归属地、解析结果或错误原因、以及小红书 / B站 原始响应的状态码、最终地址和页面标题。
 """

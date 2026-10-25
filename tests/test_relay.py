@@ -10,7 +10,7 @@ import time
 import httpx
 import pytest
 
-from parse_video_py.convert import relay
+from qiuyuantu.convert import relay
 
 PAGE = "<html>" + "小红书笔记 " * 2000 + "</html>"
 
@@ -105,7 +105,7 @@ def test_relay_client_speaks_http2():
 @pytest.fixture
 def no_dns(monkeypatch):
     """本机 DNS 查了哪些域名。"""
-    from parse_video_py.convert import net
+    from qiuyuantu.convert import net
 
     asked = []
 
@@ -125,7 +125,7 @@ def _relay_redirect(location: str) -> httpx.Response:
 
 
 async def test_relayed_requests_skip_local_dns_but_follow_every_hop(no_dns):
-    from parse_video_py.convert import net
+    from qiuyuantu.convert import net
 
     seen = []
 
@@ -146,7 +146,7 @@ async def test_relayed_requests_skip_local_dns_but_follow_every_hop(no_dns):
     "target", ["http://127.0.0.1:8000/x", "http://169.254.169.254/", "http://localhost/", "ftp://a.com/"]
 )
 async def test_relayed_requests_still_block_internal_targets(no_dns, target):
-    from parse_video_py.convert import net
+    from qiuyuantu.convert import net
 
     def handler(request: httpx.Request) -> httpx.Response:
         return _relay_redirect(target)
@@ -159,7 +159,7 @@ async def test_relayed_requests_still_block_internal_targets(no_dns, target):
 
 
 async def test_direct_requests_still_resolve(no_dns):
-    from parse_video_py.convert import net
+    from qiuyuantu.convert import net
 
     assert await net.is_safe_url_async("https://www.youtube.com/watch?v=1")
     assert no_dns == ["www.youtube.com"]

@@ -5,9 +5,9 @@ import asyncio
 import httpx
 import pytest
 
-from parse_video_py.parser import kuaishou
-from parse_video_py.parser.errors import ParseError
-from parse_video_py.parser.kuaishou import KuaiShou
+from qiuyuantu.parser import kuaishou
+from qiuyuantu.parser.errors import ParseError
+from qiuyuantu.parser.kuaishou import KuaiShou
 
 
 def _state(photo):
@@ -110,8 +110,8 @@ def test_plain_video_is_unchanged():
 
 def test_web_and_landing_links_are_routed_to_kuaishou_by_photo_id():
 
-    from parse_video_py.parser import VideoSource, detect_source
-    from parse_video_py.parser.kuaishou import _PHOTO_ID
+    from qiuyuantu.parser import VideoSource, detect_source
+    from qiuyuantu.parser.kuaishou import _PHOTO_ID
 
     pid = "3x7ryeb59738de4"
     for url in (

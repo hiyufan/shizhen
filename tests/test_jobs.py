@@ -2,8 +2,8 @@
 
 import asyncio
 
-from parse_video_py.convert import jobs
-from parse_video_py.web import limits
+from qiuyuantu.convert import jobs
+from qiuyuantu.web import limits
 
 
 def test_finished_jobs_release_quota_and_record(monkeypatch):

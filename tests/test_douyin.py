@@ -1,14 +1,14 @@
-"""抖音：slidesinfo 返回的作品数据 -> VideoInfo。接口换成假的，不碰网络。"""
+"""抖音解析：作品数据、接口重试与浏览器兜底。接口换成假的，不碰网络。"""
 
 import asyncio
 import json
 
 import pytest
 
-from parse_video_py.parser import douyin
-from parse_video_py.parser.base import ImgInfo, VideoInfo
-from parse_video_py.parser.douyin import DouYin
-from parse_video_py.parser.errors import ParseError
+from qiuyuantu.parser import douyin
+from qiuyuantu.parser.base import ImgInfo, VideoInfo
+from qiuyuantu.parser.douyin import DouYin
+from qiuyuantu.parser.errors import ParseError
 
 VIDEO_ID = "7424432820954598707"
 PC_URL = f"https://www.douyin.com/video/{VIDEO_ID}"

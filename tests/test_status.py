@@ -6,10 +6,10 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import status, web
-from parse_video_py.convert import net, youtube_native
-from parse_video_py.parser.base import VideoInfo
-from parse_video_py.parser.errors import ParseError
+from qiuyuantu import status, web
+from qiuyuantu.convert import net, youtube_native
+from qiuyuantu.parser.base import VideoInfo
+from qiuyuantu.parser.errors import ParseError
 
 
 @pytest.fixture(autouse=True)
@@ -161,14 +161,14 @@ NET = (F, "timeout")
     ],
 )
 def test_alert_rules(history, keys):
-    from parse_video_py import alerts
+    from qiuyuantu import alerts
 
     assert set(alerts.problems(history)) == keys
 
 
 def test_alert_sent_once_then_recovery(monkeypatch, tmp_path):
     """同一个问题只发一次；恢复了发一封；状态落在文件里，部署重启后不重发。"""
-    from parse_video_py import alerts
+    from qiuyuantu import alerts
 
     sent = []
     monkeypatch.setattr(alerts, "ALERT_TO", "me@example.com")

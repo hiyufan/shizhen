@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..utils import gather_or_cancel, run_ytdlp
-from . import bili, config, ffmpeg, livephoto, store
+from . import bilibili, config, ffmpeg, livephoto, store
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
 from .net import safe_filename
@@ -33,9 +33,9 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
 
     if youtube_native.handles_format(page_url, format_spec):
         return await youtube_native.download(page_url, format_spec, out_dir, stem, report)
-    if bili.handles(page_url):
-        # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bili.py）
-        return await bili.download(page_url, format_spec, out_dir, stem, report, fit=fit)
+    if bilibili.handles(page_url):
+        # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bilibili.py）
+        return await bilibili.download(page_url, format_spec, out_dir, stem, report, fit=fit)
     try:
         return await run_ytdlp(
             ytdlp_download,

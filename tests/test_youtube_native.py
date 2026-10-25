@@ -8,16 +8,16 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import status, web
-from parse_video_py.convert import config, net, store, tasks
-from parse_video_py.convert import youtube_native as native
-from parse_video_py.parser.base import VideoInfo
-from parse_video_py.parser.errors import ParseError
-from parse_video_py.parser.ytdlp import YtDlp
-from parse_video_py.web import limits
-from parse_video_py.web import media as media_api
-from parse_video_py.web import parse as parse_api
-from parse_video_py.web import proxy as proxy_api
+from qiuyuantu import status, web
+from qiuyuantu.convert import config, net, store, tasks
+from qiuyuantu.convert import youtube_native as native
+from qiuyuantu.parser.base import VideoInfo
+from qiuyuantu.parser.errors import ParseError
+from qiuyuantu.parser.ytdlp import YtDlp
+from qiuyuantu.web import limits
+from qiuyuantu.web import media as media_api
+from qiuyuantu.web import parse as parse_api
+from qiuyuantu.web import proxy as proxy_api
 
 VIDEO_ID = "iN1N8o3Miv4"
 PAGE = f"https://www.youtube.com/watch?v={VIDEO_ID}"

@@ -7,8 +7,8 @@ import zipfile
 import pytest
 from PIL import Image
 
-from parse_video_py.convert import tasks
-from parse_video_py.convert.jobs import Job
+from qiuyuantu.convert import tasks
+from qiuyuantu.convert.jobs import Job
 
 
 def _jpeg() -> bytes:

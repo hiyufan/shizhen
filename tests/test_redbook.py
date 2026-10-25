@@ -1,4 +1,4 @@
-"""小红书：页面里的笔记数据 -> VideoInfo（视频档位、原图、实况）。"""
+"""小红书解析：笔记数据、接口重试、链接签名与笔记删除判定。"""
 
 import asyncio
 import json
@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from parse_video_py.parser import redbook
-from parse_video_py.parser.errors import classify
-from parse_video_py.parser.redbook import RedBook
+from qiuyuantu.parser import redbook
+from qiuyuantu.parser.errors import classify
+from qiuyuantu.parser.redbook import RedBook
 
 
 def _h264(w, h, url, **kw):

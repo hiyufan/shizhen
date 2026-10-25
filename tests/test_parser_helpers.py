@@ -5,13 +5,13 @@ import json
 import httpx
 import pytest
 
-from parse_video_py import parser as parser_pkg
-from parse_video_py.feedback import FIXABLE
-from parse_video_py.parser import VideoSource, detect_source
-from parse_video_py.parser import bilibili as bilibili_mod
-from parse_video_py.parser.bilibili import BiliBili, dash_formats, guest_params, id_param, opus_images, opus_text
-from parse_video_py.parser.douyin import _looks_like_note, _note_images
-from parse_video_py.parser.errors import ParseError
+from qiuyuantu import parser as parser_pkg
+from qiuyuantu.feedback import FIXABLE
+from qiuyuantu.parser import VideoSource, detect_source
+from qiuyuantu.parser import bilibili as bilibili_mod
+from qiuyuantu.parser.bilibili import BiliBili, dash_formats, guest_params, id_param, opus_images, opus_text
+from qiuyuantu.parser.douyin import _looks_like_note, _note_images
+from qiuyuantu.parser.errors import ParseError
 
 
 def test_av_ids_use_numeric_params():
@@ -188,7 +188,7 @@ async def test_bili_opus_images_and_links():
 )
 def test_direct_media_links(url, kind, source):
     """平台 CDN 上的文件地址直接给出去（2026-10-10 有人贴抖音图片地址试了 3 次，以前交给 yt-dlp 必失败）。"""
-    from parse_video_py.parser.direct import direct_media
+    from qiuyuantu.parser.direct import direct_media
 
     info = direct_media(url)
     if kind is None:
@@ -221,7 +221,7 @@ def test_direct_media_links(url, kind, source):
     ],
 )
 def test_extract_url_from_share_text(text, url):
-    from parse_video_py.utils import extract_url
+    from qiuyuantu.utils import extract_url
 
     if url == "NONE":
         assert extract_url(text) is None

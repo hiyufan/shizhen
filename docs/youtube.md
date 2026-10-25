@@ -51,7 +51,7 @@ Invidious Companion 本次使用的镜像摘要为 `sha256:5642790b67c2ce655a630
 
 ### 第三轮：原生会话与 SABR 实验
 
-继续研究 NewPipe、YouTube.js、WPC Provider 和 yt-dlp 维护者的 SABR 分支后，实现了 [`docker/youtube/probe.py`](../docker/youtube/probe.py)，并提供独立的 `experiments/youtube-sabr/Dockerfile`。下载器不导入应用、统计或生产数据目录，不替换主应用的 yt-dlp。
+继续研究 NewPipe、YouTube.js、WPC Provider 和 yt-dlp 维护者的 SABR 分支后，实现了 [`docker/youtube/worker.py`](../docker/youtube/worker.py)，并提供独立的 `experiments/youtube-sabr/Dockerfile`。下载器不导入应用、统计或生产数据目录，不替换主应用的 yt-dlp。
 
 目前验证到的进展：
 
@@ -86,13 +86,15 @@ docker run --rm --memory=2g \
 
 单进程默认最多同时启动 2 个原生会话（每个约 0.5 GB 内存），受现有源文件大小、磁盘配额和超时约束。临时会话退出后删除，超时和取消会回收本次登记的 Chromium / Xvfb 进程组；Compose 的 `init: true` 负责子进程回收。缓存过期返回 410，提示重新解析，不把缓存标识当成外部地址访问。
 
+下载进程的文件名为 `worker.py`。手动设置过 `PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT` 的部署，升级时需将该变量同步指向新路径；使用镜像默认配置的部署无需额外调整。
+
 配置项：
 
 | 变量 | 默认 / 用法 |
 |---|---|
 | `PARSE_VIDEO_YOUTUBE_NATIVE` | `1`；设 `0` 关闭 |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_PYTHON` | Docker 为 `/opt/youtube-native/venv/bin/python`；手动部署须指向独立安装原生下载器依赖的解释器 |
-| `PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT` | Docker 为 `/opt/youtube-native/probe.py`；源码运行默认为 `docker/youtube/probe.py` |
+| `PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT` | Docker 为 `/opt/youtube-native/worker.py`；源码运行默认为 `docker/youtube/worker.py` |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_PROXY` | 可选无认证 HTTP 代理；默认依次使用专用 YouTube 代理、备用 WARP、通用代理；Chromium 与下载器均使用同一个地址 |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT` | `75` 秒，解析时的兜底上限，包含开浏览器、下载和校验；接口总超时仍为 90 秒 |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_PARSE_BYTES` | `125829120`（120 MiB）；解析时估算超过就降一档清晰度，最低一档也放不下时报「视频太大」 |
@@ -197,7 +199,7 @@ Docker 镜像安装完整的 `youtube` 依赖组。手动安装：
 
 ```bash
 python -m pip install -e ".[web,cli,youtube]"
-python -m parse_video_py.diag "https://www.youtube.com/watch?v=<视频 ID>"
+python -m qiuyuantu.diag "https://www.youtube.com/watch?v=<视频 ID>"
 ```
 
 `/api/health` 返回的 `js_runtime` 应为 `deno` 或可用的 `node`，`youtube_native` 表示原生兜底是否已配置并启用。诊断命令也显示原生路径配置、yt-dlp、EJS、PO Token 插件版本以及是否配置专用代理，不打印凭证。版本存在不等于服务可达，仍需真实链接和媒体验证。

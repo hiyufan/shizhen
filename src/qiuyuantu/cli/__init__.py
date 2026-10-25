@@ -1,11 +1,11 @@
-"""parse-video-py CLI 工具"""
+"""求原图 CLI 工具。"""
 
 from importlib import metadata
 
 import typer
 
 app = typer.Typer(
-    name="parse-video-py",
+    name="qiuyuantu",
     help="视频解析工具，支持 20+ 平台去水印解析",
     add_completion=False,
 )
@@ -19,7 +19,7 @@ def main():
 @app.command()
 def version():
     """显示版本信息"""
-    typer.echo(f"parse-video-py {metadata.version('parse-video-py')}")
+    typer.echo(f"qiuyuantu {metadata.version('qiuyuantu')}")
 
 
 @app.command()
@@ -29,7 +29,7 @@ def parse(
     file: str = typer.Option(None, "--file", "-f", help="从文件读取链接（每行一个，- 代表 stdin）"),
 ):
     """解析视频分享链接，支持单条和多条"""
-    from parse_video_py.cli._parse import run_parse
+    from qiuyuantu.cli._parse import run_parse
 
     run_parse(urls, fmt, file)
 
@@ -44,10 +44,10 @@ def serve(
     try:
         import uvicorn
     except ImportError:
-        typer.echo("错误: uvicorn 未安装。请使用 parse-video-py[web] 安装 Web 服务依赖", err=True)
+        typer.echo('错误: uvicorn 未安装。请在仓库根目录运行 python -m pip install ".[web]"', err=True)
         raise typer.Exit(code=1) from None
     uvicorn.run(
-        "parse_video_py.web:app",
+        "qiuyuantu.web:app",
         host=host,
         port=port,
         reload=False,

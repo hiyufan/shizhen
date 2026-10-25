@@ -7,8 +7,8 @@ import threading
 
 import pytest
 
-from parse_video_py.convert import net
-from parse_video_py.parser.ytdlp import YtDlp
+from qiuyuantu.convert import net
+from qiuyuantu.parser.ytdlp import YtDlp
 
 
 @pytest.fixture

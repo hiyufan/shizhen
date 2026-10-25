@@ -120,6 +120,10 @@ git clone https://github.com/hiyufan/shizhen.git && cd shizhen
 
 首次运行会自动创建 `.venv` 并安装依赖，然后打开 <http://127.0.0.1:8000>。
 
+Python 包、安装包和命令行入口统一为 `qiuyuantu`，例如 `from qiuyuantu import parse_video_share_url`、`qiuyuantu version`。命令行功能需安装 `cli` extra。旧的 `parse_video_py` 导入（含子模块）、`parse-video-py` 命令和 `python -m parse_video_py.diag` 继续兼容；HTTP 接口及 `PARSE_VIDEO_*` 环境变量保持原有用法。
+
+源码部署从旧版本升级时，先在原虚拟环境中运行 `python -m pip uninstall parse-video-py`，再按下方命令安装当前仓库，避免两个发行包同时提供旧入口。Docker 部署重新构建镜像即可。仓库地址仍为 `hiyufan/shizhen`。
+
 <details>
 <summary>手动安装 / 单容器 Docker</summary>
 
@@ -147,7 +151,7 @@ DOMAIN=your.domain PARSE_VIDEO_SITE_URL=https://your.domain docker compose up -d
 
 不用 Docker 的话，自己起 Nginx / Caddy 反代到 `127.0.0.1:8000`，并设置 `PARSE_VIDEO_TRUST_PROXY=1` 让限流拿到真实客户端 IP。
 
-排查问题：`docker compose exec app python -m parse_video_py.diag "<分享链接>"`，会打印出口 IP、解析结果和平台返回的原始状态。
+排查问题：`docker compose exec app python -m qiuyuantu.diag "<分享链接>"`，会打印出口 IP、解析结果和平台返回的原始状态。
 
 push 到 main、测试通过后自动上线，自检不过自动回滚：配置方法见 [docs/deploy.md](docs/deploy.md)。
 
@@ -407,7 +411,8 @@ flowchart LR
 
 ```
 main.py                          启动入口
-src/parse_video_py/
+src/parse_video_py/               旧包名兼容入口，按需转发到 qiuyuantu
+src/qiuyuantu/
   parser/                        上游解析器（抖音 / 小红书 / 快手 / X / B站 …），本项目增强了 douyin / redbook / twitter
   parser/ytdlp.py                yt-dlp 通用解析器，清晰度列表
   parser/errors.py               解析错误分类
@@ -415,13 +420,15 @@ src/parse_video_py/
   convert/livephoto.py           Apple MakerNote / MOV 标识、Motion Photo XMP
   convert/tasks.py               后台任务：准备原视频、转 GIF / 实况 / 动态照片、实况打包
   convert/fetch.py               下载：直链流式下载、国内 CDN 走中继兜底、yt-dlp 下载合并
+  convert/bilibili.py            B 站高清与仅音频下载：挑选 DASH 分轨并合并
   convert/jobs.py · store.py     任务队列、原视频缓存、磁盘配额
-  convert/limits.py              按 IP 限流与并发配额
   convert/net.py                 SSRF 防护、链接签名、出站连接池
   convert/relay.py               边缘函数中继 transport
   convert/updater.py             yt-dlp 自动升级
-  diag.py                        站长诊断：python -m parse_video_py.diag <链接>
+  diag.py                        站长诊断：python -m qiuyuantu.diag <链接>
   web/app.py                     组装 FastAPI：后台任务启停、中间件、路由
+  web/legacy_api.py              上游兼容接口，保留原有请求路径与返回格式
+  web/limits.py                  按 IP 限流与并发配额
   web/pages.py · parse.py        页面与 SEO 落地页；/api/parse 解析、/api/feedback 失败反馈
   web/proxy.py · media.py        /api/proxy 直链转发；原视频准备、转换、下载、任务查询
   web/admin.py · middleware.py   健康检查、统计、测试模式；安全响应头与浏览统计
@@ -436,6 +443,7 @@ scripts/push_urls.py             百度主动推送 + sitemap ping
 scripts/esa-relay.js             阿里云 ESA 边缘函数：/probe 探测出口，/relay 给海外服务器当国内中继
 scripts/cf-worker-probe.js       Cloudflare Worker 探测（结论：出口在海外，B站 412）
 scripts/subset_fonts.py          改文案后重建衬线字体子集
+docker/youtube/worker.py         独立解释器中的 YouTube 原生会话下载与媒体验证
 docker-compose.yml · Caddyfile   一台机器的 HTTPS 部署
 ```
 
@@ -478,9 +486,9 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 .venv/bin/python main.py
 ```
 
-- **规范**：Python 用 ruff 格式化和检查（规则在 `pyproject.toml`：行宽 120、圈复杂度 ≤ 10、import 排序、常见 bug 写法），前端脚本用 ESLint（`eslint.config.mjs`：复杂度 ≤ 10、嵌套 ≤ 4 层、函数 ≤ 80 行），CI 里任何一项不过就不部署。`pre-commit install` 后每次提交自动跑 ruff；前端提交前跑 `npx eslint@10 src/parse_video_py/static/js`。测试：`python -m pytest -q`，不碰外网。
+- **规范**：Python 用 ruff 格式化和检查（规则在 `pyproject.toml`：行宽 120、圈复杂度 ≤ 10、import 排序、常见 bug 写法），前端脚本用 ESLint（`eslint.config.mjs`：复杂度 ≤ 10、嵌套 ≤ 4 层、函数 ≤ 80 行），CI 里任何一项不过就不部署。`pre-commit install` 后每次提交自动跑 ruff；前端提交前跑 `npx eslint@10 src/qiuyuantu/static/js`。测试：`python -m pytest -q`，不碰外网。
 - **分层**：`parser/` 只管「链接 → VideoInfo」，不碰 HTTP 接口；`convert/` 是下载、转换、任务队列，不认识 FastAPI；`web/` 只做参数校验、鉴权、限流，把活交给前两层。前端脚本在 `static/js/`，按功能分模块，不往模板里写内联脚本。
-- **加平台**：在 `src/parse_video_py/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
+- **加平台**：在 `src/qiuyuantu/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
 - **改文案**：落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
 - **同步上游**：`parser/` 里的解析器都已按本项目的写法重写过（统一用 `BaseParser.get_json / get_text` 发请求、失败抛带原因的 `ParseError`），不能再拿上游文件直接覆盖；上游修了某个平台时对照着改，并补上 `tests/test_small_parsers.py` 里的离线用例。
 - **发起出站请求**：一律用 `utils.create_async_client()` 或 `convert.net.safe_client()`，它们带 SSRF 逐跳检查并复用连接池。不要直接 `httpx.AsyncClient()`。

@@ -5,10 +5,10 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import failures, stats, web
-from parse_video_py.parser.errors import ParseError
-from parse_video_py.web import limits
-from parse_video_py.web import parse as parse_api
+from qiuyuantu import failures, stats, web
+from qiuyuantu.parser.errors import ParseError
+from qiuyuantu.web import limits
+from qiuyuantu.web import parse as parse_api
 
 LINK = "https://www.kuaishou.com/f/X-abc"
 

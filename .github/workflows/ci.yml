@@ -27,7 +27,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: 安装依赖
-        run: pip install -e ".[web,dev]"
+        run: pip install -e ".[web,cli,dev]"
       - name: 代码规范（ruff：格式、import 顺序、复杂度、常见 bug 写法，规则见 pyproject.toml）
         run: |
           python -m ruff format --check .
@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: "22"
       - name: 前端脚本规范（ESLint：复杂度、嵌套、未用 / 未定义的变量，规则见 eslint.config.mjs）
-        run: npx --yes eslint@10 src/parse_video_py/static/js
+        run: npx --yes eslint@10 src/qiuyuantu/static/js
       - name: 单元测试
         # 测试不碰外网：平台解析器换成假的，数据目录指到临时目录（见 tests/conftest.py）
         run: python -m pytest -q

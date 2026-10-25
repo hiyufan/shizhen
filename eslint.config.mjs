@@ -1,4 +1,4 @@
-// 前端脚本（src/parse_video_py/static/js/，浏览器原生 ES 模块）的检查规则，和后端 ruff 的口径一致：
+// 前端脚本（src/qiuyuantu/static/js/，浏览器原生 ES 模块）的检查规则，和后端 ruff 的口径一致：
 // 复杂度 ≤ 10、嵌套 ≤ 4 层、没用的变量和没定义的名字都算错。CI 里：npx eslint@10
 const browser = Object.fromEntries(
   [
@@ -10,7 +10,7 @@ const browser = Object.fromEntries(
 
 export default [
   {
-    files: ['src/parse_video_py/static/js/**/*.js'],
+    files: ['src/qiuyuantu/static/js/**/*.js'],
     languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: browser },
     rules: {
       'no-undef': 'error',

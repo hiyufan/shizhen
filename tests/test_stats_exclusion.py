@@ -5,11 +5,11 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import stats, web
-from parse_video_py.convert import jobs
-from parse_video_py.parser.base import VideoInfo
-from parse_video_py.web import limits
-from parse_video_py.web import parse as parse_api
+from qiuyuantu import stats, web
+from qiuyuantu.convert import jobs
+from qiuyuantu.parser.base import VideoInfo
+from qiuyuantu.web import limits
+from qiuyuantu.web import parse as parse_api
 
 
 @pytest.fixture

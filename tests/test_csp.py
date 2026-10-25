@@ -5,8 +5,8 @@ import hashlib
 
 from fastapi.testclient import TestClient
 
-from parse_video_py import web
-from parse_video_py.web.middleware import build_csp
+from qiuyuantu import web
+from qiuyuantu.web.middleware import build_csp
 
 
 def _directives(csp):

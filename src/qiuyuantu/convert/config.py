@@ -23,7 +23,7 @@ POT_URL = os.environ.get("PARSE_VIDEO_POT_URL", "")
 # 原生 YouTube 会话 / SABR 兜底使用隔离解释器，不能替换普通平台的 yt-dlp。
 YOUTUBE_NATIVE_PYTHON = os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_PYTHON", "")
 YOUTUBE_NATIVE_SCRIPT = Path(
-    os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT", PROJECT_DIR / "docker/youtube/probe.py")
+    os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_SCRIPT", PROJECT_DIR / "docker/youtube/worker.py")
 )
 YOUTUBE_NATIVE_TIMEOUT = float(os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT", "75"))
 # 解析时整条视频要在上面的时间里下完：开浏览器约 15 秒，经 WARP 实测 6.7 MB/s（2026-10-22，

@@ -1,6 +1,6 @@
 """yt-dlp 的 info dict -> VideoInfo：直链挑哪一路、哪些清晰度要服务端合并。"""
 
-from parse_video_py.parser.ytdlp import YtDlp
+from qiuyuantu.parser.ytdlp import YtDlp
 
 
 def _fmt(**kw):

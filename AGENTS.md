@@ -6,13 +6,14 @@
 ## 开发入口与事实来源
 
 - Python 支持 3.10+；CI 和应用镜像使用 3.12。前端是 Jinja2 模板、CSS 和浏览器原生 ES 模块。
+- 主包、安装包和命令行入口为 `qiuyuantu`。`src/parse_video_py/` 与旧命令 `parse-video-py` 仅提供兼容入口；新代码使用 `qiuyuantu`，旧导入必须与新导入共享模块状态。上游署名和 `PARSE_VIDEO_*` 环境变量继续保留。
 - 在仓库根目录创建或复用虚拟环境，安装 `python -m pip install -e ".[web,cli,dev]"`，用 `python main.py` 启动。以下命令均在根目录、已激活的虚拟环境中运行。
 - [README.md](README.md#贡献) 说明开发约定；[pyproject.toml](pyproject.toml)、[eslint.config.mjs](eslint.config.mjs) 和 [CI 工作流](.github/workflows/ci.yml) 是工具规则和检查命令的事实来源。修改这些配置时同步本文件。
 - 先读目标模块和相邻测试，沿用已有封装；修改范围围绕当前任务，避免顺带重构无关代码。
 
 ## 代码分层
 
-下列路径均相对于 `src/parse_video_py/`：
+下列路径均相对于 `src/qiuyuantu/`：
 
 | 位置 | 职责与修改边界 |
 | --- | --- |
@@ -29,7 +30,7 @@
 
 ## 产品与界面设计
 
-- 延续现有编辑风格：冷暖浅底、深色正文、衬线标题、无衬线操作文字、等宽技术信息，蓝色强调搭配少量薄荷绿和橙色。优先复用 [site.css](src/parse_video_py/static/site.css) 的变量、`.wrap`、`.btn`、`.card` 和现有间距层级。
+- 延续现有编辑风格：冷暖浅底、深色正文、衬线标题、无衬线操作文字、等宽技术信息，蓝色强调搭配少量薄荷绿和橙色。优先复用 [site.css](src/qiuyuantu/static/site.css) 的变量、`.wrap`、`.btn`、`.card` 和现有间距层级。
 - 页面围绕「粘贴 / 上传 → 解析 → 下载或转换」组织。让当前主要操作清楚可见，次要选项按需展开；新增功能延续现有组件与交互方式。
 - 中文文案简洁、自然，解释用户能做什么、当前状态和下一步。状态提示可沿用现有轻松语气，但阶段与进度必须来自实际事件；不要用等待时长伪造百分比，也不要展示内部服务、凭证或服务器路径。
 - 修改布局或交互后，在桌面和手机窄屏检查相关状态：空态、等待、成功、失败，以及清空 / 换链接。确认无意外横向溢出、遮挡或重复提交；旧请求和计时器不能覆盖新结果。
@@ -91,7 +92,7 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 | 改动 | 本地验证 |
 | --- | --- |
 | Python 源码、测试或依赖 | `python -m ruff format --check .`、`python -m ruff check .`、`python -m pytest -q` |
-| 前端 JavaScript | `npx --yes eslint@10 src/parse_video_py/static/js`，以及相关页面的浏览器交互检查 |
+| 前端 JavaScript | `npx --yes eslint@10 src/qiuyuantu/static/js`，以及相关页面的浏览器交互检查 |
 | 模板、样式、静态资源或页面文案 | `python -m pytest -q tests/test_assets.py tests/test_fonts.py tests/test_csp.py tests/test_seo_routes.py`，以及受影响页面的桌面 / 手机检查 |
 | 部署脚本 | `shellcheck scripts/deploy.sh` |
 | `Dockerfile`、`pyproject.toml`、`requirements.txt` | 具备 Docker 环境时执行 `docker build -t shizhen-ci .`；CI 对这些文件的变化执行镜像构建 |

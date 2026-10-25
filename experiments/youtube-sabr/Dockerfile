@@ -9,8 +9,8 @@ RUN pip install --no-cache-dir \
     playwright==1.64.0 deno==2.9.8 yt-dlp-ejs==0.8.0 protobug==1.0.0 bgutil-ytdlp-pot-provider==2.0.2 \
     && playwright install --with-deps chromium \
     && chmod -R a+rX /opt/pw-browsers
-COPY docker/youtube/probe.py /app/probe.py
+COPY docker/youtube/worker.py /app/worker.py
 RUN useradd -r -u 10001 -m probe && mkdir /output && chown probe:probe /output
 USER probe
 WORKDIR /output
-ENTRYPOINT ["timeout", "300s", "python", "/app/probe.py"]
+ENTRYPOINT ["timeout", "300s", "python", "/app/worker.py"]

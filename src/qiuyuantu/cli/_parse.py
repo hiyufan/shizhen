@@ -7,10 +7,10 @@ from typing import NoReturn
 
 import typer
 
-from parse_video_py import parse_video_share_url
-from parse_video_py.cli.output import output_batch_error, output_result
-from parse_video_py.parser.base import VideoInfo
-from parse_video_py.utils import extract_url
+from qiuyuantu import parse_video_share_url
+from qiuyuantu.cli.output import output_batch_error, output_result
+from qiuyuantu.parser.base import VideoInfo
+from qiuyuantu.utils import extract_url
 
 _CONCURRENCY_LIMIT = 10
 

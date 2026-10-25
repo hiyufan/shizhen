@@ -13,26 +13,26 @@ import pkgutil
 import httpx
 import pytest
 
-from parse_video_py import parser as parser_pkg
-from parse_video_py.parser.acfun import AcFun
-from parse_video_py.parser.cctv import CCTV
-from parse_video_py.parser.doupai import DouPai
-from parse_video_py.parser.errors import ParseError, classify
-from parse_video_py.parser.haokan import HaoKan
-from parse_video_py.parser.huya import HuYa
-from parse_video_py.parser.lishipin import LiShiPin
-from parse_video_py.parser.lvzhou import LvZhou
-from parse_video_py.parser.pipigaoxiao import PiPiGaoXiao
-from parse_video_py.parser.pipixia import PiPiXia
-from parse_video_py.parser.qqvideo import QQVideo
-from parse_video_py.parser.quanmin import QuanMin
-from parse_video_py.parser.quanminkge import QuanMinKGe
-from parse_video_py.parser.sixroom import SixRoom
-from parse_video_py.parser.sohu import Sohu
-from parse_video_py.parser.weibo import WeiBo
-from parse_video_py.parser.weishi import WeiShi
-from parse_video_py.parser.xinpianchang import XinPianChang
-from parse_video_py.parser.zuiyou import ZuiYou
+from qiuyuantu import parser as parser_pkg
+from qiuyuantu.parser.acfun import AcFun
+from qiuyuantu.parser.cctv import CCTV
+from qiuyuantu.parser.doupai import DouPai
+from qiuyuantu.parser.errors import ParseError, classify
+from qiuyuantu.parser.haokan import HaoKan
+from qiuyuantu.parser.huya import HuYa
+from qiuyuantu.parser.lishipin import LiShiPin
+from qiuyuantu.parser.lvzhou import LvZhou
+from qiuyuantu.parser.pipigaoxiao import PiPiGaoXiao
+from qiuyuantu.parser.pipixia import PiPiXia
+from qiuyuantu.parser.qqvideo import QQVideo
+from qiuyuantu.parser.quanmin import QuanMin
+from qiuyuantu.parser.quanminkge import QuanMinKGe
+from qiuyuantu.parser.sixroom import SixRoom
+from qiuyuantu.parser.sohu import Sohu
+from qiuyuantu.parser.weibo import WeiBo
+from qiuyuantu.parser.weishi import WeiShi
+from qiuyuantu.parser.xinpianchang import XinPianChang
+from qiuyuantu.parser.zuiyou import ZuiYou
 
 
 class FakeClient:
@@ -73,7 +73,7 @@ def http(monkeypatch):
             return FakeClient(routes, calls)
 
         for info in pkgutil.iter_modules(parser_pkg.__path__):
-            module = importlib.import_module(f"parse_video_py.parser.{info.name}")
+            module = importlib.import_module(f"qiuyuantu.parser.{info.name}")
             if hasattr(module, "create_async_client"):
                 monkeypatch.setattr(module, "create_async_client", factory)
         return calls
@@ -519,7 +519,7 @@ def test_instagram_audience_restricted_is_not_a_broken_parser():
 
 def test_instagram_image_post_from_page_json():
     """yt-dlp 只认视频，图片帖整条失败（issue #5）：从未登录页面内嵌的 JSON 里取，推荐区的别的帖子不要。"""
-    from parse_video_py.parser import instagram
+    from qiuyuantu.parser import instagram
 
     def post(code, items):
         return {

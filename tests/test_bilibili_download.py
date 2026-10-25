@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from parse_video_py.convert import bili
-from parse_video_py.convert.fetch import TooLarge
-from parse_video_py.convert.net import referer_for
+from qiuyuantu.convert import bilibili
+from qiuyuantu.convert.fetch import TooLarge
+from qiuyuantu.convert.net import referer_for
 
 
 def _v(height, codecid, bw):
@@ -29,40 +29,40 @@ BIG = 10**12
 
 
 def test_prefers_h264_at_requested_height():
-    video, audio = bili.pick(DASH, SPEC_1080, 200, BIG)
+    video, audio = bilibili.pick(DASH, SPEC_1080, 200, BIG)
     assert (video["height"], video["codecid"], audio["baseUrl"]) == (1080, 7, "a2")
 
 
 def test_caps_height():
-    video, _ = bili.pick(DASH, "bv*[height<=720]+ba/b", 200, BIG)
+    video, _ = bilibili.pick(DASH, "bv*[height<=720]+ba/b", 200, BIG)
     assert video["height"] == 720
 
 
 def test_falls_back_to_h265_when_h264_is_over_the_limit():
     seconds = 600  # H.264 约 231 MB，H.265 约 111 MB
-    video, _ = bili.pick(DASH, SPEC_1080, seconds, 150 * 10**6)
+    video, _ = bilibili.pick(DASH, SPEC_1080, seconds, 150 * 10**6)
     assert video["codecid"] == 12
 
 
 def test_too_large_says_how_big():
     with pytest.raises(TooLarge, match="约 988 MB"):
-        bili.pick(DASH, SPEC_1080, 5323, 300 << 20)
+        bilibili.pick(DASH, SPEC_1080, 5323, 300 << 20)
 
 
 def test_fit_steps_down_to_a_lower_height():
     """转换用的原视频：1080p 两种编码都超了，就拿 720p。"""
     seconds = 1500  # 1080p H.265 约 278 MB，720p H.264 约 260 MB
-    video, _ = bili.pick(DASH, SPEC_1080, seconds, 270 * 10**6, fit=True)
+    video, _ = bilibili.pick(DASH, SPEC_1080, seconds, 270 * 10**6, fit=True)
     assert (video["height"], video["codecid"]) == (720, 7)
 
 
 def test_fit_still_fails_when_nothing_fits():
     with pytest.raises(TooLarge, match="视频太长：最低清晰度也约 147 MB"):
-        bili.pick(DASH, SPEC_1080, 1500, 100 * 10**6, fit=True)
+        bilibili.pick(DASH, SPEC_1080, 1500, 100 * 10**6, fit=True)
 
 
 def test_audio_only():
-    video, audio = bili.pick(DASH, "ba[ext=m4a]/ba", 200, BIG)
+    video, audio = bilibili.pick(DASH, "ba[ext=m4a]/ba", 200, BIG)
     assert video is None and audio["bandwidth"] == 85_000
 
 
@@ -77,7 +77,7 @@ def test_audio_only():
     ],
 )
 def test_handles(url, ok):
-    assert bili.handles(url) is ok
+    assert bilibili.handles(url) is ok
 
 
 async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
@@ -96,7 +96,7 @@ async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
         merged.append(args)
         Path(args[-1]).write_bytes(b"mp4")
 
-    parser = bili.BiliBili
+    parser = bilibili.BiliBili
 
     async def noop(self):
         return None
@@ -111,10 +111,10 @@ async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
     monkeypatch.setattr(parser, "_ensure_buvid", noop)
     monkeypatch.setattr(parser, "_page_cid", cid)
     monkeypatch.setattr(parser, "_play_urls", play)
-    monkeypatch.setattr(bili, "download_source", fake_download)
-    monkeypatch.setattr(bili.ffmpeg, "run", fake_ffmpeg)
+    monkeypatch.setattr(bilibili, "download_source", fake_download)
+    monkeypatch.setattr(bilibili.ffmpeg, "run", fake_ffmpeg)
 
-    out = await bili.download(
+    out = await bilibili.download(
         "https://www.bilibili.com/video/BV1?p=13", SPEC_1080, tmp_path, "s", lambda p, m: reports.append(p)
     )
     assert peak[0] == 2 and out.name == "s.mp4" and len(merged) == 1
@@ -132,5 +132,5 @@ async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
         ("https://example-a.akamaized.net/v.mp4", None),  # 别家客户的 Akamai 不带
     ],
 )
-def test_bili_mirror_referer(url, referer):
+def test_bilibili_mirror_referer(url, referer):
     assert referer_for(url) == referer

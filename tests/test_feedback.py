@@ -10,10 +10,10 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from parse_video_py import feedback, web
-from parse_video_py.parser.errors import ParseError
-from parse_video_py.web import limits
-from parse_video_py.web import parse as parse_api
+from qiuyuantu import feedback, web
+from qiuyuantu.parser.errors import ParseError
+from qiuyuantu.web import limits
+from qiuyuantu.web import parse as parse_api
 
 LINK = "https://v.kuaishou.com/n86DkRPN"
 
