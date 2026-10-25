@@ -1,5 +1,14 @@
 """小红书：页面里的笔记数据 -> VideoInfo（视频档位、原图、实况）。"""
 
+import asyncio
+import json
+import logging
+from types import SimpleNamespace
+
+import pytest
+
+from parse_video_py.parser import redbook
+from parse_video_py.parser.errors import classify
 from parse_video_py.parser.redbook import RedBook
 
 
@@ -75,3 +84,98 @@ def test_image_note_uses_original_images_and_live_photos():
 def test_video_duration_falls_back_to_capa():
     data = {**VIDEO_NOTE, "video": {"capa": {"duration": 33}, "media": {"stream": {"h264": [_h264(1, 2, "v")]}}}}
     assert _build(data).duration == 33.0
+
+
+# ---------------------------------------------------------------- 换路 / 重试
+SHARE = "https://xhslink.cn/o/abc"
+NOTE_PAGE = (
+    "https://www.xiaohongshu.com/discovery/item/n1?xsec_token=t&xsec_source=app_share",
+    "<title>笔记 - 小红书</title><script>window.__INITIAL_STATE__="
+    + json.dumps({"noteData": {"data": {"noteData": IMAGE_NOTE}}})
+    + "</script>",
+)
+# 分享链接跳过去的地址里本来就有 xsec_token, 不能因为它就当成 404
+EMPTY_PAGE = (NOTE_PAGE[0], '<title>小红书</title><script>window.__INITIAL_STATE__={"noteData":{}}</script>')
+GONE_PAGE = ("https://www.xiaohongshu.com/404/sec_Ab12?source=xhs_sec_server", "<title>小红书</title>")
+LOGIN_PAGE = ("https://www.xiaohongshu.com/login?redirectPath=x", "<title>登录</title>")
+
+
+class _Pages:
+    """按 UA 区分手机 / 桌面, 依次返回事先排好的页面。"""
+
+    def __init__(self, mobile=(), desktop=()):
+        self.pages = {"mobile": list(mobile), "desktop": list(desktop)}
+        self.calls = []
+
+    def client(self, **kw):
+        pages = self
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def get(self, url, headers):
+                mode = "mobile" if "iPhone" in headers["User-Agent"] else "desktop"
+                pages.calls.append(mode)
+                final_url, text = pages.pages[mode].pop(0)
+                return SimpleNamespace(url=final_url, text=text, raise_for_status=lambda: None)
+
+        return _Client()
+
+
+def _parse(monkeypatch, pages, *, mobile_first):
+    monkeypatch.setattr(redbook, "create_async_client", pages.client)
+    monkeypatch.setattr(RedBook, "_prefer_mobile", False)
+    monkeypatch.setattr(RedBook, "_mobile_first", staticmethod(lambda: mobile_first))
+    return asyncio.run(RedBook().parse_share_url(SHARE))
+
+
+def test_transient_404_is_retried_on_mobile_when_desktop_is_a_login_wall(monkeypatch, caplog):
+    pages = _Pages(mobile=[GONE_PAGE, NOTE_PAGE])
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        info = _parse(monkeypatch, pages, mobile_first=True)
+    assert info.title == "图文"
+    assert pages.calls == ["mobile", "mobile"]  # 桌面页在这个出口上只会是登录墙, 不去白跑
+    assert "跳到 https://www.xiaohongshu.com/404/sec_Ab12?source=xhs_sec_server 标题 '小红书'" in caplog.text
+    assert "小红书手机页重试后解析成功" in caplog.text
+
+
+def test_404_twice_is_reported_as_deleted(monkeypatch):
+    pages = _Pages(mobile=[GONE_PAGE, GONE_PAGE])
+    with pytest.raises(ValueError) as e:
+        _parse(monkeypatch, pages, mobile_first=True)
+    assert classify(e.value).reason == "deleted"
+    assert pages.calls == ["mobile", "mobile"]
+
+
+def test_share_link_token_is_not_mistaken_for_404(monkeypatch):
+    pages = _Pages(mobile=[EMPTY_PAGE, EMPTY_PAGE])
+    with pytest.raises(ValueError) as e:
+        _parse(monkeypatch, pages, mobile_first=True)
+    assert classify(e.value).reason != "deleted"
+    assert "意外页面" in str(e.value)
+
+
+def test_desktop_404_is_confirmed_on_mobile(monkeypatch):
+    pages = _Pages(mobile=[NOTE_PAGE], desktop=[GONE_PAGE])
+    assert _parse(monkeypatch, pages, mobile_first=False).title == "图文"
+    assert pages.calls == ["desktop", "mobile"]
+
+
+def test_mobile_error_wins_over_desktop_login_wall(monkeypatch):
+    # 桌面页先撞登录墙、手机页拿到验证页: 报验证页, 登录墙是意料之中的
+    pages = _Pages(mobile=[(NOTE_PAGE[0], "<title>安全验证</title>")], desktop=[LOGIN_PAGE])
+    with pytest.raises(ValueError, match="验证页"):
+        _parse(monkeypatch, pages, mobile_first=False)
+    assert pages.calls == ["desktop", "mobile"]
+    assert RedBook._prefer_mobile is True
+
+
+def test_page_gone_title_is_reported_as_deleted(monkeypatch):
+    gone = ("https://www.xiaohongshu.com/search_result/n1?xsec_token=t", "<title>你访问的页面不见了</title>")
+    with pytest.raises(ValueError) as e:
+        _parse(monkeypatch, _Pages(mobile=[gone, gone]), mobile_first=True)
+    assert classify(e.value).reason == "deleted"
