@@ -488,10 +488,10 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 
 ## 致谢
 
-- [parse-video-py](https://github.com/wujunwei928/parse-video-py)：国内平台解析器，本项目的地基
+- [parse-video-py](https://github.com/wujunwei928/parse-video-py)：项目最早从它起步，一些小平台的解析接口至今沿用它找到的
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)：YouTube 与兜底解析
 - [FFmpeg](https://ffmpeg.org/) / [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg)：所有转换
-- [FastAPI](https://fastapi.tiangolo.com/) · [httpx](https://www.python-httpx.org/) · [piexif](https://github.com/hMatoba/Piexif) · [fontTools](https://github.com/fonttools/fonttools)
+- [FastAPI](https://fastapi.tiangolo.com/) · [httpx](https://www.python-httpx.org/) · [piexif](https://github.com/hMatoba/Piexif)
 - [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) · [fxtwitter](https://github.com/FixTweet/FxTwitter)
 - 字体：[Noto Serif SC](https://fonts.google.com/noto/specimen/Noto+Serif+SC)、[Inter](https://rsms.me/inter/)、[Playfair Display](https://github.com/clauseggers/Playfair)、[JetBrains Mono](https://www.jetbrains.com/lp/mono/)
 - 开头演示动画里的视频：[Big Buck Bunny](https://peach.blender.org/) © Blender Foundation，[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
