@@ -1,0 +1,33 @@
+<details class="preferences" id="preferences">
+  <summary class="preferences-toggle" aria-label="{{ t("外观与语言") }}" title="{{ t("外观与语言") }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/>
+    </svg>
+    <span class="preferences-language">{{ '中' if locale == 'zh' else 'EN' }}</span>
+    <svg class="preferences-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>
+  </summary>
+  <div class="preferences-panel">
+    <div class="preferences-heading">{{ t("偏好设置") }}</div>
+    <fieldset>
+      <legend>{{ t("外观") }}</legend>
+      <div class="theme-options">
+        {% for value, label, icon in [('auto', '跟随系统', 'system'), ('light', '浅色', 'light'), ('dark', '深色', 'dark')] %}
+        <label class="theme-option">
+          <input type="radio" name="theme" value="{{ value }}"{% if theme == value %} checked{% endif %}>
+          <span class="theme-preview {{ icon }}" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>{{ label | t }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <fieldset class="language-options">
+      <legend>{{ t("语言 / Language") }}</legend>
+      {% for value, label, lang in [('auto', '跟随浏览器', ''), ('zh', '简体中文', 'zh-CN'), ('en', 'English', 'en')] %}
+      <label><input type="radio" name="language" value="{{ value }}"{% if language == value %} checked{% endif %}><span{% if lang %} lang="{{ lang }}"{% endif %}>{{ t(label) if value == 'auto' else label }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <p class="preferences-note">{{ t("自动适配，也可以按你的喜好来。") }}</p>
+    <p class="preferences-status" role="status" aria-live="polite" hidden></p>
+    <button class="btn sm preferences-apply" type="button" hidden>{{ t('应用语言') }}</button>
+  </div>
+</details>

@@ -3,12 +3,12 @@
 <section class="sec cold article">
   <div class="shape mint" style="width:420px;height:420px;right:-160px;top:-100px"></div>
   <div class="wrap narrow">
-    <nav class="crumbs" aria-label="位置"><a href="/">求原图</a><span>/</span><span>教程</span></nav>
-    <h1>教程</h1>
-    <p class="intro">每篇只讲一件事，照着做两分钟能完成。</p>
+    <nav class="crumbs" aria-label="{{ t("位置") }}"><a href="/">{{ t("求原图") }}</a><span>/</span><span>{{ t("教程") }}</span></nav>
+    <h1>{{ t("教程") }}</h1>
+    <p class="intro">{{ t("每篇只讲一件事，照着做两分钟能完成。") }}</p>
     <ul class="guide-list">
       {% for g in guides %}
-      <li><a href="{{ g.path }}"><h2>{{ g.title }}</h2><p>{{ g.description }}</p></a></li>
+      <li><a href="{{ g.path }}"><h2>{{ g.title | t }}</h2><p>{{ g.description | t }}</p></a></li>
       {% endfor %}
     </ul>
   </div>

@@ -1,4 +1,8 @@
 // 每个页面都有的：顶部阅读进度条、背景光晕视差、入场动画、数字滚动（都尊重 reduce-motion），测试模式标记
+import { restoreLanguageDraft } from './preferences.js';
+
+const draftInput = document.getElementById('url');
+if (draftInput) restoreLanguageDraft(draftInput);
 
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 

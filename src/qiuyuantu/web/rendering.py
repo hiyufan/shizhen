@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import json
 import mimetypes
 import re
 from pathlib import Path
@@ -12,6 +13,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from .. import guides, seo, status
+from .preferences import preferences, t, translate_data, ui_english
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = PACKAGE_DIR / "static"
@@ -22,6 +24,8 @@ PRIVATE_PAGE_HEADERS = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex"}
 
 mimetypes.add_type("font/woff2", ".woff2")  # Windows 的注册表里没有这个类型
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.globals["t"] = t
+templates.env.filters["t"] = t
 
 
 @functools.cache
@@ -130,7 +134,18 @@ def page_context(
 
 
 def render(request: Request, name: str, context: dict, **kwargs):
-    return templates.TemplateResponse(request=request, name=name, context=context, **kwargs)
+    prefs = preferences(request)
+    context.update(prefs)
+    context["ui_messages"] = ui_english() if prefs["locale"] == "en" else {}
+    if context.get("json_ld") and prefs["locale"] == "en":
+        data = translate_data(json.loads(context["json_ld"]), "en")
+        context["json_ld"] = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+    response = templates.TemplateResponse(request=request, name=name, context=context, **kwargs)
+    response.headers["Content-Language"] = "zh-CN" if prefs["locale"] == "zh" else "en"
+    response.headers["Vary"] = "Accept-Language, Cookie"
+    # HTML 带个人偏好，不能让 CDN 把一个访客的语言 / 主题发给下一个访客。
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 def render_tool_page(request: Request, page: seo.Page):

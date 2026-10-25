@@ -1,12 +1,14 @@
 // 页面上的小部件：后台任务的进度卡片、解析失败后的「反馈这个问题」
 
+import { isEnglish, serverMessage, t } from './i18n.js';
+
 import { postJSON } from './api.js';
 import { el } from './dom.js';
 
 /** 任务卡片：进度条 + 状态文字，做完换成保存按钮（iPhone 上前面多一个「存到相册」） */
 export function jobCard(container, title) {
   const bar = el('div', { class: 'bar-fill' });
-  const status = el('small', {}, '排个队，马上轮到');
+  const status = el('small', {}, t('排个队，马上轮到'));
   const card = el('div', { class: 'job' },
     el('div', { class: 'row' }, el('b', {}, title), status),
     el('div', { class: 'bar-track' }, bar));
@@ -16,7 +18,8 @@ export function jobCard(container, title) {
     update(job) {
       const pct = Math.round((job.progress || 0) * 100);
       bar.style.width = pct + '%';
-      status.textContent = (job.message || (job.status === 'queued' ? '排个队，马上轮到' : '忙活中')) + ' ' + pct + '%';
+      const fallback = job.status === 'queued' ? '排个队，马上轮到' : '忙活中';
+      status.textContent = serverMessage(job.message || fallback, fallback) + ' ' + pct + '%';
     },
     done(text, href, filename, photos) {
       bar.style.width = '100%';
@@ -25,7 +28,7 @@ export function jobCard(container, title) {
     },
     fail(msg) {
       card.classList.add('err');
-      status.textContent = msg;
+      status.textContent = serverMessage(msg);
     },
   };
 }
@@ -35,22 +38,22 @@ export function jobCard(container, title) {
 export function feedbackBox(ticket) {
   const box = el('div', { class: 'fb' });
   const email = el('input', {
-    type: 'email', placeholder: '邮箱（选填）', autocomplete: 'email', maxlength: '254', 'aria-label': '邮箱（选填）',
+    type: 'email', placeholder: t('邮箱（选填）'), autocomplete: 'email', maxlength: '254', 'aria-label': t('邮箱（选填）'),
   });
-  const send = el('button', { class: 'btn sm dark', type: 'submit' }, '提交反馈');
+  const send = el('button', { class: 'btn sm dark', type: 'submit' }, t('提交反馈'));
   const err = el('p', { class: 'fb-err', hidden: true });
   const form = el('form', { class: 'fb-form', hidden: true },
     el('div', { class: 'fb-row' }, email, send),
     err,
     el('details', { class: 'fb-more' },
-      el('summary', {}, '🔒 加密存储 · 仅用于本次修复通知 · 发送即销毁'),
-      el('p', {}, '邮箱经 HTTPS 传输，服务器以 AES-256 加密保存，只用来告诉你这个问题修好了；'
-        + '邮件发出后立即销毁，最长保留 90 天，不会出现在任何公开位置。')));
+      el('summary', {}, t('🔒 加密存储 · 仅用于本次修复通知 · 发送即销毁')),
+      el('p', {}, t('邮箱经 HTTPS 传输，服务器以 AES-256 加密保存，只用来告诉你这个问题修好了；')
+        + t('邮件发出后立即销毁，最长保留 90 天，不会出现在任何公开位置。'))));
   const open = el('button', {
     class: 'btn sm',
     type: 'button',
     onclick: () => { open.hidden = true; form.hidden = false; email.focus(); },
-  }, '反馈这个问题');
+  }, t('反馈这个问题'));
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -58,8 +61,8 @@ export function feedbackBox(ticket) {
     err.hidden = true;
     try {
       const r = await postJSON('/api/feedback', { ticket, email: email.value.trim() });
-      const head = r.duplicate ? '这个问题已经有人反馈过，正在修' : '收到了，谢谢';
-      box.replaceChildren(el('p', { class: 'fb-done' }, head + (r.email ? '，修好后会发邮件告诉你。' : '。')));
+      const head = r.duplicate ? t('这个问题已经有人反馈过，正在修') : t('收到了，谢谢');
+      box.replaceChildren(el('p', { class: 'fb-done' }, head + (r.email ? t('，修好后会发邮件告诉你。') : isEnglish ? '.' : '。')));
     } catch (ex) {
       err.textContent = ex.message;
       err.hidden = false;
@@ -73,7 +76,7 @@ export function feedbackBox(ticket) {
 // 下载成功后请用户去 GitHub 点个星：14 天里网站几百个真实用户，只有 10 个点进过仓库，
 // 入口只有右上角的小按钮。刚拿到原图的时候最愿意点。每台设备只说一次，不弹窗、不挡操作
 const STAR_KEY = 'sz_star_ask';
-const DOWNLOADISH = /下载|存到相册|保存/;
+const DOWNLOADISH = /下载|存到相册|保存|download|save to photos|save/i;
 
 export function askForStarAfterDownload(...containers) {
   const handler = (e) => {
@@ -88,9 +91,9 @@ export function askForStarAfterDownload(...containers) {
     }
     const card = e.currentTarget.firstElementChild || e.currentTarget;
     setTimeout(() => card.append(el('p', { class: 'star-ask' },
-      '求原图是开源的，免费、不用登录。觉得好用的话，去 ',
-      el('a', { href: 'https://github.com/hiyufan/shizhen', target: '_blank', rel: 'noopener' }, 'GitHub 点个 ★'),
-      '，能让更多人找到它。')), 1500);
+      t('求原图是开源的，免费、不用登录。觉得好用的话，去 '),
+      el('a', { href: 'https://github.com/hiyufan/shizhen', target: '_blank', rel: 'noopener' }, t('GitHub 点个 ★')),
+      t('，能让更多人找到它。'))), 1500);
   };
   for (const box of containers) box.addEventListener('click', handler);
 }

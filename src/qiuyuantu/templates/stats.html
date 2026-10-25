@@ -4,63 +4,63 @@
 <section class="sec cold article dash" data-token="{{ token }}">
   <div class="shape sky" style="width:420px;height:420px;right:-160px;top:-100px"></div>
   <div class="wrap">
-    <nav class="crumbs" aria-label="位置"><a href="/">求原图</a><span>/</span><span>使用统计</span></nav>
-    <h1>谁在什么时候用</h1>
-    <p class="intro">按小时 / 按天数人头。IP 只留哈希；成功的解析不记链接，失败的链接留 7 天方便排查。</p>
+    <nav class="crumbs" aria-label="{{ t("位置") }}"><a href="/">{{ t("求原图") }}</a><span>/</span><span>{{ t("使用统计") }}</span></nav>
+    <h1>{{ t("谁在什么时候用") }}</h1>
+    <p class="intro">{{ t("按小时 / 按天数人头。IP 只留哈希；成功的解析不记链接，失败的链接留 7 天方便排查。") }}</p>
 
     <div class="dash-bar">
       <div class="tabs" role="tablist" id="ranges">
-        {% for r in ranges %}<button type="button" role="tab" data-range="{{ r }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ {'24h': '最近 24 小时', '7d': '7 天', '30d': '30 天', '90d': '90 天'}[r] }}</button>{% endfor %}
+        {% for r in ranges %}<button type="button" role="tab" data-range="{{ r }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ {'24h': '最近 24 小时', '7d': '7 天', '30d': '30 天', '90d': '90 天'}[r] | t }}</button>{% endfor %}
       </div>
       <span class="dash-note mono" id="updated"></span>
     </div>
 
-    <div id="empty" class="notice info" hidden>还没有数据。设置了 <code class="mono">PARSE_VIDEO_STATS_TOKEN</code> 之后才开始记录，等有人用一次再来看。</div>
+    <div id="empty" class="notice info" hidden>{{ t("还没有数据。设置了") }} <code class="mono">PARSE_VIDEO_STATS_TOKEN</code> {{ t("之后才开始记录，等有人用一次再来看。") }}</div>
 
     <div class="kpis" id="kpis">
-      <div class="card stat"><div class="num" data-k="users">–</div><div class="cap">人数（去重 IP）</div></div>
-      <div class="card stat"><div class="num" data-k="parse">–</div><div class="cap">解析次数 · <span data-k="parse_rate">–</span> 成功</div></div>
-      <div class="card stat"><div class="num" data-k="job">–</div><div class="cap">转换 / 下载任务 · <span data-k="job_rate">–</span> 成功</div></div>
-      <div class="card stat"><div class="num" data-k="download">–</div><div class="cap">直链保存次数</div></div>
+      <div class="card stat"><div class="num" data-k="users">–</div><div class="cap">{{ t("人数（去重 IP）") }}</div></div>
+      <div class="card stat"><div class="num" data-k="parse">–</div><div class="cap">{{ t("解析次数 ·") }} <span data-k="parse_rate">–</span> {{ t("成功") }}</div></div>
+      <div class="card stat"><div class="num" data-k="job">–</div><div class="cap">{{ t("转换 / 下载任务 ·") }} <span data-k="job_rate">–</span> {{ t("成功") }}</div></div>
+      <div class="card stat"><div class="num" data-k="download">–</div><div class="cap">{{ t("直链保存次数") }}</div></div>
     </div>
 
     <div class="chart card">
-      <div class="chart-head"><h3 id="c1-title">每小时有多少人</h3><span class="dash-note">解析或转换过的去重 IP</span></div>
+      <div class="chart-head"><h3 id="c1-title">{{ t("每小时有多少人") }}</h3><span class="dash-note">{{ t("解析或转换过的去重 IP") }}</span></div>
       <div class="chart-body"><svg id="c1" role="img" aria-labelledby="c1-title"></svg></div>
     </div>
 
     <div class="chart card">
       <div class="chart-head">
-        <h3 id="c2-title">解析次数</h3>
-        <div class="legend" aria-hidden="true"><span><i style="background:#4A94CC"></i>成功</span><span><i style="background:#E8702A"></i>失败</span></div>
+        <h3 id="c2-title">{{ t("解析次数") }}</h3>
+        <div class="legend" aria-hidden="true"><span><i style="background:#4A94CC"></i>{{ t("成功") }}</span><span><i style="background:#E8702A"></i>{{ t("失败") }}</span></div>
       </div>
       <div class="chart-body"><svg id="c2" role="img" aria-labelledby="c2-title"></svg></div>
     </div>
 
     <details class="dash-table">
-      <summary>查看每段的数字</summary>
-      <div class="tbl-wrap"><table id="tbl-series"><thead><tr><th>时间</th><th>人数</th><th>解析</th><th>成功</th><th>失败</th><th>任务</th><th>下载</th><th>浏览</th></tr></thead><tbody></tbody></table></div>
+      <summary>{{ t("查看每段的数字") }}</summary>
+      <div class="tbl-wrap"><table id="tbl-series"><thead><tr><th>{{ t("时间") }}</th><th>{{ t("人数") }}</th><th>{{ t("解析") }}</th><th>{{ t("成功") }}</th><th>{{ t("失败") }}</th><th>{{ t("任务") }}</th><th>{{ t("下载") }}</th><th>{{ t("浏览") }}</th></tr></thead><tbody></tbody></table></div>
     </details>
 
     <div class="card dash-failures">
-      <h3>最近解析失败的链接</h3>
-      <p class="dash-note">只留 7 天，同一条链接只列一次。点链接用它重新解析一遍；鼠标停在原因上看报错原文。</p>
-      <div class="tbl-wrap"><table id="tbl-failures"><thead><tr><th>时间</th><th>平台</th><th>原因</th><th>次数</th><th>链接</th></tr></thead><tbody></tbody></table></div>
+      <h3>{{ t("最近解析失败的链接") }}</h3>
+      <p class="dash-note">{{ t("只留 7 天，同一条链接只列一次。点链接用它重新解析一遍；鼠标停在原因上看报错原文。") }}</p>
+      <div class="tbl-wrap"><table id="tbl-failures"><thead><tr><th>{{ t("时间") }}</th><th>{{ t("平台") }}</th><th>{{ t("原因") }}</th><th>{{ t("次数") }}</th><th>{{ t("链接") }}</th></tr></thead><tbody></tbody></table></div>
     </div>
 
     <div class="grid2 dash-grid">
       <div class="card">
-        <h3>各平台</h3>
-        <div class="tbl-wrap"><table id="tbl-sources"><thead><tr><th>平台</th><th>解析</th><th>成功率</th><th>人数</th><th>平均耗时</th></tr></thead><tbody></tbody></table></div>
+        <h3>{{ t("各平台") }}</h3>
+        <div class="tbl-wrap"><table id="tbl-sources"><thead><tr><th>{{ t("平台") }}</th><th>{{ t("解析") }}</th><th>{{ t("成功率") }}</th><th>{{ t("人数") }}</th><th>{{ t("平均耗时") }}</th></tr></thead><tbody></tbody></table></div>
       </div>
       <div>
         <div class="card">
-          <h3>失败原因</h3>
-          <div class="tbl-wrap"><table id="tbl-reasons"><thead><tr><th>原因</th><th>次数</th></tr></thead><tbody></tbody></table></div>
+          <h3>{{ t("失败原因") }}</h3>
+          <div class="tbl-wrap"><table id="tbl-reasons"><thead><tr><th>{{ t("原因") }}</th><th>{{ t("次数") }}</th></tr></thead><tbody></tbody></table></div>
         </div>
         <div class="card" style="margin-top:20px">
-          <h3>任务</h3>
-          <div class="tbl-wrap"><table id="tbl-jobs"><thead><tr><th>类型</th><th>次数</th><th>成功率</th><th>平均耗时</th></tr></thead><tbody></tbody></table></div>
+          <h3>{{ t("任务") }}</h3>
+          <div class="tbl-wrap"><table id="tbl-jobs"><thead><tr><th>{{ t("类型") }}</th><th>{{ t("次数") }}</th><th>{{ t("成功率") }}</th><th>{{ t("平均耗时") }}</th></tr></thead><tbody></tbody></table></div>
         </div>
       </div>
     </div>

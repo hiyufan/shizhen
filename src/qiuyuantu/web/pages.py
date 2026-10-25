@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 
 from .. import guides, seo, status
 from .auth import SITE_AUTH
+from .preferences import preferences, status_headline
 from .rendering import JS_DIR, STATIC_DIR, base_url, js_version, page_context, render, render_404, render_tool_page
 
 router = APIRouter()
@@ -97,6 +98,8 @@ async def guide_page(request: Request, slug: str):
 async def status_page(request: Request):
     snap = await asyncio.to_thread(status.snapshot)
     headline = status.headline(snap)
+    if preferences(request)["locale"] == "en":
+        headline = status_headline(snap)
     ctx = page_context(
         request,
         title="各平台解析状态：抖音、小红书、快手现在能不能解析 - 求原图",
@@ -108,8 +111,9 @@ async def status_page(request: Request):
     ctx.update(
         {"platforms": snap["platforms"], "headline": headline, "faq": status.FAQ, "reason_labels": status.REASON_LABELS}
     )
-    # 状态每小时变，别让浏览器和 nginx 拿着旧的看半天
-    return render(request, "status.html", ctx, headers={"Cache-Control": "public, max-age=300"})
+    if preferences(request)["locale"] == "en":
+        ctx["description"] = headline + " Hourly checks and real user success rates over the last 7 days."
+    return render(request, "status.html", ctx)
 
 
 @page_route("/sitemap.xml")

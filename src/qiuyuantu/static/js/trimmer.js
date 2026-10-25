@@ -1,6 +1,8 @@
 // 修剪条：缩略图背景上拖两个把手选一段；点选区外面整段平移过去，点里面跳到那一帧。
 // 起止时间写在共享的 state.start / state.end 上，时长上限按 state.format 取 LIMITS
 
+import { t as translate } from './i18n.js';
+
 import { el, fmtTime } from './dom.js';
 
 export const LIMITS = { gif: 30, livephoto: 10, motionphoto: 10 };
@@ -36,8 +38,8 @@ export class Trimmer {
     this.selImgWrap = el('div', { class: 'sel-img' }, this.selImg);
     this.sel = el('div', { class: 'sel' });
     this.cursor = el('div', { class: 'cursor' });
-    this.hStart = el('div', { class: 'handle', role: 'slider', tabindex: '0', 'aria-label': '起点' });
-    this.hEnd = el('div', { class: 'handle', role: 'slider', tabindex: '0', 'aria-label': '终点' });
+    this.hStart = el('div', { class: 'handle', role: 'slider', tabindex: '0', 'aria-label': translate('起点') });
+    this.hEnd = el('div', { class: 'handle', role: 'slider', tabindex: '0', 'aria-label': translate('终点') });
     this.strip = el('div', { class: 'strip loading', tabindex: '-1' },
       stripImg, this.selImgWrap, this.sel, this.cursor, this.hStart, this.hEnd);
     const loaded = () => this.strip.classList.remove('loading');
@@ -51,7 +53,7 @@ export class Trimmer {
     this.tEnd = el('b');
     this.tLen = el('b');
     return el('div', { class: 'times' },
-      el('span', {}, '起点 ', this.tStart), el('span', {}, '选了 ', this.tLen), el('span', {}, '终点 ', this.tEnd));
+      el('span', {}, translate('起点 '), this.tStart), el('span', {}, translate('选了 '), this.tLen), el('span', {}, translate('终点 '), this.tEnd));
   }
 
   width() {
@@ -79,7 +81,7 @@ export class Trimmer {
     this.hEnd.setAttribute('aria-valuenow', end.toFixed(1));
     this.tStart.textContent = fmtTime(start);
     this.tEnd.textContent = fmtTime(end);
-    this.tLen.textContent = (end - start).toFixed(1) + ' 秒';
+    this.tLen.textContent = (end - start).toFixed(1) + translate(' 秒');
     this.onLayout();
   }
 

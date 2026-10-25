@@ -1,5 +1,7 @@
 // 使用统计页（/stats）：拉 /api/stats，画两张柱状图和几张表，每分钟刷新一次（页面在后台时暂停）
 
+import { isEnglish, t as translate } from './i18n.js';
+
 import { $, el } from './dom.js';
 
 const TOKEN = $('[data-token]').dataset.token;
@@ -7,20 +9,20 @@ const REFRESH_MS = 60000;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const REASONS = {
-  deleted: '内容已删除 / 链接过期', login: '平台要求登录', blocked: '被平台风控', unsupported: '不支持的链接',
-  network: '网络错误', timeout: '超时', empty: '没有媒体', restricted: '平台不给这条的数据', copyright: '版权内容', parse: '页面结构变了',
-  cache: '缓存', '': '未知',
+  deleted: translate('内容已删除 / 链接过期'), login: translate('平台要求登录'), blocked: translate('被平台风控'), unsupported: translate('不支持的链接'),
+  network: translate('网络错误'), timeout: translate('超时'), empty: translate('没有媒体'), restricted: translate('平台不给这条的数据'), copyright: translate('版权内容'), parse: translate('页面结构变了'),
+  cache: translate('缓存'), '': translate('未知'),
 };
-const JOBS = { prepare: '准备原视频', gif: 'GIF', livephoto: '实况照片', motionphoto: '动态照片', download: '高清下载', live: '实况打包' };
+const JOBS = { prepare: translate('准备原视频'), gif: 'GIF', livephoto: translate('实况照片'), motionphoto: translate('动态照片'), download: translate('高清下载'), live: translate('实况打包') };
 const PLATFORMS = {
-  douyin: '抖音', redbook: '小红书', kuaishou: '快手', youtube: 'YouTube', twitter: 'X', bilibili: 'B站', weibo: '微博',
-  tiktok: 'TikTok', instagram: 'Instagram', xigua: '西瓜视频', pipixia: '皮皮虾', acfun: 'AcFun', ytdlp: '其它（yt-dlp）',
-  '': '未识别',
+  douyin: translate('抖音'), redbook: translate('小红书'), kuaishou: translate('快手'), youtube: 'YouTube', twitter: 'X', bilibili: translate('B站'), weibo: translate('微博'),
+  tiktok: 'TikTok', instagram: 'Instagram', xigua: translate('西瓜视频'), pipixia: translate('皮皮虾'), acfun: 'AcFun', ytdlp: translate('其它（yt-dlp）'),
+  '': translate('未识别'),
 };
 const BLUE = '#4A94CC';
 const ORANGE = '#E8702A';
 
-const fmt = (n) => (n || 0).toLocaleString('zh-CN');
+const fmt = (n) => (n || 0).toLocaleString(document.documentElement.lang);
 const pct = (ok, n) => (n ? Math.round((ok / n) * 100) + '%' : '–');
 const ms = (v) => (!v ? '–' : v < 1000 ? v + ' ms' : (v / 1000).toFixed(1) + ' s');
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -35,11 +37,11 @@ function svgEl(tag, attrs = {}, text) {
 /** 一个桶的时间标签：短的放 x 轴（「14时」「3/5」），长的放提示框（「3月5日 14:00–15:00」） */
 function bucketLabel(t, step, long) {
   const d = new Date(t * 1000);
-  const day = d.getMonth() + 1 + (long ? '月' + d.getDate() + '日' : '/' + d.getDate());
+  const day = d.getMonth() + 1 + (long ? translate('月') + d.getDate() + translate('日') : '/' + d.getDate());
   if (step >= 86400) return day;
   const h = d.getHours();
   if (long) return day + ' ' + pad2(h) + ':00–' + pad2((h + 1) % 24) + ':00';
-  return h === 0 ? day : h + '时';
+  return h === 0 ? day : h + translate('时');
 }
 
 function niceMax(v) {
@@ -54,7 +56,7 @@ function niceMax(v) {
 const tip = $('#tip');
 
 function showTip(target, s, step, rows) {
-  tip.replaceChildren(el('b', {}, bucketLabel(s.t, step, true) + (s.partial ? '（进行中）' : '')));
+  tip.replaceChildren(el('b', {}, bucketLabel(s.t, step, true) + (s.partial ? translate('（进行中）') : '')));
   for (const [label, value, color] of rows) {
     tip.append(el('div', { class: 'row' },
       color ? el('i', { style: 'background:' + color }) : null, el('span', {}, value), el('small', {}, label)));
@@ -105,7 +107,7 @@ function chart(svg, series, step, { keys, colors, rows }) {
     const x0 = pad.l + slot * i + (slot - bw) / 2;
     const g = svgEl('g', {
       class: 'bar' + (s.partial ? ' partial' : ''), tabindex: '0', role: 'img',
-      'aria-label': bucketLabel(s.t, step, true) + '：' + rows(s).map((r) => r[0] + ' ' + r[1]).join('，'),
+      'aria-label': bucketLabel(s.t, step, true) + translate('：') + rows(s).map((r) => r[0] + ' ' + r[1]).join(translate('，')),
     });
     let base = 0;
     keys.forEach((k, ki) => {
@@ -147,7 +149,7 @@ function failureRow(f) {
 
 function fillTable(tbody, rows) {
   if (!rows.length) {
-    tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8, class: 'muted' }, '暂无')));
+    tbody.replaceChildren(el('tr', {}, el('td', { colspan: 8, class: 'muted' }, translate('暂无'))));
     return;
   }
   tbody.replaceChildren(...rows.map((r) => el('tr', {}, ...r.map((c) => el('td', {}, c)))));
@@ -171,16 +173,16 @@ function render(d) {
   $('#empty').hidden = d.first != null;
   fillTotals(d.totals);
 
-  const unit = d.step < 86400 ? '每小时' : '每天';
-  $('#c1-title').textContent = unit + '有多少人';
-  $('#c2-title').textContent = unit + '解析次数';
+  const unit = d.step < 86400 ? translate('每小时') : translate('每天');
+  $('#c1-title').textContent = unit + (isEnglish ? ' ' : '') + translate('有多少人');
+  $('#c2-title').textContent = unit + (isEnglish ? ' ' : '') + translate('解析次数');
   chart($('#c1'), series, d.step, {
     keys: ['users'], colors: [BLUE],
-    rows: (s) => [['人', fmt(s.users), BLUE], ['次解析', fmt(s.parse)], ['个任务', fmt(s.job)], ['次保存', fmt(s.download)], ['次浏览', fmt(s.view)]],
+    rows: (s) => [[translate('人'), fmt(s.users), BLUE], [translate('次解析'), fmt(s.parse)], [translate('个任务'), fmt(s.job)], [translate('次保存'), fmt(s.download)], [translate('次浏览'), fmt(s.view)]],
   });
   chart($('#c2'), series, d.step, {
     keys: ['parse_ok', 'fail'], colors: [BLUE, ORANGE],
-    rows: (s) => [['成功', fmt(s.parse_ok), BLUE], ['失败', fmt(s.fail), ORANGE], ['人', fmt(s.users)]],
+    rows: (s) => [[translate('成功'), fmt(s.parse_ok), BLUE], [translate('失败'), fmt(s.fail), ORANGE], [translate('人'), fmt(s.users)]],
   });
 
   fillTable($('#tbl-series tbody'), series.slice().reverse().map((s) => [
@@ -193,8 +195,8 @@ function render(d) {
   fillTable($('#tbl-failures tbody'), (d.failures || []).map(failureRow));
 
   const now = new Date();
-  const since = d.first ? ' · 记录始于 ' + new Date(d.first * 1000).toLocaleDateString('zh-CN') : '';
-  $('#updated').textContent = '更新于 ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + since;
+  const since = d.first ? translate(' · 记录始于 ') + new Date(d.first * 1000).toLocaleDateString(document.documentElement.lang) : '';
+  $('#updated').textContent = translate('更新于 ') + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + since;
 }
 
 // ---------- 时间范围切换、定时刷新
@@ -211,7 +213,7 @@ async function load() {
   const query = '?range=' + range + '&tz=' + new Date().getTimezoneOffset() + '&token=' + encodeURIComponent(TOKEN);
   const res = await fetch('/api/stats' + query);
   if (!res.ok) {
-    $('#updated').textContent = '加载失败 ' + res.status;
+    $('#updated').textContent = translate('加载失败 ') + res.status;
     return;
   }
   render(await res.json());

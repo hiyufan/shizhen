@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import glob
 import os
 import re
@@ -49,7 +50,12 @@ def heading_text() -> str:
 
     text = BRAND + "".join(p.h1 for p in seo.PAGES) + "".join(g.h1 for g in guides.GUIDES)
     for f in glob.glob(os.path.join(PKG, "templates", "*.html")):  # 写死在模板里的 h1（教程列表、404、统计页）
-        text += "".join(re.findall(r"<h1[^>]*>([^{<]*)</h1>", Path(f).read_text(encoding="utf-8")))
+        html = Path(f).read_text(encoding="utf-8")
+        for heading in re.findall(r"<h1[^>]*>(.*?)</h1>", html):
+            # 本地化标题仍从中文原文收字，不把 Jinja 表达式或翻译函数名当正文。
+            for literal in re.findall(r"{{\s*t\((.*)\)\s*}}", heading):
+                text += ast.literal_eval(literal)
+            text += re.sub(r"{{.*?}}", "", heading)
     return re.sub(r"<[^>]+>", "", text)  # page.h1 里允许 <em> / <br>
 
 

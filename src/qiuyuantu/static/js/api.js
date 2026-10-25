@@ -1,5 +1,7 @@
 // 和后端打交道：接口请求、后台任务轮询、解析结果里的签名（转发 / 边缘取图都要用）
 
+import { serverMessage, t } from './i18n.js';
+
 import { el, sleep } from './dom.js';
 
 // 跨境链路偶尔断一下。GET 是幂等的，断了自动再试一次；POST 不重试，免得重复建任务
@@ -10,7 +12,7 @@ async function fetchOnce(path, opts) {
       return await fetch(path, opts);
     } catch (err) {
       if (opts.signal && opts.signal.aborted) throw err;
-      if (attempt >= retry) throw new Error('网络连接中断了，检查一下网络再试');
+      if (attempt >= retry) throw new Error(t('网络连接中断了，检查一下网络再试'));
       await sleep(1000);
     }
   }
@@ -20,7 +22,7 @@ export async function api(path, opts = {}) {
   const res = await fetchOnce(path, opts);
   let body = null;
   try { body = await res.json(); } catch (_) { /* 非 JSON 的错误页 */ }
-  if (!res.ok) throw new Error((body && (body.detail || body.msg)) || '请求失败 ' + res.status);
+  if (!res.ok) throw new Error(serverMessage((body && (body.detail || body.msg)) || t('请求失败 {status}', { status: res.status })));
   return body;
 }
 
@@ -50,13 +52,13 @@ export async function parseWithProgress(path, update, signal) {
   const response = await fetchOnce(path, { signal });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || body.msg || '请求失败 ' + response.status);
+    throw new Error(serverMessage(body.detail || body.msg || t('请求失败 {status}', { status: response.status })));
   }
   for await (const event of streamEvents(response)) {
     if (event.type === 'result') return event.result;
     if (event.type === 'progress') update(event);
   }
-  throw new Error('解析连接中断了，请重新试一次');
+  throw new Error(t('解析连接中断了，请重新试一次'));
 }
 
 export const postJSON = (path, data) =>
@@ -67,7 +69,7 @@ export async function watchJob(job, onUpdate) {
   for (let delay = 500; ; delay = 700) {
     if (onUpdate) onUpdate(job);
     if (job.status === 'done') return job;
-    if (job.status === 'error') throw new Error(job.error || '任务失败');
+    if (job.status === 'error') throw new Error(serverMessage(job.error || t('任务失败')));
     await sleep(delay);
     job = await api('/api/jobs/' + job.id);
   }
@@ -179,7 +181,7 @@ export function proxyImg(url, attrs = {}) {
       setTimeout(() => { img.src = sources[i]; }, fromEdge ? 0 : 800 * i);
     } else {
       img.classList.add('failed');
-      img.title = '图片没加载出来，点一下重试';
+      img.title = t('图片没加载出来，点一下重试');
     }
   });
   img.addEventListener('click', () => {

@@ -5,18 +5,18 @@
   <div class="shape mint" style="width:420px;height:420px;right:-120px;top:30%" data-parallax="-0.08"></div>
   <div class="shape beige" style="width:380px;height:380px;left:40%;bottom:-160px" data-parallax="0.06"></div>
   <div class="wrap hero">
-    <span class="eyebrow" data-reveal>视频 · 图片 · GIF · 实况照片</span>
-    <h1 data-reveal style="--i:1">{{ page.h1 | safe }}</h1>
-    <p class="sub" data-reveal style="--i:2">{{ page.lead }}</p>
+    <span class="eyebrow" data-reveal>{{ t("视频 · 图片 · GIF · 实况照片") }}</span>
+    <h1 data-reveal style="--i:1">{{ page.h1 | safe | t }}</h1>
+    <p class="sub" data-reveal style="--i:2">{{ page.lead | t }}</p>
     <form class="paste" id="paste-form" data-reveal="card" style="--i:3">
-      <textarea id="url" placeholder="{{ page.placeholder }}" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="分享链接"></textarea>
+      <textarea id="url" placeholder="{{ page.placeholder | t }}" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="{{ t("分享链接") }}"></textarea>
       <div class="paste-tools">
-        <button class="tool" id="paste-btn" type="button" title="从剪贴板粘贴">粘贴</button>
-        <button class="tool clear" id="clear-btn" type="button" title="清空" aria-label="清空" hidden>×</button>
+        <button class="tool" id="paste-btn" type="button" title="{{ t("从剪贴板粘贴") }}">{{ t("粘贴") }}</button>
+        <button class="tool clear" id="clear-btn" type="button" title="{{ t("清空") }}" aria-label="{{ t("清空") }}" hidden>×</button>
       </div>
-      <button class="btn dark" id="parse-btn" type="submit">解析</button>
+      <button class="btn dark" id="parse-btn" type="submit">{{ t("解析") }}</button>
     </form>
-    <p class="supports" data-reveal style="--i:4"><b>支持</b> 抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。</p>
+    <p class="supports" data-reveal style="--i:4"><b>{{ t("支持") }}</b> {{ t("抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。") }}</p>
     <div id="notice" class="notice" aria-live="polite" hidden></div>
     <div id="result" hidden></div>
     <div id="converter" hidden></div>
@@ -24,15 +24,15 @@
     <div class="page-body">
       <div class="grid3">
         {% for h, html in page.body %}
-        <div class="card" data-reveal="card" style="--i:{{ loop.index0 }}"><h3>{{ h }}</h3><p>{{ html | safe }}</p></div>
+        <div class="card" data-reveal="card" style="--i:{{ loop.index0 }}"><h3>{{ h | t }}</h3><p>{{ html | safe | t }}</p></div>
         {% endfor %}
       </div>
     </div>
     {% endif %}
     {% if related_guides %}
     <div class="tips" data-reveal>
-      <span class="eyebrow">相关教程</span>
-      <ul>{% for g in related_guides %}<li><a href="{{ g.path }}">{{ g.h1 }}</a></li>{% endfor %}<li><a href="/guides">全部教程</a></li></ul>
+      <span class="eyebrow">{{ t("相关教程") }}</span>
+      <ul>{% for g in related_guides %}<li><a href="{{ g.path }}">{{ g.h1 | t }}</a></li>{% endfor %}<li><a href="/guides">{{ t("全部教程") }}</a></li></ul>
     </div>
     {% endif %}
   </div>
@@ -45,27 +45,27 @@
        首页保留完整卡片, 落地页只留一行互链 —— 内链权重不丢, 重复正文去掉。 #}
     {% if not page.slug %}
     <div class="sec-head">
-      <span class="eyebrow" data-reveal>支持的平台</span>
-      <h2 data-reveal style="--i:1">常用的都在，<br>其它交给 <em>yt-dlp</em>。</h2>
-      <p class="sub" data-reveal style="--i:2">把 App 里"复制链接"得到的整段文字贴进来就行，网址会自动认出来。</p>
+      <span class="eyebrow" data-reveal>{{ t("支持的平台") }}</span>
+      <h2 data-reveal style="--i:1">{{ t("常用的都在，") }}<br>{{ t("其它交给") }} <em>yt-dlp</em>{{ t("。") }}</h2>
+      <p class="sub" data-reveal style="--i:2">{{ t("把 App 里\"复制链接\"得到的整段文字贴进来就行，网址会自动认出来。") }}</p>
     </div>
     <div class="grid3">
-      <a class="card" href="/douyin" data-reveal="card" style="--i:0"><h3>抖音</h3><p>无水印视频、H.265 高清档、图集原图、实况图、背景音乐。</p><span class="spec">视频 · 图集 · 实况 · 音乐</span></a>
-      <a class="card" href="/xiaohongshu" data-reveal="card" style="--i:1"><h3>小红书</h3><p>笔记原图按原始分辨率取，视频无水印，实况图整篇打包。</p><span class="spec">原图 · 视频 · 实况</span></a>
-      <a class="card" href="/kuaishou" data-reveal="card" style="--i:2"><h3>快手</h3><p>无水印视频与图集，贴分享链接即可。</p><span class="spec">视频 · 图集</span></a>
-      <a class="card" href="/youtube" data-reveal="card" style="--i:3"><h3>YouTube</h3><p>1080p 到 4K 自选清晰度，服务器合并音视频后给你完整 MP4，也能只要音频。</p><span class="spec">360p → 4K · m4a</span></a>
-      <a class="card" href="/x" data-reveal="card" style="--i:4"><h3>X（Twitter）</h3><p>推文里的视频取最高码率，图片是原图，敏感内容也能拿到。</p><span class="spec">视频 · 图片 · GIF</span></a>
-      <a class="card" href="/bilibili" data-reveal="card" style="--i:5"><h3>B站</h3><p>1080p / 720p 高清与仅音频，b23.tv 短链也认。</p><span class="spec">1080p · 720p · 音频</span></a>
+      <a class="card" href="/douyin" data-reveal="card" style="--i:0"><h3>{{ t("抖音") }}</h3><p>{{ t("无水印视频、H.265 高清档、图集原图、实况图、背景音乐。") }}</p><span class="spec">{{ t("视频 · 图集 · 实况 · 音乐") }}</span></a>
+      <a class="card" href="/xiaohongshu" data-reveal="card" style="--i:1"><h3>{{ t("小红书") }}</h3><p>{{ t("笔记原图按原始分辨率取，视频无水印，实况图整篇打包。") }}</p><span class="spec">{{ t("原图 · 视频 · 实况") }}</span></a>
+      <a class="card" href="/kuaishou" data-reveal="card" style="--i:2"><h3>{{ t("快手") }}</h3><p>{{ t("无水印视频与图集，贴分享链接即可。") }}</p><span class="spec">{{ t("视频 · 图集") }}</span></a>
+      <a class="card" href="/youtube" data-reveal="card" style="--i:3"><h3>YouTube</h3><p>{{ t("1080p 到 4K 自选清晰度，服务器合并音视频后给你完整 MP4，也能只要音频。") }}</p><span class="spec">360p → 4K · m4a</span></a>
+      <a class="card" href="/x" data-reveal="card" style="--i:4"><h3>X（Twitter）</h3><p>{{ t("推文里的视频取最高码率，图片是原图，敏感内容也能拿到。") }}</p><span class="spec">{{ t("视频 · 图片 · GIF") }}</span></a>
+      <a class="card" href="/bilibili" data-reveal="card" style="--i:5"><h3>{{ t("B站") }}</h3><p>{{ t("1080p / 720p 高清与仅音频，b23.tv 短链也认。") }}</p><span class="spec">{{ t("1080p · 720p · 音频") }}</span></a>
     </div>
     {% else %}
     <div class="sec-head">
-      <span class="eyebrow" data-reveal>换个平台</span>
+      <span class="eyebrow" data-reveal>{{ t("换个平台") }}</span>
       <p class="sub" data-reveal style="--i:1">
-        也能解析
+        {{ t("也能解析") }}
         {% for p in pages if p.slug and p.slug != page.slug and p.nav_label %}
-        <a href="{{ p.path }}">{{ p.nav_label }}</a>{% if not loop.last %} · {% endif %}
+        <a href="{{ p.path }}">{{ p.nav_label | t }}</a>{% if not loop.last %} · {% endif %}
         {% endfor %}
-        ，其它 30 多个站点交给 <em>yt-dlp</em> 兜底。
+        {{ t("，其它 30 多个站点交给") }} <em>yt-dlp</em> {{ t("兜底。") }}
       </p>
     </div>
     {% endif %}
@@ -76,14 +76,14 @@
   <div class="shape sky" style="width:520px;height:520px;left:-200px;bottom:-200px" data-parallax="-0.1"></div>
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow" data-reveal>三种产物</span>
-      <h2 data-reveal style="--i:1">一段视频，<br>三种带走的方式。</h2>
-      <p class="sub" data-reveal style="--i:2">在缩略图条上拖出想要的那几秒，剩下的交给服务器上的 ffmpeg。</p>
+      <span class="eyebrow" data-reveal>{{ t("三种产物") }}</span>
+      <h2 data-reveal style="--i:1">{{ t("一段视频，") }}<br>{{ t("三种带走的方式。") }}</h2>
+      <p class="sub" data-reveal style="--i:2">{{ t("在缩略图条上拖出想要的那几秒，剩下的交给服务器上的 ffmpeg。") }}</p>
     </div>
     <div class="grid3">
-      <div class="card" data-reveal="card" style="--i:0"><h3><em>GIF</em></h3><p>帧率、宽度、速度、抖动算法都能调，想要文件小就降帧率缩宽度。</p><span class="spec">≤ 30 s · 5–30 fps · 160–960 px</span></div>
-      <div class="card" data-reveal="card" style="--i:1"><h3>实况照片</h3><p>给 iPhone 用：一对配好 Apple 内容标识的 JPG + MOV，封面帧自己挑。</p><span class="spec">JPG + MOV · ≤ 10 s · Live Photo</span></div>
-      <div class="card" data-reveal="card" style="--i:2"><h3>动态照片</h3><p>给安卓用：一张内嵌视频的 JPG，保存到相册就会动。</p><span class="spec">单张 JPG · 内嵌 MP4 · Motion Photo</span></div>
+      <div class="card" data-reveal="card" style="--i:0"><h3><em>GIF</em></h3><p>{{ t("帧率、宽度、速度、抖动算法都能调，想要文件小就降帧率缩宽度。") }}</p><span class="spec">≤ 30 s · 5–30 fps · 160–960 px</span></div>
+      <div class="card" data-reveal="card" style="--i:1"><h3>{{ t("实况照片") }}</h3><p>{{ t("给 iPhone 用：一对配好 Apple 内容标识的 JPG + MOV，封面帧自己挑。") }}</p><span class="spec">JPG + MOV · ≤ 10 s · Live Photo</span></div>
+      <div class="card" data-reveal="card" style="--i:2"><h3>{{ t("动态照片") }}</h3><p>{{ t("给安卓用：一张内嵌视频的 JPG，保存到相册就会动。") }}</p><span class="spec">{{ t("单张 JPG · 内嵌 MP4 · Motion Photo") }}</span></div>
     </div>
   </div>
 </section>
@@ -93,9 +93,9 @@
   <div class="shape beige" style="width:520px;height:520px;right:-200px;bottom:-200px" data-parallax="-0.06"></div>
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow" data-reveal>开发者接口</span>
-      <h2 data-reveal style="--i:1">也可以不开网页，<br>直接 <em>curl</em>。</h2>
-      <p class="sub" data-reveal style="--i:2">网页用的就是这几个接口，快捷指令、脚本、自己的 App 都能接。</p>
+      <span class="eyebrow" data-reveal>{{ t("开发者接口") }}</span>
+      <h2 data-reveal style="--i:1">{{ t("也可以不开网页，") }}<br>{{ t("直接") }} <em>curl</em>{{ t("。") }}</h2>
+      <p class="sub" data-reveal style="--i:2">{{ t("网页用的就是这几个接口，快捷指令、脚本、自己的 App 都能接。") }}</p>
     </div>
     <div class="grid2">
       <div class="term" data-reveal="card">
@@ -104,7 +104,7 @@
 {
   <span class="f">"code"</span>: <span class="n">200</span>,
   <span class="f">"data"</span>: {
-    <span class="f">"title"</span>: <span class="s">"济公爷爷为大家祈福啦…"</span>,
+    <span class="f">"title"</span>: <span class="s">{{ t("\"济公爷爷为大家祈福啦…\"") }}</span>,
     <span class="f">"duration"</span>: <span class="n">49.5</span>,
     <span class="f">"video_url"</span>: <span class="s">"https://…/play/….mp4"</span>,
     <span class="f">"images"</span>: [],
@@ -114,9 +114,9 @@
 }</pre>
       </div>
       <div class="steps">
-        <div class="card step" data-reveal="left" style="--i:0"><span class="num">01</span><div><h3>解析</h3><p><code class="mono">GET /api/parse?url=</code> 返回视频、图片、清晰度列表，每个地址带签名。</p></div></div>
-        <div class="card step" data-reveal="left" style="--i:1"><span class="num">02</span><div><h3>下载或转换</h3><p><code class="mono">/api/proxy</code> 直接转发；<code class="mono">/api/convert</code>、<code class="mono">/api/live</code> 返回一个任务。</p></div></div>
-        <div class="card step" data-reveal="left" style="--i:2"><span class="num">03</span><div><h3>取结果</h3><p>轮询 <code class="mono">/api/jobs/{id}</code> 看进度，完成后 <code class="mono">/file</code> 拿文件。</p></div></div>
+        <div class="card step" data-reveal="left" style="--i:0"><span class="num">01</span><div><h3>{{ t("解析") }}</h3><p><code class="mono">GET /api/parse?url=</code> {{ t("返回视频、图片、清晰度列表，每个地址带签名。") }}</p></div></div>
+        <div class="card step" data-reveal="left" style="--i:1"><span class="num">02</span><div><h3>{{ t("下载或转换") }}</h3><p><code class="mono">/api/proxy</code> {{ t("直接转发；") }}<code class="mono">/api/convert</code>{{ t("、") }}<code class="mono">/api/live</code> {{ t("返回一个任务。") }}</p></div></div>
+        <div class="card step" data-reveal="left" style="--i:2"><span class="num">03</span><div><h3>{{ t("取结果") }}</h3><p>{{ t("轮询") }} <code class="mono">/api/jobs/{id}</code> {{ t("看进度，完成后") }} <code class="mono">/file</code> {{ t("拿文件。") }}</p></div></div>
       </div>
     </div>
   </div>
@@ -126,10 +126,10 @@
   <div class="shape orange" style="width:360px;height:360px;left:30%;top:-140px" data-parallax="0.1"></div>
   <div class="wrap">
     <div class="stats">
-      <div class="card stat" data-reveal="pop" style="--i:0"><div class="num"><span data-count="30">0</span><small>+</small></div><div class="cap">支持的平台</div></div>
-      <div class="card stat" data-reveal="pop" style="--i:1"><div class="num"><span data-count="1080">0</span><small>p</small></div><div class="cap">最高清晰度</div></div>
-      <div class="card stat" data-reveal="pop" style="--i:2"><div class="num"><span data-count="10">0</span><small>s</small></div><div class="cap">实况照片上限</div></div>
-      <div class="card stat" data-reveal="pop" style="--i:3"><div class="num"><span data-count="0">0</span><small>元</small></div><div class="cap">免费，不用登录</div></div>
+      <div class="card stat" data-reveal="pop" style="--i:0"><div class="num"><span data-count="30">0</span><small>+</small></div><div class="cap">{{ t("支持的平台") }}</div></div>
+      <div class="card stat" data-reveal="pop" style="--i:1"><div class="num"><span data-count="1080">0</span><small>p</small></div><div class="cap">{{ t("最高清晰度") }}</div></div>
+      <div class="card stat" data-reveal="pop" style="--i:2"><div class="num"><span data-count="10">0</span><small>s</small></div><div class="cap">{{ t("实况照片上限") }}</div></div>
+      <div class="card stat" data-reveal="pop" style="--i:3"><div class="num"><span data-count="0">0</span><small>{{ t("元") }}</small></div><div class="cap">{{ t("免费，不用登录") }}</div></div>
     </div>
   </div>
 </section>
@@ -138,14 +138,14 @@
   <div class="shape sky" style="width:440px;height:440px;right:-160px;top:10%" data-parallax="-0.08"></div>
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow" data-reveal>常见问题</span>
-      <h2 data-reveal style="--i:1">先看看这些。</h2>
+      <span class="eyebrow" data-reveal>{{ t("常见问题") }}</span>
+      <h2 data-reveal style="--i:1">{{ t("先看看这些。") }}</h2>
     </div>
     <div class="faq">
       {% for q, a in faq %}
       <details{% if loop.first %} open{% endif %}>
-        <summary>{{ q }}</summary>
-        <p>{{ a }}</p>
+        <summary>{{ q | t }}</summary>
+        <p>{{ a | t }}</p>
       </details>
       {% endfor %}
     </div>
@@ -154,7 +154,7 @@
 </section>
 {% endblock %}
 {% block nav_upload %}
-    <label class="btn sm" for="file-input">本地视频</label>
+    <label class="btn sm" for="file-input">{{ t("本地视频") }}</label>
     <input id="file-input" type="file" accept="video/*,.mov,.mp4,.webm,.mkv" hidden>
 {% endblock %}
 {% block scripts %}

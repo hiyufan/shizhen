@@ -5,6 +5,8 @@
 // 实况不走这条路：真机上分享面板会把配好对的 JPG + MOV 存成一张图加一段视频，合不成实况。
 // 只在 iPhone / iPad 上换成这条路：电脑和安卓点下载本来就顺。
 
+import { t } from './i18n.js';
+
 import { canDirect } from './api.js';
 import { el, fmtSize, notice } from './dom.js';
 
@@ -31,7 +33,7 @@ const ATTEMPTS = 3;
 // 换个地址（&retry=n，和 proxyImg 一样避开缓存里那份残缺的）再试，最多三次
 async function download(url, name, onBytes, type, guard) {
   const res = await fetch(url, fetchOptions(url, guard));
-  if (!res.ok) throw new Error('下载失败（' + res.status + '）');
+  if (!res.ok) throw new Error(t('下载失败（{status}）', { status: res.status }));
   const mime = type || (res.headers.get('content-type') || '').split(';')[0] || 'application/octet-stream';
   const total = +res.headers.get('content-length') || 0;
   checkLimit(total, guard);
@@ -57,7 +59,7 @@ const fetchOptions = (url, guard) =>
 function checkLimit(total, guard) {
   if (!guard.limit || (total && total <= guard.limit)) return;
   guard.cancel();
-  throw new Error('文件太大，换服务器转发');
+  throw new Error(t('文件太大，换服务器转发'));
 }
 
 /** 一段时间没收到数据就中断请求；每收到一块调 touch() 续命 */
@@ -80,7 +82,7 @@ async function fetchWithRetry(url, name, onBytes, type, attempts) {
     try {
       return await download(target, name, onBytes, type, guard);
     } catch (e) {
-      if (attempt >= attempts - 1) throw new Error(e.name === 'AbortError' ? '网络太慢，下载卡住了' : e.message);
+      if (attempt >= attempts - 1) throw new Error(e.name === 'AbortError' ? t('网络太慢，下载卡住了') : e.message);
       if (onBytes) onBytes(0, 0);
     } finally {
       guard.done();
@@ -156,26 +158,26 @@ export function photosButton(label, load, cls = 'btn dark') {
       await navigator.share({ files });
       btn.textContent = label;
     } catch (e) {
-      if (e.name === 'NotAllowedError') btn.textContent = '准备好了，点这里存到相册';
+      if (e.name === 'NotAllowedError') btn.textContent = t('准备好了，点这里存到相册');
       else if (e.name === 'AbortError') btn.textContent = label; // 用户自己关掉了面板
-      else btn.textContent = '没打开分享面板，点了重试';
+      else btn.textContent = t('没打开分享面板，点了重试');
     }
   }
 
   async function prepare() {
     busy = true;
     btn.disabled = true;
-    btn.textContent = '准备中…';
+    btn.textContent = t('准备中…');
     try {
       files = await load((got, total) => {
-        btn.textContent = '准备中 ' + (total ? Math.round((got / total) * 100) + '%' : fmtSize(got));
+        btn.textContent = t('准备中 ') + (total ? Math.round((got / total) * 100) + '%' : fmtSize(got));
       });
-      if (!navigator.canShare({ files })) throw new Error('Safari 不支持把这种文件存相册');
+      if (!navigator.canShare({ files })) throw new Error(t('Safari 不支持把这种文件存相册'));
       return true;
     } catch (e) {
       files = null;
-      btn.textContent = '没成功，点了重试';
-      notice(e.message + '。也可以点旁边的下载。');
+      btn.textContent = t('没成功，点了重试');
+      notice(e.message + t('。也可以点旁边的下载。'));
       return false;
     } finally {
       busy = false;
@@ -195,10 +197,10 @@ export function photosButton(label, load, cls = 'btn dark') {
 const LIVE_APP = 'https://apps.apple.com/cn/app/id6738693561'; // 一键实况：免费，只做视频转实况
 
 /** 三行小字：先说是 iOS 的限制（不然用户以为是网站做得不行），再给两条出路。btn / zip 是本处按钮上的叫法 */
-export function iphoneLiveHint(btn, zip = '实况包') {
+export function iphoneLiveHint(btn, zip = t('实况包')) {
   return el('div', { class: 'fine' },
-    el('p', {}, el('b', {}, '受 iOS 限制，网页无法直接把会动的实况存进相册'), '，只有 App 能写。'),
-    el('p', {}, '做法：先点「' + btn + '」，再用剪映或',
-      el('a', { href: LIVE_APP, target: '_blank', rel: 'noopener' }, '「一键实况」'), '把视频转成实况。'),
-    el('p', {}, '有 Mac：下载' + zip + '，把 JPG 和 MOV 一起拖进「照片」App 就是实况，开了 iCloud 照片会同步到 iPhone。'));
+    el('p', {}, el('b', {}, t('受 iOS 限制，网页无法直接把会动的实况存进相册')), t('，只有 App 能写。')),
+    el('p', {}, t('做法：先点「') + btn + t('」，再用剪映或'),
+      el('a', { href: LIVE_APP, target: '_blank', rel: 'noopener' }, t('「一键实况」')), t('把视频转成实况。')),
+    el('p', {}, t('有 Mac：下载') + zip + t('，把 JPG 和 MOV 一起拖进「照片」App 就是实况，开了 iCloud 照片会同步到 iPhone。')));
 }

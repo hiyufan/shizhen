@@ -3,36 +3,36 @@
 <article class="sec cold article">
   <div class="shape sky" style="width:420px;height:420px;left:-160px;top:-120px"></div>
   <div class="wrap narrow">
-    <nav class="crumbs" aria-label="位置"><a href="/">求原图</a><span>/</span><a href="/guides">教程</a></nav>
-    <h1>{{ guide.h1 }}</h1>
-    <p class="meta">更新于 {{ guide.updated }}</p>
-    <p class="intro">{{ guide.intro }}</p>
+    <nav class="crumbs" aria-label="{{ t("位置") }}"><a href="/">{{ t("求原图") }}</a><span>/</span><a href="/guides">{{ t("教程") }}</a></nav>
+    <h1>{{ guide.h1 | t }}</h1>
+    <p class="meta">{{ t("更新于") }} {{ guide.updated }}</p>
+    <p class="intro">{{ guide.intro | t }}</p>
 
-    <h2>步骤</h2>
+    <h2>{{ t("步骤") }}</h2>
     <ol class="howto">
       {% for name, text in guide.steps %}
-      <li id="step-{{ loop.index }}"><h3>{{ name }}</h3><p>{{ text }}</p></li>
+      <li id="step-{{ loop.index }}"><h3>{{ name | t }}</h3><p>{{ text | t }}</p></li>
       {% endfor %}
     </ol>
-    <p class="cta"><a class="btn dark" href="{{ tool_path }}">{{ guide.tool_label }}</a></p>
+    <p class="cta"><a class="btn dark" href="{{ tool_path }}">{{ guide.tool_label | t }}</a></p>
 
     {% for h, html in guide.sections %}
-    <h2>{{ h }}</h2>
+    <h2>{{ h | t }}</h2>
     {# 以标签开头的是整段 HTML（多段落、表格），否则是一段纯文字 #}
-    {% if html.startswith('<') %}{{ html | safe }}{% else %}<p>{{ html | safe }}</p>{% endif %}
+    {% if html.startswith('<') %}{{ html | safe | t }}{% else %}<p>{{ html | safe | t }}</p>{% endif %}
     {% endfor %}
 
-    <h2>常见问题</h2>
+    <h2>{{ t("常见问题") }}</h2>
     <div class="faq">
       {% for q, a in guide.faq %}
-      <details{% if loop.first %} open{% endif %}><summary>{{ q }}</summary><p>{{ a }}</p></details>
+      <details{% if loop.first %} open{% endif %}><summary>{{ q | t }}</summary><p>{{ a | t }}</p></details>
       {% endfor %}
     </div>
 
     {% if related %}
-    <h2>相关教程</h2>
+    <h2>{{ t("相关教程") }}</h2>
     <ul class="related">
-      {% for g in related %}<li><a href="{{ g.path }}">{{ g.title }}</a></li>{% endfor %}
+      {% for g in related %}<li><a href="{{ g.path }}">{{ g.title | t }}</a></li>{% endfor %}
     </ul>
     {% endif %}
   </div>

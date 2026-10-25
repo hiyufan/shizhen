@@ -1,5 +1,7 @@
 // 解析结果：视频（预览、下载、其他清晰度、转换入口）、图集（逐张保存、实况打包）
 
+import { serverMessage, t } from './i18n.js';
+
 import {
   directOf, mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob,
 } from './api.js';
@@ -9,11 +11,11 @@ import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, iphoneLiveHint, oneFile,
 import { jobCard } from './ui.js';
 
 const PLATFORMS = {
-  douyin: '抖音', redbook: '小红书', kuaishou: '快手', youtube: 'YouTube', twitter: 'X', bilibili: 'B站', weibo: '微博',
-  tiktok: 'TikTok', instagram: 'Instagram', xigua: '西瓜视频', pipixia: '皮皮虾', acfun: 'AcFun', weishi: '微视',
-  lvzhou: '绿洲', zuiyou: '最右', quanmin: '度小视', lishipin: '梨视频', pipigaoxiao: '皮皮搞笑', huya: '虎牙',
-  doupai: '逗拍', meipai: '美拍', quanminkge: '全民K歌', sixroom: '六间房', xinpianchang: '新片场', haokan: '好看视频',
-  qqvideo: '腾讯视频', sohu: '搜狐视频', cctv: '央视网', vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
+  douyin: t('抖音'), redbook: t('小红书'), kuaishou: t('快手'), youtube: 'YouTube', twitter: 'X', bilibili: t('B站'), weibo: t('微博'),
+  tiktok: 'TikTok', instagram: 'Instagram', xigua: t('西瓜视频'), pipixia: t('皮皮虾'), acfun: 'AcFun', weishi: t('微视'),
+  lvzhou: t('绿洲'), zuiyou: t('最右'), quanmin: t('度小视'), lishipin: t('梨视频'), pipigaoxiao: t('皮皮搞笑'), huya: t('虎牙'),
+  doupai: t('逗拍'), meipai: t('美拍'), quanminkge: t('全民K歌'), sixroom: t('六间房'), xinpianchang: t('新片场'), haokan: t('好看视频'),
+  qqvideo: t('腾讯视频'), sohu: t('搜狐视频'), cctv: t('央视网'), vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
 };
 
@@ -32,7 +34,7 @@ async function saveDirect(e, url, filename) {
   a.dataset.busy = '1';
   const label = a.textContent;
   const file = await fetchDirect(src, filename.replace(/\.mp4$/, ''), (got, total) => {
-    a.textContent = '下载中 ' + (total ? Math.round(got * 100 / total) + '%' : fmtSize(got));
+    a.textContent = t('下载中 ') + (total ? Math.round(got * 100 / total) + '%' : fmtSize(got));
   });
   a.textContent = label;
   delete a.dataset.busy;
@@ -41,9 +43,9 @@ async function saveDirect(e, url, filename) {
 }
 
 export function renderResult(d) {
-  const title = d.title || '未命名';
+  const title = d.title || t('未命名');
   // notice：平台不给的那部分是什么（比如快手实况只有照片），说在前面免得用户以为是网站漏了
-  const notice = d.notice ? el('p', { class: 'fine' }, d.notice) : null;
+  const notice = d.notice ? el('p', { class: 'fine' }, serverMessage(d.notice, '平台仅提供部分媒体，请检查结果后下载。')) : null;
   const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), notice, ...resultBody(d, safeName(title) || 'video'));
   const box = $('#result');
   box.replaceChildren(res);
@@ -53,7 +55,7 @@ export function renderResult(d) {
 
 function resultHead(d) {
   return el('div', { class: 'res-head' },
-    el('span', { class: 'tag' }, PLATFORMS[d.source] || d.source || '未知来源'),
+    el('span', { class: 'tag' }, PLATFORMS[d.source] || d.source || t('未知来源')),
     d.author && d.author.name ? el('span', {}, d.author.name) : null,
     d.duration ? el('span', {}, fmtClock(d.duration)) : null);
 }
@@ -66,12 +68,12 @@ function resultBody(d, baseName) {
   if (hasVideo) {
     parts.push(videoSection(d, baseName, el('div', { class: 'jobs' })));
   } else if (d.music_url && !images.length) {
-    const audio = download(d.music_url, baseName + '.mp3', '下载音频', 'btn');
+    const audio = download(d.music_url, baseName + '.mp3', t('下载音频'), 'btn');
     parts.push(el('div', { class: 'side' }, el('div', { class: 'group' }, audio), el('div', { class: 'jobs' })));
   }
   if (images.length) parts.push(...imageSection(d, images, baseName, hasVideo));
   if (!parts.length) {
-    parts.push(el('div', { class: 'notice' }, '解析成功但没有拿到任何视频或图片，这条内容可能已被删除或需要登录。'));
+    parts.push(el('div', { class: 'notice' }, t('解析成功但没有拿到任何视频或图片，这条内容可能已被删除或需要登录。')));
   }
   return parts;
 }
@@ -89,10 +91,10 @@ function videoSection(d, baseName, jobsBox) {
   const side = el('div', { class: 'side' },
     saveActions(d, baseName, jobsBox),
     el('div', { class: 'rule' }),
-    el('p', { class: 'label' }, '拿这段视频继续做'),
+    el('p', { class: 'label' }, t('拿这段视频继续做')),
     el('div', { class: 'group' },
-      el('button', { class: 'btn', type: 'button', onclick: convert('gif') }, '转 GIF'),
-      el('button', { class: 'btn', type: 'button', onclick: convert('livephoto') }, '做成实况照片')),
+      el('button', { class: 'btn', type: 'button', onclick: convert('gif') }, t('转 GIF')),
+      el('button', { class: 'btn', type: 'button', onclick: convert('livephoto') }, t('做成实况照片'))),
     jobsBox);
   return el('div', { class: 'res-body' }, preview, side);
 }
@@ -103,7 +105,7 @@ const isPortrait = (d) => (d.width && d.height ? d.height > d.width : true);
 function saveActions(d, baseName, jobsBox) {
   if (PHOTOS && d.video_url) {
     const more = el('div', { class: 'more-acts' }, ...secondaryDownloads(d, baseName, jobsBox, true));
-    return el('div', { class: 'group' }, photosButton('存到相册', oneFile(() => sourcesOf(d.video_url), baseName, 'video/mp4')), more);
+    return el('div', { class: 'group' }, photosButton(t('存到相册'), oneFile(() => sourcesOf(d.video_url), baseName, 'video/mp4')), more);
   }
   return el('div', { class: 'group' }, ...secondaryDownloads(d, baseName, jobsBox, false));
 }
@@ -111,12 +113,12 @@ function saveActions(d, baseName, jobsBox) {
 function secondaryDownloads(d, baseName, jobsBox, compact) {
   const links = [];
   if (d.video_url) {
-    const label = '下载视频' + (d.height ? ' ' + d.height + 'p' : '');
+    const label = t('下载视频') + (d.height ? ' ' + d.height + 'p' : '');
     links.push(download(d.video_url, baseName + '.mp4', label, compact ? 'btn sm quiet' : 'btn dark'));
   }
   if (d.formats && d.formats.length) links.push(formatMenu(d, baseName, jobsBox, compact));
   // 音频用得少，不和下载视频抢位置
-  if (d.music_url) links.push(download(d.music_url, baseName + '.mp3', '下载音频', compact ? 'btn sm quiet' : 'btn quiet'));
+  if (d.music_url) links.push(download(d.music_url, baseName + '.mp3', t('下载音频'), compact ? 'btn sm quiet' : 'btn quiet'));
   return links;
 }
 
@@ -125,7 +127,7 @@ function formatMenu(d, baseName, jobsBox, compact) {
   const list = el('div', { class: 'menu-list', hidden: true });
   const close = () => { list.hidden = true; };
   for (const f of d.formats) {
-    const meta = [el('span', {}, f.label), el('small', {}, f.filesize ? fmtSize(f.filesize) : f.ext)];
+    const meta = [el('span', {}, t(f.label)), el('small', {}, f.filesize ? fmtSize(f.filesize) : f.ext)];
     const filename = baseName + '_' + f.label.replace(/\s+/g, '') + '.' + (f.ext || 'mp4');
     list.append(f.url
       ? el('a', { href: mediaDownload(f.url, filename), download: '', onclick: (e) => { close(); saveDirect(e, f.url, filename); } }, ...meta)
@@ -133,11 +135,11 @@ function formatMenu(d, baseName, jobsBox, compact) {
   }
   if (d.formats.some((f) => f.codec)) {
     list.append(el('p', { class: 'hint', style: 'padding:6px 10px 4px' },
-      'H.265 体积更小、更清晰，手机都能播；老电脑可能需要装解码器。'));
+      t('H.265 体积更小、更清晰，手机都能播；老电脑可能需要装解码器。')));
   }
   const toggleClass = compact ? 'btn sm quiet' : 'btn' + (d.video_url ? '' : ' dark');
   const toggle = el('button', { class: toggleClass, type: 'button', onclick: () => { list.hidden = !list.hidden; } },
-    d.video_url ? '其他清晰度 ▾' : '下载视频 ▾');
+    d.video_url ? t('其他清晰度 ▾') : t('下载视频 ▾'));
   return el('div', { class: 'menu' }, toggle, list);
 }
 
@@ -159,7 +161,7 @@ function sourceRequest(d, title) {
 }
 
 async function startDownload(f, d, baseName, jobsBox) {
-  const card = jobCard(jobsBox, '下载 ' + f.label);
+  const card = jobCard(jobsBox, t('下载 ') + f.label);
   const page = d.page_url || d.share_url;
   try {
     const job = await postJSON('/api/download', {
@@ -169,9 +171,9 @@ async function startDownload(f, d, baseName, jobsBox) {
     const file = '/api/jobs/' + done.id + '/file';
     // 照片 App 只认 mp4 / mov；webm、音频还是走下载
     const photos = PHOTOS && /\.mp4$/i.test(done.filename || '')
-      ? photosButton('存到相册', oneFile(file + '?inline=1', baseName + '_' + f.label.replace(/\s+/g, ''), 'video/mp4'), 'btn sm dark')
+      ? photosButton(t('存到相册'), oneFile(file + '?inline=1', baseName + '_' + f.label.replace(/\s+/g, ''), 'video/mp4'), 'btn sm dark')
       : null;
-    card.done((photos ? '下载 ' : '保存 ') + (done.filesize ? fmtSize(done.filesize) : ''), file, done.filename, photos);
+    card.done((photos ? t('下载 ') : t('保存 ')) + (done.filesize ? fmtSize(done.filesize) : ''), file, done.filename, photos);
   } catch (e) {
     card.fail(e.message);
   }
@@ -182,7 +184,7 @@ async function startDownload(f, d, baseName, jobsBox) {
 function imageSection(d, images, baseName, hasVideo) {
   const lives = images.filter((i) => i.live_photo_url);
   const head = el('div', { class: 'sheet-title' },
-    el('span', {}, images.length + ' 张图片' + (lives.length ? '，其中 ' + lives.length + ' 张是实况' : '')));
+    el('span', {}, t('{count} 张图片', { count: images.length }) + (lives.length ? t('，其中 {count} 张是实况', { count: lives.length }) : '')));
   const acts = headActions(d, images, baseName, hasVideo, lives.length > 0);
   if (acts.length) head.append(el('div', { class: 'head-acts' }, ...acts));
   const grid = el('div', { class: 'grid' }, ...images.map((img, i) => imageTile(img, i + 1, baseName)));
@@ -192,9 +194,9 @@ function imageSection(d, images, baseName, hasVideo) {
 /** 图集标题行右边的小按钮：背景音乐（用得少，不占一整行）；没有实况时的「全部保存」 */
 function headActions(d, images, baseName, hasVideo, hasLives) {
   const acts = [];
-  if (d.music_url && !hasVideo) acts.push(download(d.music_url, baseName + '.mp3', '下载背景音乐', 'btn sm quiet'));
+  if (d.music_url && !hasVideo) acts.push(download(d.music_url, baseName + '.mp3', t('下载背景音乐'), 'btn sm quiet'));
   if (hasLives) return acts;
-  const label = !PHOTOS ? '逐张下载全部' : images.length > 1 ? '全部存到相册（' + images.length + ' 张）' : '存到相册';
+  const label = !PHOTOS ? t('逐张下载全部') : images.length > 1 ? t('全部存到相册（{count} 张）', { count: images.length }) : t('存到相册');
   const all = stillsButton(images, baseName, label, PHOTOS ? 'btn sm dark' : 'btn sm');
   return all ? [...acts, all] : acts;
 }
@@ -216,10 +218,10 @@ async function downloadAll(images, baseName, btn) {
     document.body.append(a);
     a.click();
     a.remove();
-    btn.textContent = '下载中 ' + (i + 1) + '/' + images.length;
+    btn.textContent = t('下载中 ') + (i + 1) + '/' + images.length;
     await sleep(900);
   }
-  btn.textContent = '已全部触发下载';
+  btn.textContent = t('已全部触发下载');
   btn.disabled = false;
 }
 
@@ -239,35 +241,35 @@ function liveBlock(images, lives, baseName) {
     const items = lives.map((im) => ({
       url: sourcesOf(im.live_photo_url), name: baseName + '_' + (images.indexOf(im) + 1) + '_live', type: 'video/mp4',
     }));
-    return photosButton('存实况视频到相册', (onBytes) => fetchFiles(items, onBytes), 'btn sm dark');
+    return photosButton(t('存实况视频到相册'), (onBytes) => fetchFiles(items, onBytes), 'btn sm dark');
   };
 
   let buttons;
-  if (PHOTOS) buttons = [videos(), stills('只存静态图'), iphone('btn sm quiet', 'Mac 用实况包')];
-  else if (IOS) buttons = [iphone('btn sm dark', '下载实况包'), stills('只下载静态图')];
-  else if (ANDROID) buttons = [android('btn sm dark', '下载动态照片'), stills('只下载静态图'), iphone('btn sm quiet', 'iPhone 实况包')];
-  else buttons = [iphone('btn sm dark', '下载 iPhone 实况包'), android('btn sm quiet', '下载安卓动态照片'), stills('只下载静态图')];
+  if (PHOTOS) buttons = [videos(), stills(t('只存静态图')), iphone('btn sm quiet', t('Mac 用实况包'))];
+  else if (IOS) buttons = [iphone('btn sm dark', t('下载实况包')), stills(t('只下载静态图'))];
+  else if (ANDROID) buttons = [android('btn sm dark', t('下载动态照片')), stills(t('只下载静态图')), iphone('btn sm quiet', t('iPhone 实况包'))];
+  else buttons = [iphone('btn sm dark', t('下载 iPhone 实况包')), android('btn sm quiet', t('下载安卓动态照片')), stills(t('只下载静态图'))];
   const [main, ...more] = buttons;
 
   return [
     el('div', { class: 'live-actions' }, main, el('div', { class: 'more-acts' }, ...more.filter(Boolean))),
-    PHOTOS ? iphoneLiveHint('存实况视频到相册', '「Mac 用实况包」') : liveHint(),
+    PHOTOS ? iphoneLiveHint(t('存实况视频到相册'), t('「Mac 用实况包」')) : liveHint(),
     jobsBox,
   ];
 }
 
 function liveHint() {
   if (ANDROID) {
-    return el('div', { class: 'fine' }, el('p', {}, '动态照片存到相册就会动，Google 相册、三星、小米、OPPO、vivo 都认。静态图不会动。'));
+    return el('div', { class: 'fine' }, el('p', {}, t('动态照片存到相册就会动，Google 相册、三星、小米、OPPO、vivo 都认。静态图不会动。')));
   }
   return el('div', { class: 'fine' },
-    el('p', {}, el('b', {}, '受 iOS 限制，iPhone 上存不成实况'),
-      '：实况包要在 Mac 上用，解压后把 JPG 和 MOV 一起拖进「照片」App，开了 iCloud 照片会同步到 iPhone。'),
-    el('p', {}, '安卓动态照片是一张内嵌视频的 JPG，存到相册就会动。静态图不会动。'));
+    el('p', {}, el('b', {}, t('受 iOS 限制，iPhone 上存不成实况')),
+      t('：实况包要在 Mac 上用，解压后把 JPG 和 MOV 一起拖进「照片」App，开了 iCloud 照片会同步到 iPhone。')),
+    el('p', {}, t('安卓动态照片是一张内嵌视频的 JPG，存到相册就会动。静态图不会动。')));
 }
 
 async function startLive(lives, fmt, baseName, jobsBox, btn) {
-  const label = fmt === 'livephoto' ? 'iPhone 实况' : '安卓动态照片';
+  const label = fmt === 'livephoto' ? t('iPhone 实况') : t('安卓动态照片');
   const card = jobCard(jobsBox, label + (lives.length > 1 ? ' × ' + lives.length : ''));
   btn.disabled = true;
   try {
@@ -276,7 +278,7 @@ async function startLive(lives, fmt, baseName, jobsBox, btn) {
     }));
     const done = await watchJob(await postJSON('/api/live', { items, format: fmt, title: baseName }), card.update);
     const ext = (done.filename || '').split('.').pop().toUpperCase();
-    card.done('保存 ' + ext + (done.filesize ? '，' + fmtSize(done.filesize) : ''), '/api/jobs/' + done.id + '/file', done.filename);
+    card.done(t('保存 ') + ext + (done.filesize ? t('，') + fmtSize(done.filesize) : ''), '/api/jobs/' + done.id + '/file', done.filename);
   } catch (e) {
     card.fail(e.message);
   } finally {
@@ -295,17 +297,17 @@ function imageTile(img, n, baseName) {
   const save = (url, file, ext, label, type) => (PHOTOS
     ? photosButton(label, oneFile(sourcesOf(url), file, type), 'btn sm quiet')
     : link(url, file + '.' + ext, label));
-  const actions = [save(img.url, name, 'jpg', live ? '原图' : PHOTOS ? '存相册' : '下载')];
+  const actions = [save(img.url, name, 'jpg', live ? t('原图') : PHOTOS ? t('存相册') : t('下载'))];
   if (live) {
     actions.push(
-      save(live, name + '_live', 'mp4', '视频', 'video/mp4'),
+      save(live, name + '_live', 'mp4', t('视频'), 'video/mp4'),
       el('button', {
-        class: 'btn sm quiet', type: 'button', title: '用这段实况视频做 GIF',
+        class: 'btn sm quiet', type: 'button', title: t('用这段实况视频做 GIF'),
         onclick: () => openConverter({ url: live, title: name, sig: sigOf(live) }, 'gif'),
       }, 'GIF'));
   }
   return el('div', { class: 'tile' },
     proxyImg(img.url, { alt: '', loading: 'lazy' }),
-    live ? el('span', { class: 'live' }, '实况') : null,
+    live ? el('span', { class: 'live' }, t('实况')) : null,
     el('div', { class: 'bar' }, el('span', {}, n), el('div', {}, ...actions)));
 }
