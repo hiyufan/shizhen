@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="docs/logo.svg" width="72" alt="求原图">
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/logo.svg">
+  <img src="docs/logo-animated.gif" width="72" height="72" alt="求原图">
+</picture>
 
 # 求原图
 

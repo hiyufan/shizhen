@@ -84,11 +84,13 @@ templates.env.filters.update(bjtime=status.bj_time, daylabel=status.day_label, s
 
 
 def _critical_css() -> str:
-    """fonts.css + site.css 原文，内联进 <head>：省掉首屏两个渲染阻塞请求。
+    """字体、品牌动效与页面 CSS 原文，内联进 <head>：避免首屏渲染阻塞请求。
     跨境访问一次 RTT 就是几百毫秒，且 @font-face 随 HTML 到达后 woff2 才能开始
     并行下载——之前字体被串在 fonts.css 的发现链上。文件在部署时随镜像更新，
     进程启动读一次即可。字体 URL 换成带版本的，和 base.html 的 preload 一致。"""
-    css = "".join((STATIC_DIR / name).read_text(encoding="utf-8") for name in ("fonts.css", "site.css"))
+    css = "".join(
+        (STATIC_DIR / name).read_text(encoding="utf-8") for name in ("fonts.css", "brand-motion.css", "site.css")
+    )
     return re.sub(r"url\(/static/([^)?]+)\)", lambda m: f"url({static_url(m.group(1))})", css)
 
 

@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="docs/logo.svg" width="72" alt="Qiuyuantu">
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/logo.svg">
+  <img src="docs/logo-animated.gif" width="72" height="72" alt="Qiuyuantu">
+</picture>
 
 # Qiuyuantu · 求原图
 

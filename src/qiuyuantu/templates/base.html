@@ -27,15 +27,15 @@
 <meta name="twitter:description" content="{{ description }}">
 <meta name="twitter:image" content="{{ og_image }}">
 <script type="application/ld+json">{{ json_ld | safe }}</script>
-<link rel="icon" href="/favicon.ico" sizes="48x48">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="48x48">
+<link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{ static_url('apple-touch-icon.png') }}">
 <link rel="preload" href="{{ static_url('noto-serif-sc-900.woff2') }}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{{ static_url('noto-serif-sc-700.woff2') }}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{{ static_url('inter.woff2') }}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{{ static_url('playfair-italic.woff2') }}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{{ static_url('jetbrains-mono.woff2') }}" as="font" type="font/woff2" crossorigin>
-{# 两个字表 CSS 直接内联：省掉首屏两个阻塞请求（跨境 RTT 一趟就是几百毫秒）。
+{# Inline font, brand motion and site styles to avoid blocking first paint.
    注意 preload 的字体 URL 必须和内联 CSS 里 @font-face 的 src 完全一致（含 ?v=，两边都由
    static_url 生成），否则浏览器会当作两个资源，预加载整个白做 #}
 <style>{{ critical_css | safe }}</style>
@@ -50,7 +50,7 @@
 
 <nav class="nav">
   <a class="brand" href="/" aria-label="求原图 首页">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="16" cy="16" r="6" fill="#6BAFDF"/></svg>
+    {% include '_brand_icon.html' %}
     求原图
   </a>
   <div class="nav-links">

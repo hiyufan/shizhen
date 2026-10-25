@@ -39,9 +39,13 @@ def test_head_does_not_count_as_a_page_view(client, monkeypatch):
     [("/favicon.ico", "image/x-icon"), ("/favicon.svg", "image/svg+xml"), ("/apple-touch-icon.png", "image/png")],
 )
 def test_root_icons(client, path, content_type):
+    from qiuyuantu.web.rendering import static_url
+
     r = client.get(path)
     assert r.status_code == 200 and r.headers["content-type"].startswith(content_type) and r.content
-    assert f'href="{path}"' in client.get("/").text
+    versioned = static_url(path.removeprefix("/"))
+    assert f'href="{versioned}"' in client.get("/").text
+    assert client.get(versioned).content == r.content
 
 
 @pytest.mark.parametrize(
