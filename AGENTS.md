@@ -27,6 +27,9 @@
 - 解析器用 `BaseParser.get_json()` / `get_text()` 发请求，以 `ParseError` 表达失败原因。同步上游修复时按差异迁移，不能用上游文件整份覆盖本地解析器。
 - 保留 `VideoInfo` 的语义：可直接下载的清晰度放 `formats` 并带 `url`，需服务端合并的格式放 `format_spec`。
 - 修改接口时检查前端调用方和现有兼容接口；新增进度能力时保留 JSON 解析接口的可用性。配置仍通过 `PARSE_VIDEO_*` 环境变量提供。
+- 普通抖音账号助手独立管理于 [apps/douyin-inbox/](apps/douyin-inbox/README.md)，源码包为 `qiuyuantu_inbox`；账号工具、测试、部署与文档均放在该目录，具体约定见 [子项目 AGENTS.md](apps/douyin-inbox/AGENTS.md)。它单向复用核心解析器和转换层；核心安装包及 Web 镜像不包含账号助手，不从 Web 路由启动账号进程。
+- 修改共享下载或转换工具时保持现有默认行为，账号专属限制通过可选参数传入。账号源码不放回 `src/qiuyuantu/`；账号依赖与运行数据继续隔离。
+
 
 ## 产品与界面设计
 
@@ -93,14 +96,14 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 
 | 改动 | 本地验证 |
 | --- | --- |
-| Python 源码、测试或依赖 | `python -m ruff format --check .`、`python -m ruff check .`、`python -m pytest -q` |
+| Python 源码、测试或依赖 | `python -m ruff format --check .`、`python -m ruff check .`、`python -m pytest -q`；涉及账号助手或共享解析 / 转换代码时另跑 `python -m pytest -q apps/douyin-inbox/tests` |
 | 前端 JavaScript | `npx --yes eslint@10 src/qiuyuantu/static/js`，以及相关页面的浏览器交互检查 |
 | 模板、样式、静态资源或页面文案 | `python -m pytest -q tests/test_assets.py tests/test_fonts.py tests/test_csp.py tests/test_seo_routes.py`，以及受影响页面的桌面 / 手机检查 |
 | 部署脚本 | `shellcheck scripts/deploy.sh` |
 | `Dockerfile`、`pyproject.toml`、`requirements.txt` | 具备 Docker 环境时执行 `docker build -t shizhen-ci .`；CI 对这些文件的变化执行镜像构建 |
 
-- CI 的测试 job 使用 Python 3.12、Node.js 22，执行 Ruff、ESLint、全量 pytest 和 ShellCheck；命令以 [.github/workflows/ci.yml](.github/workflows/ci.yml) 为准。
+- CI 的测试 job 使用 Python 3.12、Node.js 22，执行 Ruff、ESLint、核心 pytest、独立账号助手 pytest 和 ShellCheck，并检查 README 嵌入同步；命令以 [.github/workflows/ci.yml](.github/workflows/ci.yml) 为准。
 - 本地 `.pre-commit-config.yaml` 仅运行 Ruff 检查及格式化，且可能自动修改文件；它不覆盖 ESLint、测试或完整 CI。
 - 解析、下载、转换行为的交付还应按 [README 的贡献说明](README.md#贡献) 做真实链接与三种格式的烟测。外网验证与离线测试分开；受平台风控、凭证或工具限制时，说明未验证的部分，不能把替身测试当作真实平台成功。
-- `push` 到 `main` 且 CI 通过会自动部署生产环境，流程见 [docs/deploy.md](docs/deploy.md)。不要把推送 `main` 或运行 `scripts/deploy.sh` 当成本地验证步骤；仅在任务已授权发布时执行。
+- `push` 到 `main` 包含核心 / Web 运行变更且 CI 通过会自动部署生产环境，流程见 [docs/deploy.md](docs/deploy.md)。不要把推送 `main` 或运行 `scripts/deploy.sh` 当成本地验证步骤；仅在任务已授权发布时执行。账号助手独占的改动只执行检查，不触发 Web 部署；共享核心或 Web 运行文件变化才部署 Web。
 - 交付说明写清行为变化、已执行检查及结果、尚未验证的部分。规则与实现不符时核对上述事实来源并修订本文件，不继续叠加矛盾条款。

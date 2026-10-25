@@ -179,6 +179,8 @@ async def make_gif(
     dither: str = "bayer",
     speed: float = 1.0,
     colors: int = 256,
+    max_height: int | None = None,
+    max_bytes: int | None = None,
     on_progress: ProgressCb | None = None,
 ) -> None:
     dither_opt = {
@@ -188,8 +190,14 @@ async def make_gif(
     }.get(dither, "dither=bayer:bayer_scale=4")
     speed = max(0.25, min(4.0, speed))
     pts = "" if abs(speed - 1.0) < 1e-3 else f"setpts=PTS/{speed},"
+    scale = _even_scale(width)
+    if max_height:
+        scale = (
+            f"scale=w='min({width},iw)':h='min({max_height},ih)':"
+            "force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos"
+        )
     vf = (
-        f"[0:v]{pts}fps={fps},{_even_scale(width)},split[a][b];"
+        f"[0:v]{pts}fps={fps},{scale},split[a][b];"
         f"[a]palettegen=max_colors={colors}:stats_mode=diff[p];"
         f"[b][p]paletteuse={dither_opt}:diff_mode=rectangle"
     )
@@ -207,6 +215,7 @@ async def make_gif(
             "-loop",
             "0",
             "-an",
+            *(["-fs", str(max_bytes)] if max_bytes else []),
             dst,
         ],
         total=out_dur,

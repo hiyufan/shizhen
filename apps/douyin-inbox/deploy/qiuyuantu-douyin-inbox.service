@@ -1,0 +1,18 @@
+[Unit]
+Description=Qiuyuantu Douyin persistent inbox
+Requires=qiuyuantu-douyin-browser.service
+After=qiuyuantu-douyin-browser.service
+
+[Service]
+WorkingDirectory=/root/shizhen
+Environment=PARSE_VIDEO_ACCOUNT_DIR=/root/shizhen/data/accounts/douyin
+Environment="PATH=/root/shizhen/data/accounts/douyin/bin:/root/shizhen/data/accounts/douyin/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+EnvironmentFile=-/etc/qiuyuantu-douyin.env
+ExecStart=/root/shizhen/data/accounts/douyin/venv/bin/python -m qiuyuantu_inbox run --pilot-current --send
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=210
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

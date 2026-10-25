@@ -1,0 +1,11 @@
+[Unit]
+Description=Qiuyuantu Douyin private display
+
+[Service]
+ExecStart=/usr/bin/Xvfb :93 -screen 0 1360x900x24 -nolisten tcp
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

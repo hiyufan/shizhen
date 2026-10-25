@@ -65,7 +65,7 @@ packages = ["src/qiuyuantu", "src/parse_video_py"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-src = ["src", "tests"]
+src = ["src", "tests", "apps/douyin-inbox/src", "apps/douyin-inbox/tests"]
 extend-exclude = [".codegraph"]
 
 [tool.ruff.lint]
@@ -97,7 +97,7 @@ max-returns = 8
 extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Query", "typer.Argument", "typer.Option"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["qiuyuantu", "parse_video_py"]
+known-first-party = ["qiuyuantu", "parse_video_py", "qiuyuantu_inbox"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

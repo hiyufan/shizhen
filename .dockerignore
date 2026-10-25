@@ -14,3 +14,6 @@ scripts/
 docker-compose*.yml
 Caddyfile
 *.bak*
+
+# 独立账号应用及其本机环境不进入 Web 镜像构建上下文
+apps/

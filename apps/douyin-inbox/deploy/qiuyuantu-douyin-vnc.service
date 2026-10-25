@@ -1,0 +1,13 @@
+[Unit]
+Description=Qiuyuantu Douyin loopback VNC
+Requires=qiuyuantu-douyin-display.service
+After=qiuyuantu-douyin-display.service
+
+[Service]
+ExecStart=/usr/bin/x11vnc -display :93 -localhost -rfbport 5903 -nopw -forever -shared -noxdamage
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

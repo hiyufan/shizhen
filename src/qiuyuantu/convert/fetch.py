@@ -105,20 +105,27 @@ async def _fetch_once(
         await _stream_to_file(client, url, dest, headers=headers, limit=limit, too_large="文件太大")
 
 
-async def fetch_bytes(url: str, dest: Path, headers: dict[str, str] | None = None, limit: int = 100 << 20) -> None:
+async def fetch_bytes(
+    url: str,
+    dest: Path,
+    headers: dict[str, str] | None = None,
+    limit: int = 100 << 20,
+    *,
+    connect_timeout: float = 30,
+) -> None:
     """实况打包要的原图和短视频。国内 CDN 直连 10 秒连不上就改走中继，并记住这个 CDN 一阵子。"""
     cdn = relay.cn_media_cdn(url) if relay.enabled() else ""
     if not cdn:
-        await _fetch_once(url, dest, headers, limit)
+        await _fetch_once(url, dest, headers, limit, connect_timeout=connect_timeout)
         return
     if _RELAY_FIRST.get(cdn, 0) > time.time():
-        await _fetch_once(url, dest, headers, limit, via_relay=True)
+        await _fetch_once(url, dest, headers, limit, via_relay=True, connect_timeout=connect_timeout)
         return
     try:
-        await _fetch_once(url, dest, headers, limit, connect_timeout=10)
+        await _fetch_once(url, dest, headers, limit, connect_timeout=min(10, connect_timeout))
     except httpx.TransportError:
         _RELAY_FIRST[cdn] = time.time() + _RELAY_FIRST_SECONDS
-        await _fetch_once(url, dest, headers, limit, via_relay=True)
+        await _fetch_once(url, dest, headers, limit, via_relay=True, connect_timeout=connect_timeout)
 
 
 # --------------------------------------------------------------------------- yt-dlp

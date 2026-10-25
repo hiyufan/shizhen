@@ -4,9 +4,11 @@
 
 ## 自动部署（CI/CD）
 
-push 到 main，测试通过就自动上线。
+普通抖音账号助手单独运行，部署入口见 [apps/douyin-inbox/](../apps/douyin-inbox/README.md)。网站 CI 不启动或重启账号浏览器。
 
-`.github/workflows/ci.yml`：每次 push / PR 跑单元测试（不碰外网）、语法检查和部署脚本的 shellcheck，改到 `Dockerfile` / 依赖时再构建一遍镜像；push 到 main 且都通过，就 SSH 到服务器跑 `scripts/deploy.sh`：等进行中的转换任务做完 → 打回滚标签 → 构建上线 → 自检（容器健康、首页、`/api/health`、公网首页），不过就自动退回上一个镜像。回滚镜像留最近 3 个，日志在 Actions 里和服务器的 `/var/log/shizhen-deploy.log`。
+push 到 main 且修改了核心或 Web 运行文件，测试通过就自动上线。仅修改 `apps/douyin-inbox/` 或文档时完成检查，不重新部署网站。
+
+`.github/workflows/ci.yml`：每次 push / PR 分别运行核心和账号助手的离线测试、语法检查、README 嵌入同步检查和部署脚本的 shellcheck，改到 `Dockerfile` / 依赖时再构建一遍镜像；push 到 main、涉及核心 / Web 运行文件且都通过，就 SSH 到服务器跑 `scripts/deploy.sh`：等进行中的转换任务做完 → 打回滚标签 → 构建上线 → 自检（容器健康、首页、`/api/health`、公网首页），不过就自动退回上一个镜像。回滚镜像留最近 3 个，日志在 Actions 里和服务器的 `/var/log/shizhen-deploy.log`。
 
 部署密钥在服务器上被锁死成只能跑部署脚本，开不了 shell、转发不了端口；SSH 带过去的只被当成要部署的提交 SHA，且必须是 GitHub 上 main 里的提交：
 

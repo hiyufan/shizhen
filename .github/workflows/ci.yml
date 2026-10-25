@@ -1,4 +1,4 @@
-# 每次 push / PR 跑测试；push 到 main 且测试通过就 SSH 到服务器部署（scripts/deploy.sh）。
+# 每次 push / PR 跑核心与账号助手测试；main 的核心 / Web 运行变更通过后部署网站。
 # 需要的 Secrets：DEPLOY_HOST、DEPLOY_SSH_KEY（只能跑部署脚本的专用密钥）、DEPLOY_KNOWN_HOSTS
 name: CI
 
@@ -40,13 +40,40 @@ jobs:
       - name: 单元测试
         # 测试不碰外网：平台解析器换成假的，数据目录指到临时目录（见 tests/conftest.py）
         run: python -m pytest -q
+      - name: README 嵌入同步检查
+        run: python apps/douyin-inbox/scripts/sync_readme.py --check
       - name: 部署脚本检查
         run: shellcheck scripts/deploy.sh
+
+  inbox:
+    name: 抖音账号助手离线测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            apps/douyin-inbox/pyproject.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 安装核心与独立账号应用（离线替身测试无需 Playwright）
+        run: |
+          pip install -e ".[dev]"
+          pip install --no-deps -e ./apps/douyin-inbox
+      - name: 账号工作流与浏览器适配契约测试
+        run: python -m pytest -q apps/douyin-inbox/tests
 
   docker:
     # 只有镜像相关文件变了才构建一遍（装 Chromium 要几分钟），不推送
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      web_changed: ${{ steps.changed.outputs.web_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,13 +94,19 @@ jobs:
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
           fi
+          # 账号应用可独立更新；只有核心 / Web 运行文件变化才部署网站。
+          if git diff --quiet "$base" HEAD -- Dockerfile pyproject.toml requirements.txt main.py src/ docker/ docker-compose.yml Caddyfile scripts/deploy.sh .github/workflows/ci.yml 2>/dev/null; then
+            echo "web_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "web_changed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: 构建镜像
         if: steps.changed.outputs.build == 'true'
         run: docker build -t shizhen-ci .
 
   deploy:
-    needs: [test, docker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, inbox, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.docker.outputs.web_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # 部署一个接一个排队，从不取消

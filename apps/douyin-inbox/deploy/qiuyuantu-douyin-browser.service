@@ -1,0 +1,19 @@
+[Unit]
+Description=Qiuyuantu Douyin account browser
+Requires=qiuyuantu-douyin-display.service
+After=qiuyuantu-douyin-display.service network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/root/shizhen
+Environment=DISPLAY=:93
+Environment=PARSE_VIDEO_ACCOUNT_DIR=/root/shizhen/data/accounts/douyin
+ExecStart=/root/shizhen/data/accounts/douyin/venv/bin/python -m qiuyuantu_inbox.account login --headed --timeout 0
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=30
+KillMode=mixed
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

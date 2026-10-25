@@ -1,0 +1,13 @@
+[Unit]
+Description=Qiuyuantu Douyin loopback browser desktop
+Requires=qiuyuantu-douyin-vnc.service
+After=qiuyuantu-douyin-vnc.service
+
+[Service]
+ExecStart=/usr/bin/websockify --web=/usr/share/novnc 127.0.0.1:6083 127.0.0.1:5903
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

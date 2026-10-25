@@ -62,3 +62,8 @@ def test_no_relay_configured_keeps_direct_error(calls, tmp_path, monkeypatch):
     with pytest.raises(httpx.ConnectTimeout):
         _fetch(DOUYIN_IMG, tmp_path / "1")
     assert calls == [("direct", 30)]
+
+
+def test_interactive_download_can_fail_fast_without_losing_relay(calls, tmp_path):
+    asyncio.run(fetch.fetch_bytes(DOUYIN_IMG, tmp_path / "1", connect_timeout=5))
+    assert calls == [("direct", 5), ("relay", None)]
