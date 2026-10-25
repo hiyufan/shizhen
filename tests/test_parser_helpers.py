@@ -1,17 +1,47 @@
-"""解析器里不碰网络的纯函数。"""
+"""解析器的离线行为：纯函数、链接识别与请求上下文。"""
 
+import asyncio
 import json
 
 import httpx
 import pytest
 
 from qiuyuantu import parser as parser_pkg
+from qiuyuantu import utils
 from qiuyuantu.feedback import FIXABLE
 from qiuyuantu.parser import VideoSource, detect_source
 from qiuyuantu.parser import bilibili as bilibili_mod
 from qiuyuantu.parser.bilibili import BiliBili, dash_formats, guest_params, id_param, opus_images, opus_text
 from qiuyuantu.parser.douyin import _looks_like_note, _note_images
 from qiuyuantu.parser.errors import ParseError
+
+
+@pytest.mark.parametrize("error", [None, ValueError, asyncio.CancelledError])
+async def test_id_parser_uses_platform_proxy_and_restores_context(monkeypatch, error):
+    monkeypatch.setenv("PARSE_VIDEO_PROXY", "http://general:8080")
+    monkeypatch.setenv("PARSE_VIDEO_PROXY_CN", "http://cn:8080")
+    routes = []
+    result = object()
+
+    async def parse_id(self, video_id):
+        assert video_id == "BV1GJ411x7h7"
+        routes.append(utils.proxy_for())
+        if error:
+            raise error()
+        return result
+
+    monkeypatch.setattr(BiliBili, "parse_video_id", parse_id)
+    previous = utils.current_source.set("youtube")
+    try:
+        if error:
+            with pytest.raises(error):
+                await parser_pkg.parse_video_id(VideoSource.BiliBili, "BV1GJ411x7h7")
+        else:
+            assert await parser_pkg.parse_video_id(VideoSource.BiliBili, "BV1GJ411x7h7") is result
+        assert routes == ["http://cn:8080"]
+        assert utils.current_source.get() == "youtube"
+    finally:
+        utils.current_source.reset(previous)
 
 
 def test_av_ids_use_numeric_params():

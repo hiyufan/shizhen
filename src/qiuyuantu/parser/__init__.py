@@ -268,4 +268,9 @@ async def parse_video_id(source: VideoSource, video_id: str) -> VideoInfo:
     """按平台 + 作品 ID 解析（上游的老接口）。"""
     if not video_id or not source:
         raise ValueError("video_id or source is empty")
-    return await video_source_info_mapping[source]["parser"]().parse_video_id(video_id)
+    # 旧接口同样需要平台上下文，否则国内代理和中继不会接管它的请求。
+    token = current_source.set(source.value)
+    try:
+        return await video_source_info_mapping[source]["parser"]().parse_video_id(video_id)
+    finally:
+        current_source.reset(token)
