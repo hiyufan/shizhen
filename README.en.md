@@ -2,6 +2,7 @@
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset="docs/logo.svg">
+  <source type="image/svg+xml" srcset="docs/logo-animated.svg">
   <img src="docs/logo-animated.gif" width="72" height="72" alt="Qiuyuantu">
 </picture>
 
