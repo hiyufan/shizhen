@@ -138,7 +138,7 @@ def test_user_stats_skip_user_side_failures(monkeypatch):
 def test_status_page_renders():
     status.record("douyin", True, ms=1200)
     r = TestClient(web.app).get("/status")
-    assert r.status_code == 200 and r.headers["cache-control"] == "private, no-store"
+    assert r.status_code == 200 and r.headers["cache-control"] == "private, max-age=300"
     assert "各平台解析状态" in r.text and "1 个平台全部能正常解析" in r.text and "FAQPage" in r.text
     assert "/status" in TestClient(web.app).get("/sitemap.xml").text
 

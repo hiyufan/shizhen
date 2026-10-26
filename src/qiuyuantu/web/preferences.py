@@ -11,17 +11,18 @@ from fastapi import Request
 from jinja2 import pass_context
 from markupsafe import Markup
 
+LOCALES_DIR = Path(__file__).resolve().parent.parent / "locales"
+UI_ENGLISH_PATH = LOCALES_DIR / "ui.en.json"
+
 
 @functools.cache
 def english() -> dict[str, str]:
-    path = Path(__file__).resolve().parent.parent / "locales"
-    return json.loads((path / "en.json").read_text(encoding="utf-8")) | ui_english()
+    return json.loads((LOCALES_DIR / "en.json").read_text(encoding="utf-8")) | ui_english()
 
 
 @functools.cache
 def ui_english() -> dict[str, str]:
-    path = Path(__file__).resolve().parent.parent / "locales" / "ui.en.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(UI_ENGLISH_PATH.read_text(encoding="utf-8"))
 
 
 def browser_language(header: str) -> str:

@@ -82,5 +82,20 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('focusin', (event) => {
   if (!panel.contains(event.target)) panel.open = false;
 });
+// 前进 / 后退缓存恢复的是离开时的页面；期间在别的页面改过偏好，就跟上 Cookie。
+window.addEventListener('pageshow', (event) => {
+  if (!event.persisted) return;
+  const saved = (name, values) => (values.includes(cookie(name)) ? cookie(name) : 'auto');
+  if (saved('qyt_language', ['zh', 'en']) !== root.dataset.language) {
+    location.reload();
+    return;
+  }
+  const theme = saved('qyt_theme', ['light', 'dark']);
+  const option = panel.querySelector(`input[name="theme"][value="${theme}"]`);
+  if (root.dataset.theme === theme) return;
+  option.checked = true;
+  root.dataset.theme = theme;
+  updateBrowserColor();
+});
 systemTheme.addEventListener('change', updateBrowserColor);
 updateBrowserColor();

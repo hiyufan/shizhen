@@ -40,6 +40,7 @@
    注意 preload 的字体 URL 必须和内联 CSS 里 @font-face 的 src 完全一致（含 ?v=，两边都由
    static_url 生成），否则浏览器会当作两个资源，预加载整个白做 #}
 <style>{{ critical_css | safe }}</style>
+{% if locale == 'en' %}<link rel="modulepreload" href="{{ js_url('messages-en.js') }}">{% endif %}
 {% if site_verification %}{{ site_verification | safe }}{% endif %}
 {% block head %}{% endblock %}
 </head>
@@ -75,7 +76,6 @@
 {% block content %}{% endblock %}
 
 {% if analytics %}{{ analytics | safe }}{% endif %}
-<script id="translations" type="application/json">{{ ui_messages | tojson }}</script>
 <script type="module" src="{{ js_url('site.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>

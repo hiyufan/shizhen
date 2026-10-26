@@ -37,7 +37,7 @@ def test_preferences_are_request_scoped_and_private():
         assert doc.get("data-theme") == "auto"
         assert doc.xpath("//h1")[0].text_content() == "Keep the moment.Videos, originals & GIFs."
         assert response.headers["content-language"] == "en"
-        assert response.headers["cache-control"] == "private, no-store"
+        assert response.headers["cache-control"] == "private, max-age=600"
         assert {"Accept-Language", "Cookie"} <= set(response.headers["vary"].split(", "))
 
         client.cookies.set("qyt_language", "zh")
@@ -99,3 +99,21 @@ def test_invalid_language_cookie_and_english_not_found():
     doc = html.fromstring(response.text)
     assert doc.get("lang") == "en"
     assert doc.xpath("//h1")[0].text_content() == "This page is missing"
+
+
+def test_english_messages_are_a_cached_module_not_inlined():
+    from qiuyuantu.web import rendering
+    from qiuyuantu.web.preferences import ui_english
+
+    client = TestClient(web.app)
+    module = rendering.js_url("messages-en.js")
+    english_page = client.get("/guide/video-to-gif", headers={"Accept-Language": "en"}).text
+    assert f'<link rel="modulepreload" href="{module}">' in english_page
+    assert 'id="translations"' not in english_page
+    assert "messages-en.js" not in client.get("/", headers={"Accept-Language": "zh-CN"}).text
+
+    response = client.get(module)
+    assert response.headers["content-type"].startswith("text/javascript")
+    assert "immutable" in response.headers["cache-control"]
+    body = response.text
+    assert body.startswith("export default ") and json.loads(body[len("export default ") : -2]) == ui_english()

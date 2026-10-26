@@ -1,6 +1,17 @@
 // 页面语言由服务端确定；原文作为键，格式化占位符与译文共用一份数据。
-const messages = JSON.parse(document.getElementById('translations')?.textContent || '{}');
 export const isEnglish = document.documentElement.lang === 'en';
+
+// 英文译文是带版本号的独立模块，浏览器长期缓存；页面头部已预加载。取不到时退回原文，界面照常可用。
+async function loadMessages() {
+  if (!isEnglish) return {};
+  try {
+    return (await import('./messages-en.js')).default;
+  } catch {
+    return {};
+  }
+}
+
+const messages = await loadMessages();
 
 export function t(message, values = {}) {
   const text = messages[message] ?? message;

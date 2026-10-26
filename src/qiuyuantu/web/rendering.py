@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from .. import guides, seo, status
-from .preferences import preferences, t, translate_data, ui_english
+from .preferences import UI_ENGLISH_PATH, preferences, t, translate_data, ui_english
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = PACKAGE_DIR / "static"
@@ -47,6 +47,8 @@ templates.env.globals["static_url"] = static_url
 
 JS_DIR = STATIC_DIR / "js"
 _JS_IMPORT = re.compile(r"""^import\s[^;]*?\sfrom\s+['"]\./([\w-]+\.js)['"]""", re.M)
+# 英文界面译文由 locales/ui.en.json 生成为同目录模块，跟着前端版本号长期缓存，不再内嵌进每个页面。
+UI_MESSAGES_MODULE = "messages-en.js"
 
 
 @functools.cache
@@ -54,7 +56,13 @@ def js_version() -> str:
     digest = hashlib.sha1()
     for path in sorted(JS_DIR.glob("*.js")):
         digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    digest.update(UI_MESSAGES_MODULE.encode() + b"\0" + UI_ENGLISH_PATH.read_bytes())
     return digest.hexdigest()[:10]
+
+
+@functools.cache
+def ui_messages_module() -> str:
+    return "export default " + json.dumps(ui_english(), ensure_ascii=False) + ";\n"
 
 
 def js_url(name: str) -> str:
@@ -136,15 +144,16 @@ def page_context(
 def render(request: Request, name: str, context: dict, **kwargs):
     prefs = preferences(request)
     context.update(prefs)
-    context["ui_messages"] = ui_english() if prefs["locale"] == "en" else {}
     if context.get("json_ld") and prefs["locale"] == "en":
         data = translate_data(json.loads(context["json_ld"]), "en")
         context["json_ld"] = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
     response = templates.TemplateResponse(request=request, name=name, context=context, **kwargs)
     response.headers["Content-Language"] = "zh-CN" if prefs["locale"] == "zh" else "en"
     response.headers["Vary"] = "Accept-Language, Cookie"
-    # HTML 带个人偏好，不能让 CDN 把一个访客的语言 / 主题发给下一个访客。
-    response.headers["Cache-Control"] = "private, no-store"
+    # HTML 带个人偏好：private 禁止 CDN / 代理把一个访客的语言 / 主题发给下一个访客，
+    # Vary 让浏览器在偏好变化后不再命中旧副本。不用 no-store：它会关掉浏览器的前进 / 后退缓存，
+    # 返回上一页时整页重载。站长页自己传的 no-store 保留。
+    response.headers.setdefault("Cache-Control", "private, max-age=600")
     return response
 
 

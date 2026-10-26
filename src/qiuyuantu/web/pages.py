@@ -14,7 +14,18 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from .. import guides, seo, status
 from .auth import SITE_AUTH
 from .preferences import preferences, status_headline
-from .rendering import JS_DIR, STATIC_DIR, base_url, js_version, page_context, render, render_404, render_tool_page
+from .rendering import (
+    JS_DIR,
+    STATIC_DIR,
+    UI_MESSAGES_MODULE,
+    base_url,
+    js_version,
+    page_context,
+    render,
+    render_404,
+    render_tool_page,
+    ui_messages_module,
+)
 
 router = APIRouter()
 
@@ -113,7 +124,8 @@ async def status_page(request: Request):
     )
     if preferences(request)["locale"] == "en":
         ctx["description"] = headline + " Hourly checks and real user success rates over the last 7 days."
-    return render(request, "status.html", ctx)
+    # 状态每小时变，浏览器别拿着旧的看太久
+    return render(request, "status.html", ctx, headers={"Cache-Control": "private, max-age=300"})
 
 
 @page_route("/sitemap.xml")
@@ -143,11 +155,14 @@ async def js_module(version: str, name: str):
     """前端模块（见 rendering.js_url）。版本号对得上才长期缓存；对不上的多半是部署前缓存的老页面，
     照样给当前的文件，但别让它被当成那个老版本缓存下来。"""
     path = JS_DIR / name
-    if not _JS_NAME.match(name) or not path.is_file():
+    generated = name == UI_MESSAGES_MODULE
+    if not _JS_NAME.match(name) or not (generated or path.is_file()):
         raise HTTPException(404, "Not Found")
     current = version == js_version()
-    cache = "public, max-age=31536000, immutable" if current else "no-cache"
-    return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": cache})
+    headers = {"Cache-Control": "public, max-age=31536000, immutable" if current else "no-cache"}
+    if generated:
+        return Response(ui_messages_module(), media_type="text/javascript", headers=headers)
+    return FileResponse(path, media_type="text/javascript", headers=headers)
 
 
 def _root_icon(name: str, media_type: str):
