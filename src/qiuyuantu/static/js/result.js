@@ -7,7 +7,7 @@ import {
 } from './api.js';
 import { openConverter } from './converter.js';
 import { $, el, fmtClock, fmtSize, safeName, sleep } from './dom.js';
-import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
+import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, imageButton, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
 import { jobCard } from './ui.js';
 
 const PLATFORMS = {
@@ -17,6 +17,7 @@ const PLATFORMS = {
   doupai: t('逗拍'), meipai: t('美拍'), quanminkge: t('全民K歌'), sixroom: t('六间房'), xinpianchang: t('新片场'), haokan: t('好看视频'),
   qqvideo: t('腾讯视频'), sohu: t('搜狐视频'), cctv: t('央视网'), vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
+  qqmusic: t('QQ 音乐'), netease: t('网易云音乐'),
 };
 
 /** 视频 / 音频的下载按钮：有国内边缘地址就从边缘下（国内直达），探通了直连就直连，否则服务器转发 */
@@ -46,11 +47,16 @@ export function renderResult(d) {
   const title = d.title || t('未命名');
   // notice：平台不给的那部分是什么（比如快手实况只有照片），说在前面免得用户以为是网站漏了
   const notice = d.notice ? el('p', { class: 'fine' }, serverMessage(d.notice, '平台仅提供部分媒体，请检查结果后下载。')) : null;
-  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), notice, ...resultBody(d, safeName(title) || 'video'));
+  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), notice, ...resultContent(d, safeName(title) || 'video'));
   const box = $('#result');
   box.replaceChildren(res);
   box.hidden = false;
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function resultContent(data, baseName) {
+  if (['qqmusic', 'netease'].includes(data.source) && data.images?.[0]?.url) return [coverSection(data.images[0], baseName)];
+  return resultBody(data, baseName);
 }
 
 function resultHead(d) {
@@ -76,6 +82,23 @@ function resultBody(d, baseName) {
     parts.push(el('div', { class: 'notice' }, t('解析成功但没有拿到任何视频或图片，这条内容可能已被删除或需要登录。')));
   }
   return parts;
+}
+
+function coverSection(image, baseName) {
+  const name = baseName + '_cover';
+  return el('div', { class: 'res-body cover-result' },
+    el('div', { class: 'cover-media' }, proxyImg(image.url, { alt: t('音乐封面') })),
+    el('div', { class: 'side' },
+      el('p', { class: 'label' }, t('音乐封面')),
+      el('div', { class: 'group' }, ...coverActions(proxy(image.url, name, true), name)),
+      el('p', { class: 'hint' }, t('按图片原始格式保存，动态封面保留动效。'))));
+}
+
+function coverActions(url, name) {
+  const downloadCover = imageButton(t('下载封面'), url, name, false);
+  if (!PHOTOS) return [downloadCover];
+  downloadCover.className = 'btn quiet';
+  return [imageButton(t('存到相册'), url, name), downloadCover];
 }
 
 // ---------- 视频

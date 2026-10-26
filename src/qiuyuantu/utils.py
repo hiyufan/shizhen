@@ -39,11 +39,27 @@ CN_SOURCES = {
     "qqvideo",
     "sohu",
     "cctv",
+    "qqmusic",
+    "netease",
 }
 
 
 # 国内平台的域名关键字：页面 / CDN 地址里带这些的，海外服务器访问时走国内代理
-CN_HOST_KEYWORDS = ("bilibili", "b23.tv", "xiaohongshu", "douyin", "kuaishou", "weibo", "pipix", "ixigua", "acfun")
+CN_HOST_KEYWORDS = (
+    "bilibili",
+    "b23.tv",
+    "xiaohongshu",
+    "douyin",
+    "kuaishou",
+    "weibo",
+    "pipix",
+    "ixigua",
+    "acfun",
+    "music.163.com",
+    "music.126.net",
+    "y.qq.com",
+    "y.gtimg.cn",
+)
 
 
 def is_cn_url(url: str) -> bool:

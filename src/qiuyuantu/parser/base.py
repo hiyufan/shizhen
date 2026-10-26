@@ -42,6 +42,8 @@ class VideoSource(Enum):
     QQVideo = "qqvideo"  # 腾讯视频
     Sohu = "sohu"  # 搜狐视频
     CCTV = "cctv"  # 央视网
+    QQMusic = "qqmusic"  # QQ 音乐封面
+    NetEaseMusic = "netease"  # 网易云音乐封面
     YtDlp = "ytdlp"  # YouTube / TikTok / Instagram 等，交给 yt-dlp
 
 

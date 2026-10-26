@@ -44,6 +44,9 @@ _REFERERS = {
     "tiktokcdn.com": "https://www.tiktok.com/",
     "cdninstagram.com": "https://www.instagram.com/",
     "pinimg.com": "https://www.pinterest.com/",
+    "music.126.net": "https://music.163.com/",
+    "y.gtimg.cn": "https://y.qq.com/",
+    "y.qq.com": "https://y.qq.com/",
 }
 
 

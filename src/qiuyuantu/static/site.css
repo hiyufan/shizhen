@@ -224,6 +224,9 @@ a.card { display: block; text-decoration: none; }
 @media (max-width: 760px) { .res-body { grid-template-columns: 1fr; } .res { padding: 22px; } }
 .media { border-radius: 16px; overflow: hidden; background: #0a0a0a; display: flex; justify-content: center; }
 .media video { max-height: 520px; width: auto; max-width: 100%; }
+.cover-media { width: 100%; max-width: 520px; align-self: start; border-radius: 16px; overflow: hidden; background: var(--card); }
+.cover-media img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+.hero .music-supports { margin-top: 8px; }
 .media.portrait { justify-content: flex-start; background: transparent; }
 .media.portrait video, .media.portrait img { border-radius: 16px; max-height: 520px; }
 .side { display: flex; flex-direction: column; gap: 10px; }

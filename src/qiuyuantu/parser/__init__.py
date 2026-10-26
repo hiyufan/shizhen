@@ -18,6 +18,7 @@ from .kuaishou import KuaiShou
 from .lishipin import LiShiPin
 from .lvzhou import LvZhou
 from .meipai import MeiPai
+from .music import NetEaseMusic, QQMusic
 from .pipigaoxiao import PiPiGaoXiao
 from .pipixia import PiPiXia
 from .qqvideo import QQVideo
@@ -38,6 +39,14 @@ logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
+    VideoSource.QQMusic: {
+        "domain_list": ["y.qq.com"],
+        "parser": QQMusic,
+    },
+    VideoSource.NetEaseMusic: {
+        "domain_list": ["music.163.com", "163cn.tv"],
+        "parser": NetEaseMusic,
+    },
     VideoSource.AcFun: {
         "domain_list": ["www.acfun.cn"],
         "parser": AcFun,

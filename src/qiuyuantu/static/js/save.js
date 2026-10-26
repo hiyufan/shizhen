@@ -48,7 +48,50 @@ async function download(url, name, onBytes, type, guard) {
     got += value.length;
     if (onBytes) onBytes(got, total);
   }
+  return downloadedFile(chunks, name, mime);
+}
+
+function downloadedFile(chunks, name, mime) {
+  // 音乐 CDN 的 .jpg 地址甚至 image/jpg 响应也可能装着动态 WebP，按文件头识别并保留原字节。
+  if (mime === 'image/*') return originalImage(chunks, name);
   return new File(chunks, name + (MIME_EXT[mime] ? '.' + MIME_EXT[mime] : ''), { type: mime });
+}
+
+async function originalImage(chunks, name) {
+  const blob = new File(chunks, name);
+  const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const head = String.fromCharCode(...bytes);
+  let mime = '';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) mime = 'image/jpeg';
+  else if (head.startsWith('\x89PNG\r\n\x1a\n')) mime = 'image/png';
+  else if (/^GIF8[79]a/.test(head)) mime = 'image/gif';
+  else if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') mime = 'image/webp';
+  if (!mime) throw new Error(t('源站没有返回有效的图片'));
+  return new File([blob], name + '.' + MIME_EXT[mime], { type: mime });
+}
+
+/** 封面按实际文件类型保存；iPhone 使用系统分享，电脑和安卓直接下载。 */
+export function imageButton(label, url, name, share = PHOTOS) {
+  const load = oneFile(url, name, 'image/*');
+  if (share) return photosButton(label, load);
+  const btn = el('button', { class: 'btn dark', type: 'button' }, label);
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    try {
+      const files = await load((got, total) => {
+        btn.textContent = t('下载中 ') + (total ? Math.round(got * 100 / total) + '%' : fmtSize(got));
+      });
+      saveFile(files[0]);
+    } catch (error) {
+      if (btn.isConnected) notice(error.message);
+    } finally {
+      btn.textContent = label;
+      btn.disabled = false;
+      btn.setAttribute('aria-busy', 'false');
+    }
+  });
+  return btn;
 }
 
 /** 直连推特要不带 Referer，不然 403（防盗链） */
@@ -177,7 +220,7 @@ export function photosButton(label, load, cls = 'btn dark') {
     } catch (e) {
       files = null;
       btn.textContent = t('没成功，点了重试');
-      notice(e.message + t('。也可以点旁边的下载。'));
+      if (btn.isConnected) notice(e.message + t('。也可以点旁边的下载。'));
       return false;
     } finally {
       busy = false;

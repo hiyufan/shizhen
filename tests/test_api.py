@@ -122,6 +122,28 @@ def test_image_note_without_video_still_succeeds(client, calls, recorded):
     assert data["images"][0]["url"] in data["sig"]
 
 
+@pytest.mark.parametrize(
+    ("source", "link", "cover"),
+    [
+        ("netease", "https://music.163.com/playlist?id=14005122656", "https://p1.music.126.net/hash/cover.jpg"),
+        ("qqmusic", "https://y.qq.com/n/ryqq_v2/playlist/42", "https://qpic.y.qq.com/music_cover/hash/1000"),
+    ],
+)
+def test_music_cover_json_and_progress_apis_keep_signed_image_downloads(client, calls, recorded, source, link, cover):
+    calls["result"] = VideoInfo(
+        video_url="", cover_url=cover, title="音乐封面", source=source, images=[ImgInfo(url=cover)], page_url=link
+    )
+    body = client.get("/api/parse", params={"url": link}).json()
+    assert body["code"] == 200
+    data = body["data"]
+    assert data["source"] == source and data["images"] == [{"url": cover, "live_photo_url": ""}]
+    assert not data["video_url"] and not data["music_url"] and not data["formats"]
+    assert net.verify(cover, data["sig"][cover])
+    response = client.get("/api/parse/stream", params={"url": link})
+    assert response.status_code == 200 and '"type": "result"' in response.text
+    assert cover in response.text
+
+
 def test_success_is_cached(client, calls, recorded):
     first = client.get("/api/parse", params={"url": SHARE}).json()
     second = client.get("/api/parse", params={"url": SHARE}).json()
