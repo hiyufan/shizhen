@@ -8,6 +8,7 @@ import math
 import sqlite3
 import time
 import uuid
+import weakref
 from pathlib import Path
 
 from .assets import ASSET_SCHEMA, SharedAssets
@@ -80,6 +81,13 @@ class Store(VideoChoices, DurableIntake, SharedAssets, Controls, OutboundStore):
             if "available" not in columns:
                 db.execute("ALTER TABLE inbound_events ADD COLUMN available REAL NOT NULL DEFAULT 0")
         self.path.chmod(0o600)
+        # 各操作仍用短连接，另常驻一个空闲连接：WAL 库最后一个连接关闭时 SQLite 会完整 checkpoint
+        # 并删掉 -wal，轮询全用短连接就成了每次都 checkpoint、重建 -wal，空闲时也持续写盘。
+        # 常驻连接不开事务、不挡 checkpoint，只把它推迟到 WAL 自动阈值；FULL 同步的持久性不变。
+        # 进程被强杀时提交留在 -wal 里，复制备份要连同 -wal 一起，或用 sqlite3 的 .backup。
+        self._keeper = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
+        self._keeper.execute("SELECT 1 FROM meta LIMIT 1").fetchall()
+        weakref.finalize(self, self._keeper.close)
 
     def connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=10, isolation_level=None)
@@ -105,8 +113,13 @@ class Store(VideoChoices, DurableIntake, SharedAssets, Controls, OutboundStore):
             return row[0] if row else default
 
     def set_meta(self, key: str, value: str) -> None:
+        # 值没变就不改页：状态类字段每秒写一次，空提交不落 WAL、不触发同步。
         with self.transaction() as db:
-            db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
+            db.execute(
+                "INSERT INTO meta VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value "
+                "WHERE value IS NOT excluded.value",
+                (key, value),
+            )
 
     def message_floor(self, conversation: str, default: float = 0) -> float:
         with contextlib.closing(self.connect()) as db:

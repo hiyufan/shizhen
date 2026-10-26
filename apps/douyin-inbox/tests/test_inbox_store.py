@@ -222,3 +222,24 @@ def test_settings_reject_contradictory_limits():
         replace(Settings(), job_timeout=500).validate()
     with pytest.raises(ValueError):
         replace(Settings(), video_bytes=1000 << 20).validate()
+
+
+def test_unchanged_meta_is_not_rewritten(store):
+    # data_version 只在其它连接提交了改动时变化。
+    with store.connect() as observer:
+        store.set_meta("event_mode", "active")
+        before = observer.execute("PRAGMA data_version").fetchone()[0]
+        store.set_meta("event_mode", "active")
+        assert observer.execute("PRAGMA data_version").fetchone()[0] == before
+        store.set_meta("event_mode", "fallback")
+        assert observer.execute("PRAGMA data_version").fetchone()[0] != before
+    assert store.get_meta("event_mode") == "fallback"
+
+
+def test_idle_connection_keeps_wal_between_operations(store):
+    for value in range(3):
+        store.set_meta("heartbeat", str(value))
+        store.get_meta("paused")
+    # 短连接关闭不再触发 checkpoint 删除 -wal；提交对新连接仍然可见。
+    assert store.path.with_name(store.path.name + "-wal").exists()
+    assert Store(store.root, store.settings).get_meta("heartbeat") == "2"

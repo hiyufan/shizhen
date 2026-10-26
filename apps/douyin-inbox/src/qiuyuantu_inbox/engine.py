@@ -28,6 +28,7 @@ from .store import Store
 from .video_gif import gif_key, native_video_key
 
 log = logging.getLogger(__name__)
+EVENT_RECEIVE_HEARTBEAT = 15.0
 
 
 class Engine:
@@ -39,6 +40,7 @@ class Engine:
         self.ui = asyncio.Lock()
         self.stopped = asyncio.Event()
         self.events = EventReader(browser) if getattr(browser, "page", None) is not None else None
+        self.event_receive_written = 0.0
 
     async def delay(self, seconds: float) -> None:
         with contextlib.suppress(asyncio.TimeoutError):
@@ -106,7 +108,10 @@ class Engine:
             await asyncio.to_thread(self.store.set_meta, "event_gap", "1")
         await self.capture_rows([item["row"] for item in batch["rows"]])
         await self.events.ack(batch)
-        await asyncio.to_thread(self.store.set_meta, "last_event_receive", str(time.time()))
+        # 事件每秒轮询一次；空批次只做状态展示用的心跳，降频写入，有消息时立即记录。
+        if batch["rows"] or time.monotonic() - self.event_receive_written >= EVENT_RECEIVE_HEARTBEAT:
+            await asyncio.to_thread(self.store.set_meta, "last_event_receive", str(time.time()))
+            self.event_receive_written = time.monotonic()
         return batch
 
     async def event_loop(self) -> None:

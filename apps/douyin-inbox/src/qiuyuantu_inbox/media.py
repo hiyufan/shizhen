@@ -265,11 +265,7 @@ class Processor:
         temporary = self.root / f".{key}-{uuid.uuid4().hex}"
         temporary.mkdir(mode=0o700)
         try:
-            results = []
-            for index, asset in enumerate(assets):
-                results.append(await self._download(asset.url, temporary / f"media-{index:02d}.source", asset.video))
-                if sum(path.stat().st_size for path in temporary.iterdir()) > self.settings.job_bytes:
-                    raise UnsupportedMedia("整条内容超过下载配额")
+            results = await self._download_all(assets, temporary)
             destination = self.root / key
             if destination.exists():
                 raise UnsupportedMedia("已有缓存正在等待处理，稍后重试")
@@ -283,6 +279,29 @@ class Processor:
             return manifest
         finally:
             await asyncio.to_thread(shutil.rmtree, temporary, True)
+
+    async def _download_all(self, assets: list[Asset], temporary: Path) -> list[tuple[Path, dict]]:
+        # 图集各张并发下载，总并发仍受 self.downloads 限制；结果按素材顺序返回。
+        # 单个文件各有上限，整条配额在每张落盘后累计检查，超出或任一失败就取消其余下载。
+        downloaded = 0
+
+        async def download(index: int, asset: Asset) -> tuple[Path, dict]:
+            nonlocal downloaded
+            result = await self._download(asset.url, temporary / f"media-{index:02d}.source", asset.video)
+            downloaded += result[0].stat().st_size
+            if downloaded > self.settings.job_bytes:
+                raise UnsupportedMedia("整条内容超过下载配额")
+            return result
+
+        tasks = [asyncio.ensure_future(download(index, asset)) for index, asset in enumerate(assets)]
+        try:
+            return list(await asyncio.gather(*tasks))
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            # 等被取消的下载和格式适配线程收尾，调用方随后才删除临时目录。
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     @staticmethod
     def _manifest(key: str, results: list[tuple[Path, dict]]) -> dict:

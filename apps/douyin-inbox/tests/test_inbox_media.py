@@ -51,6 +51,52 @@ async def test_simultaneous_same_media_downloads_only_once(monkeypatch, tmp_path
     assert fetch.await_count == 1
 
 
+async def test_photo_set_downloads_in_parallel_and_keeps_order(monkeypatch, tmp_path):
+    store = Store(tmp_path / "queue", Settings())
+    processor = media.Processor(store, store.settings)
+    running = peak = 0
+    colors = ["red", "green", "blue", "white"]
+
+    async def download(url, path, **kwargs):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0.02 * (len(colors) - int(url[-1])))
+        Image.new("RGB", (12, 8), colors[int(url[-1])]).save(path, format="PNG")
+        running -= 1
+
+    monkeypatch.setattr(media, "fetch_bytes", AsyncMock(side_effect=download))
+    assets = [media.Asset(f"https://p9.douyinpic.com/{index}") for index in range(len(colors))]
+    message = Message("1", "chat", "sender", 1001, "media", {"url": "https://p9.douyinpic.com/0"})
+    manifest = await processor._create(message, "photo-set", assets)
+    assert peak == 3
+    pixels = [Image.open(path).getpixel((0, 0)) for path in processor.files(manifest)]
+    assert pixels == [(255, 0, 0), (0, 128, 0), (0, 0, 255), (255, 255, 255)]
+
+
+async def test_photo_set_failure_cancels_remaining_downloads(monkeypatch, tmp_path):
+    store = Store(tmp_path / "queue", Settings())
+    processor = media.Processor(store, store.settings)
+    cancelled = []
+
+    async def download(url, path, **kwargs):
+        if url.endswith("0"):
+            raise httpx.ReadError("broken")
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            cancelled.append(url)
+            raise
+
+    monkeypatch.setattr(media, "fetch_bytes", AsyncMock(side_effect=download))
+    assets = [media.Asset(f"https://p9.douyinpic.com/{index}") for index in range(3)]
+    message = Message("1", "chat", "sender", 1001, "media", {"url": "https://p9.douyinpic.com/0"})
+    with pytest.raises(httpx.ReadError):
+        await asyncio.wait_for(processor._create(message, "photo-set", assets), timeout=2)
+    assert sorted(cancelled) == ["https://p9.douyinpic.com/1", "https://p9.douyinpic.com/2"]
+    assert not [path for path in (store.root / "artifacts").iterdir() if path.name.startswith(".")]
+
+
 def test_cached_paths_cannot_escape_artifact_directory(tmp_path):
     store = Store(tmp_path / "queue", Settings())
     processor = media.Processor(store, store.settings)
