@@ -26,6 +26,7 @@ from .models import Message, content_key, message_from_snapshot
 from .pipeline import NativePipeline
 from .store import Store
 from .video_gif import gif_key, native_video_key
+from .warmup import ChoiceWarmup
 
 log = logging.getLogger(__name__)
 EVENT_RECEIVE_HEARTBEAT = 15.0
@@ -365,6 +366,8 @@ class Engine:
         if pipeline:
             loops += [pipeline.plan_loop(), pipeline.dispatch_loop(), pipeline.observe_loop()]
             loops += [pipeline.upload_loop() for _ in range(self.settings.upload_workers)]
+            if self.settings.choice_warmup:
+                loops.append(ChoiceWarmup(pipeline).loop())
         elif self.send_enabled:
             loops.append(self.send_loop())
         if self.send_enabled:

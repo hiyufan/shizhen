@@ -191,6 +191,16 @@ class OutboundStore:
                     "INSERT OR REPLACE INTO meta VALUES (?,?)", (key, str(max(value, float(old[0]) if old else 0)))
                 )
 
+    def real_work_pending(self) -> bool:
+        """有正式准备或上传在排队 / 进行时，预热让路。"""
+        with contextlib.closing(self.connect()) as db:
+            return bool(
+                db.execute(
+                    "SELECT 1 FROM outbound WHERE state IN ('queued','uploading') "
+                    "UNION ALL SELECT 1 FROM jobs WHERE state IN ('queued','processing') LIMIT 1"
+                ).fetchone()
+            )
+
     def outbound_status(self) -> dict:
         with contextlib.closing(self.connect()) as db:
             counts = dict(db.execute("SELECT state,count(*) FROM outbound GROUP BY state"))

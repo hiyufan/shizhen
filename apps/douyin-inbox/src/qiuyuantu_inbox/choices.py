@@ -79,6 +79,29 @@ class VideoChoices:
         )
         return [{"text": choice_prompt(code, manifest, self.settings)}]
 
+    def warm_candidates(self, now: float, limit: int = 20) -> list[dict]:
+        """已出提示、尚未选择也未过期的视频 / 实况，供空闲时预先准备原格式。"""
+        with contextlib.closing(self.connect()) as db:
+            rows = db.execute(
+                "SELECT c.job,c.manifest,j.conversation,j.payload FROM video_choices c JOIN jobs j ON j.id=c.job "
+                "WHERE c.mode IS NULL AND coalesce(c.expires,?)>? AND j.state IN ('ready','sending','waiting') "
+                "ORDER BY j.received LIMIT ?",
+                (now + 1, now, limit),
+            )
+            return [dict(row) for row in rows]
+
+    def warm_choice_source(self, job_id: str, previous: str, artifact: str, manifest: dict) -> bool:
+        # 预热不持有任务租约，只在来源仍是读取时那份时替换；正式准备已改写来源就保留正式结果。
+        # 写入 video_choices 后缓存受待选任务保护，选择后直接用本地文件，不再按元信息重新下载。
+        with self.transaction() as db:
+            return (
+                db.execute(
+                    "UPDATE video_choices SET artifact=?,manifest=? WHERE job=? AND manifest=?",
+                    (artifact, json.dumps(manifest), job_id, previous),
+                ).rowcount
+                == 1
+            )
+
     def selection(self, job: dict) -> dict | None:
         with contextlib.closing(self.connect()) as db:
             row = db.execute("SELECT * FROM video_choices WHERE job=?", (job["id"],)).fetchone()

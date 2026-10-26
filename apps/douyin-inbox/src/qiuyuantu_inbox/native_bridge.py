@@ -423,6 +423,13 @@ class NativeBridge:
             with contextlib.suppress(Exception):
                 await self.call("remove", **args)
 
+    async def warm(self, part: dict, files: list[Path]) -> dict:
+        """只把文件传进页面资源缓存：不留句柄、不创建消息。之后同内容的正式上传按内容摘要直接复用。"""
+        row = {"token": uuid.uuid4().hex, "client_id": str(uuid.uuid4()), "payload": json.dumps(part)}
+        result = await self.upload(row, files)
+        await self.call("forget", client_id=row["client_id"], handle=result["handle"])
+        return result
+
     async def ready(self, row: dict) -> bool:
         return await self.call("check", handle=row["handle"], generation=row["generation"])
 

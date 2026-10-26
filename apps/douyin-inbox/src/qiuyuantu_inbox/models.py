@@ -52,6 +52,7 @@ class Settings:
     upload_timeout: float = 180.0
     ack_timeout: float = 60.0
     ack_window: int = 1
+    choice_warmup: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
