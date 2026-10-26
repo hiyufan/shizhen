@@ -206,7 +206,7 @@ function sourceRequest(d, title) {
 }
 
 async function startDownload(f, d, baseName, jobsBox) {
-  const card = jobCard(jobsBox, t('下载 ') + f.label);
+  const card = jobCard(jobsBox, t('下载 ') + t(f.label));
   const page = d.page_url || d.share_url;
   try {
     const job = await postJSON('/api/download', {
