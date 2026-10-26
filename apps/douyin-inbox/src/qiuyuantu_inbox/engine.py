@@ -436,11 +436,16 @@ class Engine:
         stop = asyncio.create_task(self.stopped.wait())
         try:
             done, _ = await asyncio.wait([*tasks, stop], return_when=asyncio.FIRST_COMPLETED)
-            for task in done - {stop}:
-                task.result()
-                raise RuntimeError("账号工作流意外停止")
+            self.check_completed_workers(done - {stop})
         finally:
             await self.shutdown([*tasks, stop], pipeline)
+
+    def check_completed_workers(self, tasks: set[asyncio.Task]) -> None:
+        # 工作循环可能先于 stop 观察者结束；已请求停止时允许正常返回，真实异常仍需抛出。
+        for task in tasks:
+            task.result()
+        if tasks and not self.stopped.is_set():
+            raise RuntimeError("账号工作流意外停止")
 
     async def shutdown(self, tasks: list[asyncio.Task], pipeline: NativePipeline | None) -> None:
         for task in tasks:

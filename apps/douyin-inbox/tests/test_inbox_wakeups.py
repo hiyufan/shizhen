@@ -5,6 +5,8 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 from qiuyuantu_inbox.engine import Engine
 from qiuyuantu_inbox.models import Settings
 from qiuyuantu_inbox.pipeline import NativePipeline
@@ -59,6 +61,35 @@ async def test_shutdown_interrupts_stage_waiters_without_waiting_for_scan_interv
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize(
+    ("requested", "failure", "expected"),
+    [(True, False, None), (False, False, RuntimeError), (True, True, ValueError)],
+)
+async def test_worker_finishing_before_stop_observer_preserves_stop_and_failure_semantics(
+    tmp_path, requested, failure, expected
+):
+    engine = Engine(Store(tmp_path, Settings()), SimpleNamespace(), set(), False)
+
+    async def delayed_observer():
+        # 让停止观察者保持 pending，稳定复现工作循环先结束的调度顺序。
+        await asyncio.Future()
+
+    async def worker():
+        if requested:
+            engine.stopped.set()
+        if failure:
+            raise ValueError("worker_failed")
+
+    engine.stopped.wait = delayed_observer
+    engine.collect_loop = worker
+    engine.maintenance_loop = delayed_observer
+    if expected:
+        with pytest.raises(expected):
+            await asyncio.wait_for(engine.run(), 1)
+    else:
+        await asyncio.wait_for(engine.run(), 1)
 
 
 async def test_incoming_hints_cannot_bypass_event_adapter_error_backoff(tmp_path):
