@@ -14,6 +14,8 @@
 
 Supports 30+ platforms, including Douyin, Xiaohongshu, Kuaishou, YouTube, X, and Bilibili. Free to self-host. No sign-in required to use the app.
 
+**Also extract [QQ Music covers](https://ynvan.com/qq-music-cover) and [NetEase Cloud Music covers](https://ynvan.com/netease-music-cover) from song, album and playlist links. Keep animated cover files intact, or convert them to GIFs and Live Photos.**
+
 <sub>Formerly called Shizhen (拾帧), renamed Qiuyuantu (求原图) in October 2026. The repository URL remains unchanged.</sub>
 
 [![License](https://img.shields.io/badge/license-MIT-1a1815.svg)](LICENSE)
@@ -48,6 +50,21 @@ Supports 30+ platforms, including Douyin, Xiaohongshu, Kuaishou, YouTube, X, and
 
 ---
 
+## QQ Music and NetEase Cloud Music cover downloader
+
+Paste a song, album or playlist share link to extract its artwork. **A playlist link returns the playlist’s own cover, not the album cover of its first track.** No browser extension or sign-in to this app is needed.
+
+| What you need | Tool and result |
+|---|---|
+| QQ Music song / album / playlist cover | [QQ Music cover downloader](https://ynvan.com/qq-music-cover): public sources may supply 800px song and album artwork or 1000px playlist covers |
+| NetEase Cloud Music original cover | [NetEase cover downloader](https://ynvan.com/netease-music-cover): save the dimensions actually supplied by the platform |
+| Animated playlist cover | Keep the original animated WebP / GIF, identifying the actual format even when its URL ends in `.jpg` |
+| Animated artwork to GIF / Live Photo | Convert directly after extraction to GIF, an iPhone Live Photo bundle or Android Motion Photo; see the [guide](https://ynvan.com/guide/music-cover-download) |
+
+For example, paste `https://music.163.com/playlist?id=14005122656` to extract that playlist’s animated cover and make a GIF. Still covers remain still images. This feature does not download song audio or batch-download artwork for every playlist track.
+
+An iPhone webpage cannot write a Live Photo directly into Photos. Import paired JPG + MOV files on a Mac, or save the video and convert it with a phone app. Android Motion Photos require a compatible gallery.
+
 ## Why this project exists
 
 Short-video platforms keep content inside their apps: saved videos have watermarks, images are compressed, and Live Photos become a single still frame. Making a GIF means finding yet another tool. Qiuyuantu brings these steps together:
@@ -72,6 +89,7 @@ Extraction builds on [parse-video-py](https://github.com/wujunwei928/parse-video
 - Douyin HD H.265 video and separate background music
 - Server-side merging for YouTube / Bilibili HD formats, up to 4K where available
 - Live Photo detection and packaging for an entire post
+- QQ Music / NetEase Cloud Music song, album and playlist cover extraction
 - Media proxy for browser playback when direct requests return 403
 - Errors classified as deleted content, login required, rate limited, and more
 
@@ -84,6 +102,7 @@ Extraction builds on [parse-video-py](https://github.com/wujunwei928/parse-video
 - **Android Motion Photo**: JPG with an embedded MP4, Motion Photo + MicroVideo XMP metadata
 - **Original packaging**: remux platform Live Photos without re-encoding
 - **Local videos**: upload and convert files up to 300 MB
+- **Animated music covers**: decode the actual image format and convert to GIF, Live Photo or Android Motion Photo
 
 </td><td width="33%" valign="top">
 
@@ -91,7 +110,7 @@ Extraction builds on [parse-video-py](https://github.com/wujunwei928/parse-video
 
 - Minimal editorial design with full mobile support
 - Self-hosted fonts; no external requests for page assets
-- 8 landing pages and 13 tutorials with JSON-LD structured data
+- 10 landing pages and 14 tutorials with JSON-LD structured data
 - Public deployment protections: rate limits, quotas, signatures, SSRF prevention, CSP
 - Docker runs as a non-root user
 - Automatic yt-dlp updates to keep up with platform changes

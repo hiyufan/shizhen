@@ -115,3 +115,27 @@ def test_indexed_pages_have_descriptive_titles_and_no_private_links(client):
 def test_private_and_missing_pages_are_noindex(client):
     assert "noindex" in client.get("/no-such-page").text
     assert "Disallow: /test" in client.get("/robots.txt").text
+
+
+@pytest.mark.parametrize("slug", ["qq-music-cover", "netease-music-cover"])
+def test_music_search_entry_has_matching_metadata_and_crawlable_tool_links(client, slug):
+    import json
+
+    from lxml import html
+
+    from qiuyuantu import seo
+
+    page = seo.PAGE_BY_SLUG[slug]
+    response = client.get(page.path)
+    assert response.status_code == 200
+    doc = html.fromstring(response.text)
+    assert doc.xpath("//title/text()") == [page.title]
+    assert doc.xpath('//meta[@name="description"]/@content') == [page.description]
+    assert doc.xpath('//link[@rel="canonical"]/@href') == ["http://testserver" + page.path]
+    assert doc.xpath('//form[@id="paste-form"]//textarea[@id="url"]/@placeholder') == [page.placeholder]
+    graph = json.loads(doc.xpath('//script[@type="application/ld+json"]/text()')[0])
+    faq = next(node for node in graph if node["@type"] == "FAQPage")
+    assert [node["name"] for node in faq["mainEntity"]] == [q for q, _ in page.all_faq]
+    for referring in ["/", "/guide/music-cover-download"]:
+        assert page.path in html.fromstring(client.get(referring).text).xpath("//a/@href")
+    assert page.path in client.get("/sitemap.xml").text

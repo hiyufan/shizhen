@@ -17,7 +17,7 @@ from .guides import GUIDES, Guide
 
 SITE_NAME = "求原图"
 SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "").rstrip("/")  # 如 https://example.com；不填就按请求地址
-UPDATED = "2026-10-04"
+UPDATED = "2026-10-26"
 
 # 站长验证 / 统计代码：直接贴 <meta> 或 <script> 片段
 SITE_VERIFICATION_HTML = os.environ.get("PARSE_VIDEO_SITE_VERIFICATION", "")
@@ -57,7 +57,7 @@ class Page:
 COMMON_FAQ: dict[str, tuple[str, str]] = {
     "links": (
         "支持哪些链接？",
-        '抖音、小红书、快手、微博、B站、西瓜、皮皮虾、AcFun 等国内平台，以及 YouTube、X（Twitter）、TikTok、Instagram 等国外平台。直接粘贴 App 里"复制链接"得到的整段文字即可，不用手动摘出网址。',
+        "抖音、小红书、快手、微博、B站、西瓜、皮皮虾、AcFun，以及 YouTube、X（Twitter）、TikTok、Instagram 等平台，还支持 QQ 音乐、网易云音乐的歌曲、专辑和歌单封面。直接粘贴 App 里「复制链接」得到的整段文字即可。",
     ),
     "watermark": (
         "视频有水印吗？图片是原图吗？",
@@ -92,13 +92,85 @@ PAGES: list[Page] = [
     Page(
         slug="",
         title="求原图 - 抖音小红书原图和无水印视频提取，视频转 GIF 和实况照片",
-        description="粘贴抖音、小红书、快手、YouTube、X 的分享链接，免费提取无水印视频和原图，把喜欢的瞬间定格成 GIF、iPhone 实况照片或安卓动态照片。不用登录。",
+        description="粘贴分享链接，提取抖音、小红书等平台的无水印视频与原图，下载 QQ 音乐、网易云歌单和专辑封面。动态封面与视频可转 GIF、实况照片，免费不用登录。",
         h1="把视频定格成 <em>GIF</em>、<br>实况与原图。",
         lead="抖音、小红书、快手、YouTube、X 里复制的整段分享文字直接贴进来就行。视频没有水印，图片是原图。",
         keywords="求原图,原图下载,视频提取,图片提取,去水印,视频转GIF,视频转实况照片,视频定格,定格,抖音,小红书,快手,YouTube,推特",
         nav_label="首页",
         common=ALL_COMMON,  # 首页承载完整问答，落地页各挑最相关的 3 条
         guides=["xiaohongshu-live-photo-iphone", "video-to-gif", "video-to-live-photo"],
+    ),
+    Page(
+        slug="netease-music-cover",
+        title="网易云音乐封面提取_歌单专辑原图下载_动态封面转GIF - 求原图",
+        description="粘贴网易云音乐歌曲、专辑或歌单分享链接，在线提取封面原图。动态 WebP 封面保留原格式，也能转 GIF、iPhone 实况或安卓动态照片。免费不用登录。",
+        h1="网易云音乐封面，<br>会动的也能带走。",
+        lead="把歌曲、专辑或歌单链接贴进来，拿到对应的封面图片。歌单取歌单自己的封面；动态封面可直接下载，也能继续转 GIF 与实况照片。",
+        keywords="网易云音乐封面提取,网易云歌单封面下载,网易云专辑封面原图,网易云动态封面下载,动态WebP转GIF,歌单封面转实况",
+        placeholder="粘贴网易云歌曲、专辑或歌单分享链接…",
+        nav_label="网易云封面下载",
+        body=[
+            (
+                "歌单封面，不是第一首歌",
+                "歌曲链接提取歌曲对应的专辑封面，专辑链接取专辑封面，歌单链接取歌单本身的封面。无需逐首解析，也不会把歌单里的第一首歌曲当成歌单封面。",
+            ),
+            (
+                "下载动态封面，保留原格式",
+                "封面可能是 JPEG、PNG、GIF 或 WebP，以平台返回的实际文件为准。地址以 .jpg 结尾也可能是动态 WebP，下载时按真实格式保存，不把动图变成静态截图。原图尺寸取决于平台提供的资源，不承诺固定高清尺寸。",
+            ),
+            (
+                "把喜欢的动态封面做成 GIF",
+                '解析后点「转 GIF」，可调整片段、帧率和大小；也可点「做成实况照片」，或在转换器切换安卓动态照片。<a href="/guide/music-cover-download">查看封面下载与转换教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "网易云动态封面为什么下载成 WebP？",
+                "WebP 可以包含多帧动画。平台返回动态 WebP 时，下载会保留原文件和动效；如果接收应用不支持 WebP，可在这里转成 GIF。修改扩展名并不会转换文件格式。",
+            ),
+            (
+                "能下载歌单里的全部歌曲封面或音乐吗？",
+                "这里提取分享链接对应的一张封面，不批量下载歌单内每首歌曲的封面，也不下载歌曲音频。私密、已删除或不可公开访问的内容可能无法提取。",
+            ),
+        ],
+        common=["iphone", "free"],
+        guides=["music-cover-download", "wechat-gif-1mb", "video-to-live-photo"],
+    ),
+    Page(
+        slug="qq-music-cover",
+        title="QQ音乐封面提取_歌曲专辑歌单高清封面下载_免登录 - 求原图",
+        description="在线提取 QQ 音乐歌曲、专辑和歌单封面，粘贴分享链接即可下载。歌曲与专辑封面可取 800px，歌单封面可取 1000px，以平台资源为准。免费不用登录。",
+        h1="QQ 音乐封面，<br>贴链接，取原图。",
+        lead="在 QQ 音乐里复制歌曲、专辑或歌单分享链接，直接贴进来。预览对应封面，再按图片实际格式下载，不用安装插件。",
+        keywords="QQ音乐封面提取,QQ音乐封面下载,QQ音乐歌单封面,QQ音乐专辑封面原图,QQ音乐高清封面,QQ音乐歌曲封面保存",
+        placeholder="粘贴 QQ 音乐歌曲、专辑或歌单分享链接…",
+        nav_label="QQ 音乐封面下载",
+        body=[
+            (
+                "歌曲、专辑和歌单都支持",
+                "从 QQ 音乐 App 的分享菜单复制链接，或者使用网页版作品地址。歌曲取其专辑封面；歌单取自己的封面，不会改为列表里第一首歌的图片。",
+            ),
+            (
+                "封面能有多清晰",
+                "歌曲与专辑封面可取 800×800，歌单封面可取 1000×1000，下载尺寸以平台提供的图片为准，保留实际格式。",
+            ),
+            (
+                "下载后还能做什么",
+                '静态封面按 JPEG、PNG 等实际格式直接保存。平台返回多帧图片时，可继续转 GIF 或实况照片。网易云动态歌单封面也可用<a href="/netease-music-cover">网易云封面工具</a>提取。',
+            ),
+        ],
+        faq=[
+            (
+                "QQ 音乐封面提取需要登录或安装插件吗？",
+                "公开的歌曲、专辑和歌单封面无需在本站登录，也不用安装浏览器插件；复制分享链接即可。作品下架、设为私密或平台限制访问时可能不可用。",
+            ),
+            (
+                "QQ 音乐封面支持转 GIF 或实况吗？",
+                "取决于平台返回的图片。静态封面直接下载即可；平台提供多帧动态封面时，可使用 GIF、实况或动态照片转换功能。",
+            ),
+        ],
+        common=["ratelimit", "free"],
+        guides=["music-cover-download", "video-to-gif"],
     ),
     Page(
         slug="douyin",
@@ -413,7 +485,15 @@ def json_ld(page: Page, base: str) -> str:
             "inLanguage": "zh-CN",
             "isAccessibleForFree": True,
             "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CNY"},
-            "featureList": ["无水印视频提取", "原图提取", "视频转 GIF", "视频转实况照片", "动态照片"],
+            "featureList": [
+                "无水印视频提取",
+                "原图提取",
+                "QQ 音乐与网易云封面提取",
+                "动态封面转 GIF 与实况",
+                "视频转 GIF",
+                "视频转实况照片",
+                "动态照片",
+            ],
         },
         _faq_ld(page.all_faq),
     ]
