@@ -91,7 +91,18 @@ function coverSection(image, baseName) {
     el('div', { class: 'side' },
       el('p', { class: 'label' }, t('音乐封面')),
       el('div', { class: 'group' }, ...coverActions(proxy(image.url, name, true), name)),
-      el('p', { class: 'hint' }, t('按图片原始格式保存，动态封面保留动效。'))));
+      el('p', { class: 'hint' }, t('按图片原始格式保存，动态封面保留动效。')),
+      coverConversions(image.url, baseName)));
+}
+
+function coverConversions(url, title) {
+  const request = { url, title, sig: sigOf(url), image: true };
+  return el('div', {}, el('div', { class: 'rule' }),
+    el('p', { class: 'label' }, t('动态封面继续做')),
+    el('div', { class: 'group' },
+      el('button', { class: 'btn', type: 'button', onclick: () => openConverter(request, 'gif') }, t('转 GIF')),
+      el('button', { class: 'btn', type: 'button', onclick: () => openConverter(request, 'livephoto') }, t('做成实况照片'))),
+    el('p', { class: 'hint' }, t('仅动态封面支持转换；静态封面可直接下载原图。')));
 }
 
 function coverActions(url, name) {

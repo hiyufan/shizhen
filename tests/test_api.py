@@ -307,6 +307,39 @@ def test_prepare_rejects_unsigned_url(client):
     assert r.status_code == 403
 
 
+def test_animated_cover_requires_signature_and_uses_separate_preparation_cache(client, monkeypatch):
+    from qiuyuantu.convert import jobs, store, tasks
+    from qiuyuantu.web import media
+
+    url = "https://p1.music.126.net/cover.jpg"
+    body = {"url": url, "image": True, "sig": "bad"}
+    assert client.post("/api/prepare", json=body).status_code == 403
+    body["sig"] = net.sign(url)
+    assert client.post("/api/prepare", json=body | {"page_url": url}).status_code == 400
+    seen = {}
+
+    async def safe(_):
+        return True
+
+    async def fetch(job, **kwargs):
+        seen.update(kwargs)
+
+    def start(kind, fn, ip, source_id):
+        job = jobs.Job(id="animation-api", type=kind, source_id=source_id)
+        seen["run"] = lambda: fn(job)
+        return job
+
+    monkeypatch.setattr(media, "is_safe_url_async", safe)
+    monkeypatch.setattr(media, "_start_job", start)
+    monkeypatch.setattr(tasks, "fetch_source", fetch)
+    response = client.post("/api/prepare", json=body)
+    assert response.status_code == 200, response.text
+    asyncio.run(seen.pop("run")())
+    assert response.json()["source_id"] == store.source_id_for(url, "animation")
+    assert response.json()["source_id"] != store.source_id_for(url)
+    assert seen["image"] is True and seen["url"] == url and not seen["page_url"]
+
+
 def test_live_rejects_unsigned_items(client):
     item = {"image_url": "https://example.com/a.jpg", "video_url": "https://example.com/a.mp4"}
     r = client.post("/api/live", json={"items": [item]})

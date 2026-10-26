@@ -444,5 +444,14 @@
   "下载封面": "Download cover",
   "按图片原始格式保存，动态封面保留动效。": "Saved in its original image format. Animated covers keep their motion.",
   "源站没有返回有效的图片": "The source did not return a supported image.",
-  "QQ 音乐、网易云音乐的歌曲、专辑和歌单封面也能取，贴链接就好。": "Get song, album and playlist covers from QQ Music and NetEase Cloud Music. Just paste a link."
+  "QQ 音乐、网易云音乐的歌曲、专辑和歌单封面也能取，贴链接就好。": "Get song, album and playlist covers from QQ Music and NetEase Cloud Music. Just paste a link.",
+  "动态封面继续做": "Convert an animated cover",
+  "仅动态封面支持转换；静态封面可直接下载原图。": "Conversion requires an animated cover. Download still covers in their original format.",
+  " 正在准备动态封面，保留每一帧的播放时长…": " Preparing the animated cover, preserving frame timing…",
+  "正在读取动态封面的每一帧": "Reading the animated cover frames",
+  "下载到的文件不是可用的动态图片": "The downloaded file is not a supported animated image.",
+  "这张封面是静态图片，可以直接下载原图，无需转换": "This cover is a still image. Download the original image directly.",
+  "动态图片超过帧数或像素限制": "The animated image exceeds the frame or pixel limit.",
+  "动态图片超过 30 秒，暂不支持转换": "Animated images longer than 30 seconds are not supported.",
+  "动态封面需要使用解析结果里的图片地址": "Use the image URL from the extraction result to convert an animated cover."
 }

@@ -35,6 +35,7 @@ class PrepareRequest(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
     title: str = ""
     sig: str = ""  # 解析结果里给的签名，证明这个地址是我们解析出来的
+    image: bool = False  # 动态封面：按真实图片格式解码后准备为视频
 
 
 class ConvertRequest(BaseModel):
@@ -126,16 +127,18 @@ def _existing_file(path: str | None, missing: str) -> str:
 @router.post("/api/prepare")
 async def api_prepare(req: PrepareRequest, ip: str = Depends(limits.job_limit)):
     """把原视频缓存到服务端，供转换预览 / 裁剪使用。已缓存则立即返回。"""
+    if req.image and (not req.url or req.page_url):
+        raise HTTPException(400, "动态封面需要使用解析结果里的图片地址")
     target = req.page_url or req.url
     if not target:
         raise HTTPException(400, "缺少视频地址")
     await _require_parsed_url(target, req.sig)
-    if not req.page_url and (src := youtube_native.source_for_asset(req.url)):
+    if not req.image and not req.page_url and (src := youtube_native.source_for_asset(req.url)):
         return {"ready": True, "source": src.view()}
     if req.page_url:
         sid = store.source_id_for(req.page_url, req.format_spec or "default")
     else:
-        sid = store.source_id_for(req.url)
+        sid = store.source_id_for(req.url, "animation") if req.image else store.source_id_for(req.url)
 
     if src := store.get(sid):
         return {"ready": True, "source": src.view()}
@@ -152,6 +155,7 @@ async def api_prepare(req: PrepareRequest, ip: str = Depends(limits.job_limit)):
             page_url=req.page_url,
             format_spec=req.format_spec,
             title=req.title,
+            image=req.image,
         )
 
     job = _start_job("prepare", fn, ip, sid)

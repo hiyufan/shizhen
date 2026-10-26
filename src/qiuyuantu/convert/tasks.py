@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..utils import gather_or_cancel, run_ytdlp
-from . import bilibili, config, ffmpeg, livephoto, store
+from . import animated, bilibili, config, ffmpeg, livephoto, store
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
 from .net import safe_filename
@@ -104,6 +104,7 @@ async def fetch_source(
     page_url: str = "",
     format_spec: str = "",
     title: str = "",
+    image: bool = False,
 ) -> store.Source:
     """把原视频拉到本地并探测时长 / 尺寸，供转换预览使用。直链给 url，yt-dlp 站点给 page_url。"""
     if existing := store.get(source_id):
@@ -114,6 +115,15 @@ async def fetch_source(
     config.ensure_dirs()
     job.set(progress=0.02, message="原视频搬运中")
     path = await _download_source_file(job, source_id, url, headers or {}, page_url, format_spec)
+
+    if image:
+        original = path.with_suffix(".image")
+        path.replace(original)
+        job.set(message="正在读取动态封面的每一帧")
+        try:
+            await animated.prepare(original, path)
+        finally:
+            original.unlink(missing_ok=True)
 
     job.set(progress=0.95, message="看看这段视频什么来头")
     info = await ffmpeg.probe(path)

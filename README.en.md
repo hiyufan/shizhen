@@ -112,7 +112,7 @@ Extraction builds on [parse-video-py](https://github.com/wujunwei928/parse-video
 | Bilibili | ✅ | ✅ | ✅ | 480p direct URLs; server-side merging at 720p / 1080p | Supports b23.tv short links, images and Live Photos in dynamic posts; anime series and movies are not supported |
 | Instagram | ✅ | ✅ | – | Platform default | Original images from carousel posts, including posts mixing images and videos |
 | QQ Music | – | Cover art | – | 800px for songs / albums, 1000px for playlists | Song, album and playlist share links; cover art only |
-| NetEase Cloud Music | – | Cover art | – | Original dimensions supplied by the platform | Song, album and playlist share links; animated WebP covers keep their motion |
+| NetEase Cloud Music | – | Cover art | – | Original dimensions supplied by the platform | Song, album and playlist share links; download animated covers in their original format or convert to GIF / Live Photo / Motion Photo |
 | Weibo, Xigua, Pipixia, AcFun, TikTok, … | ✅ | Partial | – | | 30+ platforms, with yt-dlp as the fallback for others |
 
 > Extraction depends on each platform's web structure and may temporarily break when it changes. Upstream parse-video-py is updated frequently. Port relevant fixes into `parser/` by comparing changes; do not overwrite local parsers wholesale. See [Contributing](#contributing).
