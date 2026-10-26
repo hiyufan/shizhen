@@ -152,6 +152,24 @@ pasteBtn.addEventListener('click', async () => {
 if (!navigator.clipboard || !navigator.clipboard.readText) pasteBtn.hidden = true;
 syncTools();
 
+// 壁纸页使用游戏选择器，复用同一个解析、取消与结果流程。
+const wallpaperGame = $('#wallpaper-game');
+if (wallpaperGame) {
+  wallpaperGame.addEventListener('change', () => {
+    cancelParse();
+    parseBusy(false);
+    hideOutputs();
+    notice('');
+    urlBox.value = wallpaperGame.value;
+    const address = new URL(location.href);
+    const game = wallpaperGame.selectedOptions[0].dataset.game;
+    if (game) address.searchParams.set('game', game);
+    else address.searchParams.delete('game');
+    window.history.replaceState(null, '', address);
+    syncTools();
+  });
+}
+
 // ---------- 本地视频
 
 $('#file-input').addEventListener('change', async (e) => {

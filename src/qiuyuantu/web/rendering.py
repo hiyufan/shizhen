@@ -170,6 +170,13 @@ def render_tool_page(request: Request, page: seo.Page):
     )
     ctx["faq"] = page.all_faq
     ctx["related_guides"] = guides.pick(page.guides)
+    if page.slug == "hoyoplay-wallpaper":
+        from ..parser.hoyoplay import GAMES, game_url
+
+        selected = request.query_params.get("game", "")
+        ctx["wallpaper_games"] = [{"id": key, "name": value[0], "url": game_url(key)} for key, value in GAMES.items()]
+        ctx["wallpaper_selected"] = selected if selected in GAMES else ""
+        ctx["wallpaper_url"] = game_url(selected) if selected in GAMES else ""
     return render(request, "index.html", ctx)
 
 

@@ -90,6 +90,104 @@ ALL_COMMON = list(COMMON_FAQ)
 
 PAGES: list[Page] = [
     Page(
+        slug="steam-assets",
+        title="Steam动态头像与头像框下载_APNG转GIF - 求原图",
+        description="粘贴 Steam 点数商店单个物品链接，下载动态头像、透明头像框、贴纸与背景视频。保留 GIF、APNG、MP4 或 WebM，动态图片还能转 GIF 与实况照片。",
+        h1="Steam 动态素材，<br>原样保存。",
+        lead="打开点数商店里的单个头像、头像框、贴纸或背景，复制地址栏链接。动态 PNG 也能保存动效，按需转成 GIF。",
+        keywords="Steam动态头像下载,Steam头像框下载,Steam点数商店素材,APNG转GIF,Steam透明头像框,Steam背景视频下载",
+        placeholder="粘贴 Steam 点数商店单个物品链接…",
+        nav_label="Steam 动态素材",
+        body=[
+            (
+                "能下载哪些 Steam 素材",
+                "动态头像通常是 GIF，头像框和贴纸可能是扩展名为 .png 的 APNG；背景视频按平台提供的 MP4 或 WebM 保存。只读取公开素材，不需要登录 Steam。",
+            ),
+            (
+                "PNG 不动时怎么办",
+                "部分相册不播放 APNG，但文件本身仍含多帧。下载原图保留原格式，或点「转 GIF」提高兼容性。GIF 支持透明背景；实况照片使用普通视频画面。<a "
+                'href="/guide/steam-animated-assets">查看 Steam 动态素材保存教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "需要购买物品才能下载吗？",
+                "提取的是点数商店公开展示的素材，不校验购买状态。保存文件不会解锁 Steam 账号里的头像、头像框或背景。",
+            ),
+            (
+                "为什么商店分类页无法解析？",
+                "请先打开单个物品，复制带 /reward/ 和物品编号的链接。分类列表与游戏主页不对应单个素材。",
+            ),
+        ],
+        guides=["steam-animated-assets", "wechat-gif-1mb"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="hoyoplay-wallpaper",
+        title="HoYoPlay壁纸下载_原神星穹铁道绝区零动态背景 - 求原图",
+        description="选择原神、崩坏星穹铁道、绝区零或崩坏3，提取当前国服 HoYoPlay 启动器公开壁纸。静态原图直接保存，动态背景可下载视频、转 GIF 或实况照片。",
+        h1="启动器里的风景，<br>留在你的相册。",
+        lead="选择游戏，提取当前国服 HoYoPlay 启动器的公开背景。静态壁纸直接下载，有动态视频时也能继续转 GIF 与实况照片。",
+        keywords="HoYoPlay壁纸下载,原神启动器壁纸,星穹铁道动态壁纸,绝区零启动器背景,崩坏3壁纸,米哈游启动器壁纸",
+        nav_label="HoYoPlay 壁纸",
+        body=[
+            (
+                "当前版本的公开壁纸",
+                "支持原神、崩坏：星穹铁道、绝区零与崩坏 3 的国服启动器背景。页面每次解析当前公开数据；同一游戏可能有多张图片，动态视频是否提供取决于当前版本。",
+            ),
+            (
+                "从壁纸到 GIF 与实况",
+                "原图保留平台实际格式；动态背景可下载 WebM，也可选一小段转换成 GIF、iPhone 实况包或安卓动态照片。<a "
+                'href="/guide/hoyoplay-wallpaper-download">查看下载与导入教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "可以下载历史版本的启动器壁纸吗？",
+                "这里提取当前公开接口返回的素材，不提供历史壁纸档案。版本更新后，结果可能变化。",
+            ),
+            (
+                "为什么有些游戏只显示图片？",
+                "不是每个版本都提供动态背景。平台没有返回视频时，只提供原图下载，不会把静态图伪装成动态壁纸。",
+            ),
+        ],
+        guides=["hoyoplay-wallpaper-download", "video-to-live-photo"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="apple-music-cover",
+        title="Apple Music封面下载_动态专辑封面转GIF - 求原图",
+        description="粘贴 Apple Music 歌曲、专辑或歌单链接，下载高清封面。作品提供公开动态封面时，可下载 MP4，或转换为 GIF、实况照片与安卓动态照片。",
+        h1="Apple Music 封面，<br>静态与动态都能留。",
+        lead="复制歌曲、专辑或歌单的网页链接，下载封面图片；作品有公开动态封面时，另提供视频下载和 GIF、实况转换。",
+        keywords="Apple Music封面下载,Apple Music动态封面,苹果音乐专辑封面原图,Apple Music artwork downloader,动态专辑封面转GIF",
+        placeholder="粘贴 music.apple.com 歌曲、专辑或歌单链接…",
+        nav_label="Apple Music 封面",
+        body=[
+            (
+                "封面图片与动态视频分开保存",
+                "「下载封面」保存静态图片；有公开动态版本时，「下载动态封面」提供方形或竖版 MP4。没有动态版本的作品只显示图片下载，不需要 Apple Music 订阅或在本站登录。",
+            ),
+            (
+                "动态封面继续转 GIF",
+                '点「转 GIF」或「做成实况照片」，等待视频准备完成后选择片段。只提取网页公开封面，不下载歌曲音频。QQ 音乐与网易云的封面可从<a href="/qq-music-cover">QQ 音乐</a>、<a '
+                'href="/netease-music-cover">网易云音乐</a>工具进入。',
+            ),
+        ],
+        faq=[
+            (
+                "每张专辑都有动态封面吗？",
+                "不是。是否提供、方形或竖版有哪些版本，由作品当前的公开网页决定；不同地区或时间可能不同。",
+            ),
+            (
+                "歌曲链接会提取什么？",
+                "通常是歌曲所属专辑的封面。歌单链接提取歌单本身的封面，不会逐首下载歌单内的歌曲图片。",
+            ),
+        ],
+        guides=["music-cover-download", "video-to-live-photo"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
         slug="",
         title="求原图 - 抖音小红书原图和无水印视频提取，视频转 GIF 和实况照片",
         description="粘贴分享链接，提取抖音、小红书等平台的无水印视频与原图，下载 QQ 音乐、网易云歌单和专辑封面。动态封面与视频可转 GIF、实况照片，免费不用登录。",
@@ -489,6 +587,8 @@ def json_ld(page: Page, base: str) -> str:
                 "无水印视频提取",
                 "原图提取",
                 "QQ 音乐与网易云封面提取",
+                "Steam 动态素材与 HoYoPlay 壁纸提取",
+                "Apple Music 静态与动态封面提取",
                 "动态封面转 GIF 与实况",
                 "视频转 GIF",
                 "视频转实况照片",

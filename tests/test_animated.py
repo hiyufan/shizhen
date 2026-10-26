@@ -25,7 +25,7 @@ def test_mislabeled_webp_keeps_all_frames_and_variable_timing(tmp_path):
     assert len(list(directory.glob("*.png"))) == 3
     manifest = (directory / "frames.txt").read_text()
     assert "duration 0.040000" in manifest and "duration 0.200000" in manifest
-    assert manifest.endswith("file 'frame0002.png'\n")
+    assert manifest.endswith("file 'frame0002.png'\noption framerate 1000\n")
 
 
 @pytest.mark.parametrize("kind", ["static", "invalid", "pixels", "duration"])
@@ -79,7 +79,7 @@ async def test_encode_failure_removes_incomplete_video_and_frames(tmp_path, monk
     animation(source)
 
     async def failed(args, **kwargs):
-        assert args[args.index("-safe") + 1] == "1"
+        assert args[args.index("-safe") + 1] == "0"
         assert kwargs["total"] == pytest.approx(0.32)
         destination.write_bytes(b"partial")
         raise RuntimeError("encode failed")
@@ -98,11 +98,12 @@ async def test_prepare_decodes_signed_cover_without_ytdlp_and_caches_video(tmp_p
         assert url == "https://p1.music.126.net/cover.jpg"
         animation(path)
 
-    async def encode(source, destination):
+    async def encode(source, destination, *, alpha_destination):
         with Image.open(source) as image:
             assert image.format == "WEBP" and image.n_frames == 3
         prepared.append(destination)
         destination.write_bytes(b"video")
+        alpha_destination.write_bytes(b"alpha video")
 
     async def probe(path):
         assert path.read_bytes() == b"video"
@@ -115,6 +116,50 @@ async def test_prepare_decodes_signed_cover_without_ytdlp_and_caches_video(tmp_p
     job = jobs.Job(id="cover-prepare", type="prepare")
     result = await tasks.fetch_source(job, source_id=sid, url="https://p1.music.126.net/cover.jpg", image=True)
     assert result.duration == 0.32 and len(prepared) == 1
+    assert result.gif_path and result.gif_path.endswith(".alpha.mov")
+    assert "gif_path" not in result.view()
     assert not list(tmp_path.glob("*.image"))
     assert await tasks.fetch_source(job, source_id=sid, image=True) is result
     assert len(prepared) == 1
+
+
+def test_apng_default_preview_is_not_an_animation_frame(tmp_path):
+    source = tmp_path / "frame.png"
+    still = Image.new("RGBA", (16, 16), (255, 0, 0, 255))
+    frames = [Image.new("RGBA", (16, 16), color) for color in [(0, 255, 0, 0), (0, 0, 255, 255)]]
+    still.save(source, save_all=True, append_images=frames, default_image=True, duration=[33, 67], loop=0)
+    directory = tmp_path / "frames"
+    directory.mkdir()
+    assert animated._write_frames(source, directory, threading.Event()) == pytest.approx(0.1)
+    assert len(list(directory.glob("*.png"))) == 2
+    with Image.open(directory / "frame0000.png") as image:
+        assert image.getpixel((0, 0))[3] == 0
+    assert "duration 0.033000" in (directory / "frames.txt").read_text()
+
+
+async def test_failure_after_alpha_encoding_removes_both_files(tmp_path, monkeypatch):
+    source, destination, alpha = tmp_path / "cover.webp", tmp_path / "video.mp4", tmp_path / "alpha.mov"
+    animation(source)
+
+    async def encode(args, **_kwargs):
+        if args[-1] == str(alpha):
+            alpha.write_bytes(b"alpha")
+        else:
+            destination.write_bytes(b"partial")
+            raise RuntimeError("preview failed")
+
+    monkeypatch.setattr(ffmpeg, "run", encode)
+    with pytest.raises(RuntimeError, match="preview failed"):
+        await animated.prepare(source, destination, alpha_destination=alpha)
+    assert not destination.exists() and not alpha.exists() and not list(tmp_path.glob("animation-*"))
+
+
+def test_alpha_cache_is_protected_from_orphan_cleanup_and_expires_with_source(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "_sources", {})
+    video, alpha = tmp_path / "preview.mp4", tmp_path / "alpha.mov"
+    video.write_bytes(b"video")
+    alpha.write_bytes(b"alpha")
+    store.put(store.Source(id="test", path=str(video), gif_path=str(alpha), created_at=0))
+    assert {video.resolve(), alpha.resolve()} <= store.known_paths()
+    store.sweep()
+    assert not video.exists() and not alpha.exists()

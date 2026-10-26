@@ -44,6 +44,9 @@ class VideoSource(Enum):
     CCTV = "cctv"  # 央视网
     QQMusic = "qqmusic"  # QQ 音乐封面
     NetEaseMusic = "netease"  # 网易云音乐封面
+    Steam = "steam"  # Steam 点数商店素材
+    HoYoPlay = "hoyoplay"  # HoYoPlay 官方启动器壁纸
+    AppleMusic = "applemusic"  # Apple Music 公开封面
     YtDlp = "ytdlp"  # YouTube / TikTok / Instagram 等，交给 yt-dlp
 
 

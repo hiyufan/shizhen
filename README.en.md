@@ -16,6 +16,8 @@ Supports 30+ platforms, including Douyin, Xiaohongshu, Kuaishou, YouTube, X, and
 
 **Also extract [QQ Music covers](https://ynvan.com/qq-music-cover) and [NetEase Cloud Music covers](https://ynvan.com/netease-music-cover) from song, album and playlist links. Keep animated cover files intact, or convert them to GIFs and Live Photos.**
 
+**New: [Steam animated avatars and frames](https://ynvan.com/steam-assets), [HoYoPlay wallpapers](https://ynvan.com/hoyoplay-wallpaper), and [Apple Music animated artwork](https://ynvan.com/apple-music-cover), with downloads and conversion in one tool.**
+
 <sub>Formerly called Shizhen (拾帧), renamed Qiuyuantu (求原图) in October 2026. The repository URL remains unchanged.</sub>
 
 [![License](https://img.shields.io/badge/license-MIT-1a1815.svg)](LICENSE)
@@ -65,6 +67,17 @@ For example, paste `https://music.163.com/playlist?id=14005122656` to extract th
 
 An iPhone webpage cannot write a Live Photo directly into Photos. Import paired JPG + MOV files on a Mac, or save the video and convert it with a phone app. Android Motion Photos require a compatible gallery.
 
+## Steam assets, HoYoPlay wallpapers and Apple Music artwork
+
+| Need | Online tool and output |
+|---|---|
+| Steam animated avatars, transparent frames and stickers | [Steam assets](https://ynvan.com/steam-assets): paste an individual `/reward/` item link, keep GIF / APNG or convert to transparent GIF; [guide](https://ynvan.com/guide/steam-animated-assets) |
+| Steam background videos | Download the supplied MP4 / WebM, or trim it into a GIF or Live Photo |
+| Genshin, Star Rail, ZZZ and Honkai Impact 3rd launcher backgrounds | [HoYoPlay wallpapers](https://ynvan.com/hoyoplay-wallpaper): choose a game and save current public China-launcher stills and available videos; [guide](https://ynvan.com/guide/hoyoplay-wallpaper-download) |
+| Apple Music still and animated artwork | [Apple Music artwork](https://ynvan.com/apple-music-cover): song, album or playlist links; save public animations as MP4 or convert to GIF / Live Photo |
+
+Steam’s large preview may be still; this tool selects its public animation file, including APNGs named `.png`. Saving media does not unlock items in a Steam account. HoYoPlay reads current assets without a historical archive. Apple Music extracts public artwork only, without song audio. Animated asset availability depends on the current platform response.
+
 ## Why this project exists
 
 Short-video platforms keep content inside their apps: saved videos have watermarks, images are compressed, and Live Photos become a single still frame. Making a GIF means finding yet another tool. Qiuyuantu brings these steps together:
@@ -110,7 +123,7 @@ Extraction builds on [parse-video-py](https://github.com/wujunwei928/parse-video
 
 - Minimal editorial design with full mobile support
 - Self-hosted fonts; no external requests for page assets
-- 10 landing pages and 14 tutorials with JSON-LD structured data
+- 13 landing pages and 16 tutorials with JSON-LD structured data
 - Public deployment protections: rate limits, quotas, signatures, SSRF prevention, CSP
 - Docker runs as a non-root user
 - Automatic yt-dlp updates to keep up with platform changes
@@ -132,6 +145,9 @@ Extraction builds on [parse-video-py](https://github.com/wujunwei928/parse-video
 | Instagram | ✅ | ✅ | – | Platform default | Original images from carousel posts, including posts mixing images and videos |
 | QQ Music | – | Cover art | – | 800px for songs / albums, 1000px for playlists | Song, album and playlist share links; cover art only |
 | NetEase Cloud Music | – | Cover art | – | Original dimensions supplied by the platform | Song, album and playlist share links; download animated covers in their original format or convert to GIF / Live Photo / Motion Photo |
+| Steam Points Shop | ✅ | GIF / APNG assets | – | Original assets supplied by Steam | Individual item links; animated avatars, transparent frames, stickers and MP4 / WebM backgrounds; animations can be converted |
+| HoYoPlay | ✅ | Current launcher wallpapers | – | Original assets supplied by the platform | Choose one of four games for current China-launcher backgrounds; available videos can be converted; no historical archive |
+| Apple Music | Animated artwork | Cover art | – | Images requested up to 3000px; video up to 1080p | Public song, album and playlist artwork; animations shown when available; no song audio |
 | Weibo, Xigua, Pipixia, AcFun, TikTok, … | ✅ | Partial | – | | 30+ platforms, with yt-dlp as the fallback for others |
 
 > Extraction depends on each platform's web structure and may temporarily break when it changes. Upstream parse-video-py is updated frequently. Port relevant fixes into `parser/` by comparing changes; do not overwrite local parsers wholesale. See [Contributing](#contributing).

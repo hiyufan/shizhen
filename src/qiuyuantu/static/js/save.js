@@ -23,8 +23,8 @@ export const PHOTOS = IOS && (() => {
 })();
 
 const MIME_EXT = {
-  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/gif': 'gif',
-  'video/mp4': 'mp4', 'video/quicktime': 'mov',
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/gif': 'gif', 'image/avif': 'avif',
+  'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
 };
 const STALL_MS = 20000;
 const ATTEMPTS = 3;
@@ -57,15 +57,18 @@ function downloadedFile(chunks, name, mime) {
   return new File(chunks, name + (MIME_EXT[mime] ? '.' + MIME_EXT[mime] : ''), { type: mime });
 }
 
+const isAvif = head => head.slice(4, 8) === 'ftyp' && /avif|avis/.test(head.slice(8));
+
 async function originalImage(chunks, name) {
   const blob = new File(chunks, name);
-  const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const bytes = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
   const head = String.fromCharCode(...bytes);
   let mime = '';
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) mime = 'image/jpeg';
   else if (head.startsWith('\x89PNG\r\n\x1a\n')) mime = 'image/png';
   else if (/^GIF8[79]a/.test(head)) mime = 'image/gif';
   else if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') mime = 'image/webp';
+  else if (isAvif(head)) mime = 'image/avif';
   if (!mime) throw new Error(t('源站没有返回有效的图片'));
   return new File([blob], name + '.' + MIME_EXT[mime], { type: mime });
 }
@@ -151,10 +154,10 @@ export async function fetchFile(sources, name, onBytes, type) {
 const DIRECT_MAX = 200 * 1024 * 1024;
 
 /** 跨域直连下载成文件；文件太大、连不上、中途断了都返回 null，由调用方退回服务器转发 */
-export async function fetchDirect(url, name, onBytes) {
+export async function fetchDirect(url, name, onBytes, type = 'video/mp4') {
   const guard = stallGuard(DIRECT_MAX);
   try {
-    return await download(url, name, onBytes, 'video/mp4', guard);
+    return await download(url, name, onBytes, type, guard);
   } catch (_) {
     return null;
   } finally {

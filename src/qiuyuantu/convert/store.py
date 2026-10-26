@@ -23,6 +23,7 @@ class Source:
     fps: float = 0.0
     strip_path: str | None = None
     created_at: float = field(default_factory=time.time)
+    gif_path: str | None = None  # 动态图片的透明视频，仅用于 GIF；预览与实况仍使用 H.264
 
     def view(self) -> dict:
         return {
@@ -64,6 +65,8 @@ def known_paths() -> set[Path]:
         known.add(Path(s.path).resolve())
         if s.strip_path:
             known.add(Path(s.strip_path).resolve())
+        if s.gif_path:
+            known.add(Path(s.gif_path).resolve())
     return known
 
 
@@ -93,7 +96,7 @@ def _remove(p: Path) -> None:
 def _drop(sid: str) -> None:
     src = _sources.pop(sid, None)
     if src:
-        for p in (src.path, src.strip_path):
+        for p in (src.path, src.strip_path, src.gif_path):
             if p:
                 Path(p).unlink(missing_ok=True)
 

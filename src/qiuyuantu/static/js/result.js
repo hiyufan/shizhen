@@ -6,6 +6,7 @@ import {
   directOf, mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob,
 } from './api.js';
 import { openConverter } from './converter.js';
+import { assetImages } from './assets.js';
 import { $, el, fmtClock, fmtSize, safeName, sleep } from './dom.js';
 import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, imageButton, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
 import { jobCard } from './ui.js';
@@ -18,6 +19,7 @@ const PLATFORMS = {
   qqvideo: t('腾讯视频'), sohu: t('搜狐视频'), cctv: t('央视网'), vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
   qqmusic: t('QQ 音乐'), netease: t('网易云音乐'),
+  steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music',
 };
 
 /** 视频 / 音频的下载按钮：有国内边缘地址就从边缘下（国内直达），探通了直连就直连，否则服务器转发 */
@@ -34,9 +36,9 @@ async function saveDirect(e, url, filename) {
   if (a.dataset.busy) return;
   a.dataset.busy = '1';
   const label = a.textContent;
-  const file = await fetchDirect(src, filename.replace(/\.mp4$/, ''), (got, total) => {
+  const file = await fetchDirect(src, filename.replace(/\.(mp4|webm)$/i, ''), (got, total) => {
     a.textContent = t('下载中 ') + (total ? Math.round(got * 100 / total) + '%' : fmtSize(got));
-  });
+  }, /\.webm$/i.test(filename) ? 'video/webm' : 'video/mp4');
   a.textContent = label;
   delete a.dataset.busy;
   if (file) saveFile(file);
@@ -55,7 +57,7 @@ export function renderResult(d) {
 }
 
 function resultContent(data, baseName) {
-  if (['qqmusic', 'netease'].includes(data.source) && data.images?.[0]?.url) return [coverSection(data.images[0], baseName)];
+  if (['qqmusic', 'netease', 'applemusic'].includes(data.source) && data.images?.[0]?.url) return [coverSection(data.images[0], baseName, data)];
   return resultBody(data, baseName);
 }
 
@@ -77,26 +79,32 @@ function resultBody(d, baseName) {
     const audio = download(d.music_url, baseName + '.mp3', t('下载音频'), 'btn');
     parts.push(el('div', { class: 'side' }, el('div', { class: 'group' }, audio), el('div', { class: 'jobs' })));
   }
-  if (images.length) parts.push(...imageSection(d, images, baseName, hasVideo));
+  if (images.length) {
+    if (['steam', 'hoyoplay'].includes(d.source)) parts.push(assetImages(d, baseName));
+    else parts.push(...imageSection(d, images, baseName, hasVideo));
+  }
   if (!parts.length) {
     parts.push(el('div', { class: 'notice' }, t('解析成功但没有拿到任何视频或图片，这条内容可能已被删除或需要登录。')));
   }
   return parts;
 }
 
-function coverSection(image, baseName) {
+function coverSection(image, baseName, data) {
   const name = baseName + '_cover';
+  const jobsBox = el('div', { class: 'jobs' });
   return el('div', { class: 'res-body cover-result' },
     el('div', { class: 'cover-media' }, proxyImg(image.url, { alt: t('音乐封面') })),
     el('div', { class: 'side' },
       el('p', { class: 'label' }, t('音乐封面')),
-      el('div', { class: 'group' }, ...coverActions(proxy(image.url, name, true), name)),
-      el('p', { class: 'hint' }, t('按图片原始格式保存，动态封面保留动效。')),
-      coverConversions(image.url, baseName)));
+      el('div', { class: 'group' }, ...coverActions(proxy(image.url, name, true), name),
+        data.formats.length ? formatMenu(data, baseName, jobsBox, false) : null),
+      el('p', { class: 'hint' }, t(data.source === 'applemusic'
+        ? '静态封面与动态视频分开下载；动态封面以当前公开版本为准。' : '按图片原始格式保存，动态封面保留动效。')),
+      data.source === 'applemusic' && !data.formats.length ? null : coverConversions(image.url, baseName, data), jobsBox));
 }
 
-function coverConversions(url, title) {
-  const request = { url, title, sig: sigOf(url), image: true };
+function coverConversions(url, title, data) {
+  const request = data.formats.length ? sourceRequest(data, title) : { url, title, sig: sigOf(url), image: true };
   return el('div', {}, el('div', { class: 'rule' }),
     el('p', { class: 'label' }, t('动态封面继续做')),
     el('div', { class: 'group' },
@@ -133,11 +141,13 @@ function videoSection(d, baseName, jobsBox) {
   return el('div', { class: 'res-body' }, preview, side);
 }
 
-const isPortrait = (d) => (d.width && d.height ? d.height > d.width : true);
+const isPortrait = (d) => (d.width && d.height ? d.height > d.width : !['steam', 'hoyoplay'].includes(d.source));
+
+const videoExtension = (data) => ['steam', 'hoyoplay'].includes(data.source) && /\.webm(?:[?#]|$)/.test(data.video_url) ? 'webm' : 'mp4';
 
 /** 下载视频 / 其他清晰度 / 音频。iPhone 上「存到相册」是主按钮，其余收成下面一行小字，免得三个大按钮竖着排 */
 function saveActions(d, baseName, jobsBox) {
-  if (PHOTOS && d.video_url) {
+  if (PHOTOS && d.video_url && videoExtension(d) === 'mp4') {
     const more = el('div', { class: 'more-acts' }, ...secondaryDownloads(d, baseName, jobsBox, true));
     return el('div', { class: 'group' }, photosButton(t('存到相册'), oneFile(() => sourcesOf(d.video_url), baseName, 'video/mp4')), more);
   }
@@ -148,7 +158,7 @@ function secondaryDownloads(d, baseName, jobsBox, compact) {
   const links = [];
   if (d.video_url) {
     const label = t('下载视频') + (d.height ? ' ' + d.height + 'p' : '');
-    links.push(download(d.video_url, baseName + '.mp4', label, compact ? 'btn sm quiet' : 'btn dark'));
+    links.push(download(d.video_url, baseName + '.' + videoExtension(d), label, compact ? 'btn sm quiet' : 'btn dark'));
   }
   if (d.formats && d.formats.length) links.push(formatMenu(d, baseName, jobsBox, compact));
   // 音频用得少，不和下载视频抢位置
@@ -173,7 +183,7 @@ function formatMenu(d, baseName, jobsBox, compact) {
   }
   const toggleClass = compact ? 'btn sm quiet' : 'btn' + (d.video_url ? '' : ' dark');
   const toggle = el('button', { class: toggleClass, type: 'button', onclick: () => { list.hidden = !list.hidden; } },
-    d.video_url ? t('其他清晰度 ▾') : t('下载视频 ▾'));
+    d.video_url ? t('其他清晰度 ▾') : t(d.source === 'applemusic' ? '下载动态封面 ▾' : '下载视频 ▾'));
   return el('div', { class: 'menu' }, toggle, list);
 }
 
@@ -186,6 +196,7 @@ document.addEventListener('click', (e) => {
 
 /** 转换要用的原视频：直链优先；没有直链（YouTube 之类）就让服务端用 yt-dlp 拉 */
 function sourceRequest(d, title) {
+  if (d.source === 'hoyoplay') return { page_url: d.page_url, title, sig: sigOf(d.page_url) };
   const needsServer = d.formats.some((f) => !f.url);
   if (d.video_url && (!needsServer || d.height >= 720 || !d.page_url)) {
     return { url: d.video_url, headers: d.video_headers || {}, title, sig: sigOf(d.video_url) };

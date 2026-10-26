@@ -9,8 +9,13 @@
     <h1 data-reveal style="--i:1">{{ page.h1 | safe | t }}</h1>
     <p class="sub" data-reveal style="--i:2">{{ page.lead | t }}</p>
     <form class="paste" id="paste-form" data-reveal="card" style="--i:3">
+      {% if wallpaper_games %}
+      <label class="wallpaper-picker" for="wallpaper-game"><span>{{ t('选择游戏') }}</span><select id="wallpaper-game" required><option value="">{{ t('请选择游戏…') }}</option>{% for game in wallpaper_games %}<option value="{{ game.url }}" data-game="{{ game.id }}"{% if game.id == wallpaper_selected %} selected{% endif %}>{{ game.name | t }}</option>{% endfor %}</select></label>
+      <input id="url" type="hidden" value="{{ wallpaper_url }}">
+      {% else %}
       <textarea id="url" placeholder="{{ page.placeholder | t }}" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="{{ t("分享链接") }}"></textarea>
-      <div class="paste-tools">
+      {% endif %}
+      <div class="paste-tools"{% if wallpaper_games %} hidden{% endif %}>
         <button class="tool" id="paste-btn" type="button" title="{{ t("从剪贴板粘贴") }}">{{ t("粘贴") }}</button>
         <button class="tool clear" id="clear-btn" type="button" title="{{ t("清空") }}" aria-label="{{ t("清空") }}" hidden>×</button>
       </div>
@@ -18,6 +23,7 @@
     </form>
     <p class="supports" data-reveal style="--i:4"><b>{{ t("支持") }}</b> {{ t("抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。") }}</p>
     <p class="supports music-supports" data-reveal style="--i:4">{{ t('音乐封面也能取：') }}<a href="/qq-music-cover">{{ t('QQ 音乐封面') }}</a> · <a href="/netease-music-cover">{{ t('网易云音乐封面') }}</a>{{ t('。') }}{{ t('动态封面可保留原格式，或转成 GIF 与实况照片。') }}</p>
+    <p class="supports music-supports" data-reveal style="--i:4"><a href="/steam-assets">{{ t('Steam 动态素材') }}</a> · <a href="/hoyoplay-wallpaper">{{ t('HoYoPlay 壁纸') }}</a> · <a href="/apple-music-cover">{{ t('Apple Music 封面') }}</a></p>
     <div id="notice" class="notice" aria-live="polite" hidden></div>
     <div id="result" hidden></div>
     <div id="converter" hidden></div>
@@ -59,6 +65,9 @@
       <a class="card" href="/bilibili" data-reveal="card" style="--i:5"><h3>{{ t("B站") }}</h3><p>{{ t("1080p / 720p 高清与仅音频，b23.tv 短链也认。") }}</p><span class="spec">{{ t("1080p · 720p · 音频") }}</span></a>
       <a class="card" href="/qq-music-cover" data-reveal="card" style="--i:6"><h3>{{ t('QQ 音乐封面') }}</h3><p>{{ t('歌曲、专辑、歌单封面，复制分享链接即可下载，保留图片实际格式。') }}</p><span class="spec">{{ t('歌曲 · 专辑 · 歌单封面') }}</span></a>
       <a class="card" href="/netease-music-cover" data-reveal="card" style="--i:7"><h3>{{ t('网易云音乐封面') }}</h3><p>{{ t('静态原图直接下载，动态 WebP 保留动效，还能转 GIF、实况与动态照片。') }}</p><span class="spec">{{ t('原图 · 动态 WebP · GIF') }}</span></a>
+      <a class="card" href="/steam-assets" data-reveal="card" style="--i:8"><h3>{{ t('Steam 动态素材') }}</h3><p>{{ t('动态头像、透明头像框、贴纸与背景视频，原格式下载或转 GIF。') }}</p><span class="spec">GIF · APNG · MP4 · WebM</span></a>
+      <a class="card" href="/hoyoplay-wallpaper" data-reveal="card" style="--i:9"><h3>{{ t('HoYoPlay 壁纸') }}</h3><p>{{ t('选择游戏，保存当前启动器背景；有动态视频时还能做成实况照片。') }}</p><span class="spec">{{ t('原图 · 动态背景 · 实况') }}</span></a>
+      <a class="card" href="/apple-music-cover" data-reveal="card" style="--i:10"><h3>{{ t('Apple Music 封面') }}</h3><p>{{ t('下载专辑与歌单封面，公开动态封面另存 MP4，也能继续转换。') }}</p><span class="spec">{{ t('封面图片 · 动态 MP4') }}</span></a>
     </div>
     {% else %}
     <div class="sec-head">

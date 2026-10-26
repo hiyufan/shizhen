@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..utils import gather_or_cancel, run_ytdlp
-from . import animated, bilibili, config, ffmpeg, livephoto, store
+from . import animated, artwork, bilibili, config, ffmpeg, livephoto, store
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
 from .net import safe_filename
@@ -31,6 +31,8 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
 
     from . import youtube_native
 
+    if artwork.handles(page_url):
+        return await artwork.download(page_url, format_spec, out_dir, stem, report)
     if youtube_native.handles_format(page_url, format_spec):
         return await youtube_native.download(page_url, format_spec, out_dir, stem, report)
     if bilibili.handles(page_url):
@@ -121,7 +123,7 @@ async def fetch_source(
         path.replace(original)
         job.set(message="正在读取动态封面的每一帧")
         try:
-            await animated.prepare(original, path)
+            await animated.prepare(original, path, alpha_destination=path.with_suffix(".alpha.mov"))
         finally:
             original.unlink(missing_ok=True)
 
@@ -138,6 +140,7 @@ async def fetch_source(
             width=info.width,
             height=info.height,
             fps=info.fps,
+            gif_path=str(path.with_suffix(".alpha.mov")) if image else None,
         )
     )
     job.extra = src.view()
@@ -250,7 +253,7 @@ async def _make_gif(job: Job, src: store.Source, opts: ConvertOptions, stem: str
         width, fps, colors = params
         base = min(0.8, 0.05 + 0.2 * attempt)
         await ffmpeg.make_gif(
-            src.path,
+            src.gif_path or src.path,
             str(out),
             start=start,
             duration=duration,

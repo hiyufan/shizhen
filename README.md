@@ -16,6 +16,8 @@
 
 **也能提取 [QQ 音乐封面](https://ynvan.com/qq-music-cover)和[网易云音乐封面](https://ynvan.com/netease-music-cover)：歌曲、专辑、歌单链接直接贴，动态封面保留动效，还能转 GIF 与实况照片。**
 
+**新增 [Steam 动态头像与头像框](https://ynvan.com/steam-assets)、[HoYoPlay 壁纸](https://ynvan.com/hoyoplay-wallpaper)和 [Apple Music 动态封面](https://ynvan.com/apple-music-cover)，下载与转换在同一个工具完成。**
+
 <sub>原名「拾帧」，2026 年 10 月更名为「求原图」。仓库地址不变。</sub>
 
 [![License](https://img.shields.io/badge/license-MIT-1a1815.svg)](LICENSE)
@@ -65,6 +67,17 @@
 
 iPhone 网页不能直接把配对文件存成相册实况：用 Mac「照片」导入 JPG + MOV，或先保存视频再用手机 App 转实况。安卓动态照片需兼容相册支持。
 
+## Steam 动态素材、HoYoPlay 壁纸与 Apple Music 封面
+
+| 需求 | 在线入口与结果 |
+|---|---|
+| Steam 动态头像、透明头像框和贴纸 | [Steam 动态素材](https://ynvan.com/steam-assets)：粘贴带 `/reward/` 的单个物品链接，保留 GIF / APNG，或转成透明 GIF；[教程](https://ynvan.com/guide/steam-animated-assets) |
+| Steam 背景视频 | 同一工具下载物品提供的 MP4 / WebM，也能截取片段做 GIF 或实况 |
+| 原神、星穹铁道、绝区零、崩坏 3 启动器背景 | [HoYoPlay 壁纸](https://ynvan.com/hoyoplay-wallpaper)：选择游戏，保存当前国服公开壁纸与可用动态视频；[教程](https://ynvan.com/guide/hoyoplay-wallpaper-download) |
+| Apple Music 静态与动态封面 | [Apple Music 封面](https://ynvan.com/apple-music-cover)：歌曲、专辑或歌单链接；公开动态封面可存 MP4，再转 GIF / 实况 |
+
+Steam 的大图可能只是静态预览，本项目选择公开的动画文件；`.png` 也可能是 APNG。保存文件不会解锁 Steam 账号内的物品。HoYoPlay 提取当前版本，不提供历史壁纸档案；Apple Music 只提取公开封面，不下载歌曲音频。动态素材是否提供，以平台当前数据为准。
+
 ## 为什么做这个
 
 短视频平台把内容锁在 App 里：保存的视频带水印，图片被压缩，实况图只剩静态一帧，想做个表情包还得再找一个工具。求原图把这几步合成一次粘贴：
@@ -110,7 +123,7 @@ iPhone 网页不能直接把配对文件存成相册实况：用 Mac「照片」
 
 - 编辑风极简界面，手机端完整适配
 - 字体全部自托管，页面零外部请求
-- 10 个落地页 + 14 篇教程，JSON-LD 结构化数据
+- 13 个落地页 + 16 篇教程，JSON-LD 结构化数据
 - 公网加固：限流、配额、签名、SSRF、CSP
 - Docker 非 root 运行
 - yt-dlp 自动升级跟进平台改版
@@ -281,6 +294,9 @@ python apps/douyin-inbox/scripts/sync_readme.py --check
 | Instagram | ✅ | ✅ | – | 平台默认 | 多图帖取原图，图片和视频混着的也行 |
 | QQ 音乐 | – | 封面 | – | 歌曲 / 专辑 800px，歌单 1000px | 歌曲、专辑、歌单分享链接；只提取封面 |
 | 网易云音乐 | – | 封面 | – | 平台提供的原始尺寸 | 歌曲、专辑、歌单分享链接；动态封面可保留原格式或转 GIF / 实况 / 动态照片 |
+| Steam 点数商店 | ✅ | GIF / APNG 等素材 | – | 平台提供的原始素材 | 单个物品链接；动态头像、透明头像框、贴纸、MP4 / WebM 背景；动画可转换 |
+| HoYoPlay | ✅ | 当前启动器壁纸 | – | 平台提供的原始素材 | 选择四款游戏，读取当前国服公开背景；有视频时可转换，不含历史档案 |
+| Apple Music | 动态封面 | 封面 | – | 图片最高请求 3000px；动态视频最高 1080p | 歌曲、专辑、歌单公开封面；动态视频按作品提供情况显示，不下载歌曲音频 |
 | 微博、西瓜、皮皮虾、AcFun、TikTok … | ✅ | 部分 | – | | 30+ 平台，其余交给 yt-dlp 兜底 |
 
 > 解析依赖各平台网页结构，平台改版可能暂时失效。上游 parse-video-py 更新较勤，修了某个平台时可以对照着改 `parser/` 里的解析器（不能直接覆盖，见[贡献](#贡献)）。

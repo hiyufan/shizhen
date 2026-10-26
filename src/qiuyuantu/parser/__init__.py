@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from .. import progress
 from ..utils import current_source
 from .acfun import AcFun
+from .applemusic import AppleMusic
 from .base import VideoInfo, VideoSource
 from .bilibili import BiliBili
 from .cctv import CCTV
@@ -13,6 +14,7 @@ from .doupai import DouPai
 from .douyin import DouYin
 from .errors import ParseError, classify
 from .haokan import HaoKan
+from .hoyoplay import HoYoPlay
 from .huya import HuYa
 from .kuaishou import KuaiShou
 from .lishipin import LiShiPin
@@ -27,6 +29,7 @@ from .quanminkge import QuanMinKGe
 from .redbook import RedBook
 from .sixroom import SixRoom
 from .sohu import Sohu
+from .steam import Steam
 from .twitter import Twitter
 from .weibo import WeiBo
 from .weishi import WeiShi
@@ -39,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
+    VideoSource.Steam: {"domain_list": ["store.steampowered.com"], "parser": Steam},
+    VideoSource.HoYoPlay: {"domain_list": ["hyp-api.mihoyo.com"], "parser": HoYoPlay},
+    VideoSource.AppleMusic: {"domain_list": ["music.apple.com"], "parser": AppleMusic},
     VideoSource.QQMusic: {
         "domain_list": ["y.qq.com"],
         "parser": QQMusic,

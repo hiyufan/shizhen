@@ -22,6 +22,11 @@ from . import config, relay
 
 # 各家 CDN 直链需要带的 Referer，缺了会 403
 _REFERERS = {
+    "steamstatic.com": "https://store.steampowered.com/",
+    "steamusercontent.com": "https://store.steampowered.com/",
+    "mihoyo.com": "https://hyp.mihoyo.com/",
+    "mzstatic.com": "https://music.apple.com/",
+    "itunes.apple.com": "https://music.apple.com/",
     "bilivideo.com": "https://www.bilibili.com/",
     "hdslb.com": "https://www.bilibili.com/",
     "acfun.cn": "https://www.acfun.cn/",
