@@ -7,11 +7,15 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from .comment_media import read_comment_status
+from .delivery import DELIVERY_JS, DeliveryRestricted
 from .native_live import CLIENT_JS, send_live_files
 from .native_video import read_native_video
 from .work_media import read_work_media
 
-JS = r"""
+JS = (
+    DELIVERY_JS
+    + r"""
 const property = (element, names) => {
   const key = Object.keys(element || {}).find(k => k.startsWith('__reactFiber$'));
   for (let fiber = element?.[key], depth = 0; fiber && depth < 18; fiber = fiber.return, depth++) {
@@ -78,9 +82,10 @@ const message = element => {
     from_me: Boolean(m.isFromMe), flight: m.flightStatus, server_status: m.serverStatus,
     md5: String(c.md5 || c.resource_url?.md5 || c.video?.md5 || ''),
     live_vid: String(c.live_photo_video?.vid || ''), live_md5: String(c.live_photo_video?.md5 || ''),
-    awe_type: c.aweType, kind, data};
+    awe_type: c.aweType, ...deliveryStatus(m), kind, data};
 };
 """
+)
 
 
 class BrowserUnavailable(RuntimeError):
@@ -108,15 +113,22 @@ def acknowledged(rows: list[dict], part: dict, conversation: str, before: set[st
         and (not part.get("forward_source") or row.get("type") == 27)
     ]
     if "text" in part:
-        return [row["id"] for row in delivered if row["data"].get("text") == part["text"]][:1]
+        return delivery_ids([row for row in delivered if row["data"].get("text") == part["text"]][:1])
     expected = Counter(part["md5"][:1] if part.get("live_pair") else part["md5"])
     found = []
     for row in delivered:
         digest = row.get("md5")
         if expected[digest] > 0:
             expected[digest] -= 1
-            found.append(row["id"])
-    return found if not any(expected.values()) else []
+            found.append(row)
+    return delivery_ids(found) if not any(expected.values()) else []
+
+
+def delivery_ids(rows: list[dict]) -> list[str]:
+    for row in rows:
+        if row.get("delivery_restricted"):
+            raise DeliveryRestricted(row)
+    return [row["id"] for row in rows]
 
 
 class Browser:
@@ -148,7 +160,7 @@ class Browser:
         await self.guard(message.conversation)
         return await self.cached_work_media(message)
 
-    async def cached_work_media(self, message) -> list[dict] | None:
+    async def cached_work_media(self, message, *, resolve: bool = False) -> list[dict] | None:
         """只读 SDK 中对应会话的消息和已加载详情，不依赖当前聊天或草稿状态。"""
         return await read_work_media(
             self.page,
@@ -160,6 +172,20 @@ class Browser:
                 "work_id": message.data["work_id"],
             },
             JS,
+            self.settings.connect_timeout,
+            resolve=resolve,
+        )
+
+    async def comment_status(self, message) -> str:
+        return await read_comment_status(
+            self.page,
+            {
+                "account": self.account,
+                "conversation": message.conversation,
+                "message": message.id,
+                "sender": message.sender,
+                "url": message.data["url"],
+            },
             self.settings.connect_timeout,
         )
 

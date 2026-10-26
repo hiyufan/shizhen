@@ -235,12 +235,23 @@ class Engine:
         key, manifest = await self.assets.run(
             job, content_key(message), lambda: self.processor.prepare(message, resolved)
         )
-        unverified = message.data.get("comment_verified") is False or message.data.get("comment_unavailable")
-        if unverified and all(detail.get("frames") == 1 for detail in manifest["details"]):
-            return key, [{"text": "这条评论目前只拿到静态预览，尚未取得配套实况视频，暂时无法回传无水印 LIVE。"}]
+        if notice := await self.comment_notice(job, message, manifest):
+            return key, [{"text": notice}]
         if manifest.get("live_photo_count") or (len(manifest["files"]) == 1 and manifest["files"][0].endswith(".mp4")):
             return key, [{"offer_video": manifest}]
         return key, delivery_parts(manifest, self.settings.photo_batch)
+
+    async def comment_notice(self, job: dict, message: Message, manifest: dict) -> str:
+        comment = "comment_verified" in message.data or message.data.get("comment_unavailable")
+        if not comment or not all(detail.get("frames") == 1 for detail in manifest["details"]):
+            return ""
+        async with self.measuring(job, "source_comment_check"):
+            status = await self.browser.comment_status(message)
+        return {
+            "static": "",
+            "motion": "这条评论目前只拿到静态预览，尚未取得配套动态资源，暂时无法回传完整动图或无水印 LIVE。",
+            "unavailable": "原评论目前不可见，暂时无法核实图片是否完整，请换一条评论试试。",
+        }.get(status, "暂时未能核实这条评论图片的完整格式，请稍后重新转发。")
 
     async def describe_source(self, job: dict, message: Message) -> dict | None:
         if message.kind == "media":
@@ -256,6 +267,10 @@ class Engine:
     async def page_source(self, job: dict, message: Message) -> list[Asset] | None:
         async with self.measuring(job, "source_client_cache"):
             rows = await self.browser.cached_work_media(message)
+        if (assets := assets_from_snapshot(rows, self.settings)) is not None:
+            return assets
+        async with self.measuring(job, "source_client_fetch"):
+            rows = await self.browser.cached_work_media(message, resolve=True)
         if (assets := assets_from_snapshot(rows, self.settings)) is not None:
             return assets
         waiting = time.monotonic()

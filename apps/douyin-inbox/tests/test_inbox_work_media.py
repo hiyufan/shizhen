@@ -13,7 +13,7 @@ from qiuyuantu_inbox.__main__ import run_with_warm_parser
 from qiuyuantu_inbox.browser import JS
 from qiuyuantu_inbox.media import Asset, assets_from_snapshot
 from qiuyuantu_inbox.models import Settings
-from qiuyuantu_inbox.work_media import SOURCE_JS
+from qiuyuantu_inbox.work_media import RESOLVE_JS, SOURCE_JS, read_work_media
 
 
 @pytest.mark.parametrize(
@@ -130,6 +130,123 @@ def test_passive_cache_read_rejects_changed_login_account():
         [node, "-e", script], input='"account"', text=True, capture_output=True, check=True, timeout=10
     )
     assert result.stdout.strip() == "work_account_changed"
+
+
+RESOLVE_FIXTURE = (
+    SOURCE_FIXTURE
+    + r"""
+const requests = [];
+const target = {id: args.conversation, type: scenario === 'group' ? 2 : 1, shortId: '900'};
+sdk.getConversation = () => target;
+source.conversationShortId = scenario === 'short_id' ? '901' : '900';
+if (scenario !== 'cached' && scenario !== 'filtered') app.store.awemeStore.awemeDetailMap.clear();
+if (scenario === 'target') target.id = 'other';
+const response = {status_code: 0, aweme_details: [detail], filter_list: []};
+if (scenario === 'rejected') response.status_code = 1;
+if (scenario === 'unavailable') response.filter_list = [{aweme_id: '123'}];
+if (scenario === 'extra') response.aweme_details = [detail, detail];
+if (scenario === 'static') {delete image.video; image.live_photo_type = card.is_live_photo = 0;}
+source.content = JSON.stringify(card);
+app.requestManager = {request: async options => {
+  requests.push(options);
+  if (scenario === 'read_error') throw Error('internal-details-must-stay-in-page');
+  if (scenario === 'changed_account') app.store.usersInfoStore.curLoginUserInfo.uid = 'other';
+  if (scenario === 'changed_sender') source.sender = 'other';
+  if (scenario === 'changed_work') {card.itemId = '456'; source.content = JSON.stringify(card);}
+  if (scenario === 'changed_short_id') target.shortId = '901';
+  return scenario === 'wrapped' ? {data: response} : response;
+}};
+"""
+)
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "success",
+        "wrapped",
+        "static",
+        "video_fetch",
+        "cached",
+        "filtered",
+        "sender",
+        "group",
+        "target",
+        "actor",
+        "message",
+        "own",
+        "card_work",
+        "short_id",
+        "rejected",
+        "unavailable",
+        "extra",
+        "read_error",
+        "wrong_work",
+        "partial",
+        "missing_video",
+        "changed_account",
+        "changed_sender",
+        "changed_work",
+        "changed_short_id",
+    ],
+)
+def test_background_detail_fetch_validates_source_before_and_after_read(scenario):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("需要 Node.js")
+    script = RESOLVE_FIXTURE + "(async()=>{" + RESOLVE_JS + "})()"
+    script += ".then(rows=>console.log(JSON.stringify({rows,requests})))"
+    script += ".catch(error=>console.log(JSON.stringify({error:error.message,requests})));"
+    result = subprocess.run(
+        [node, "-e", script], input=json.dumps(scenario), text=True, capture_output=True, check=True, timeout=10
+    )
+    assert "must-stay-in-page" not in result.stdout and "watermarked" not in result.stdout
+    data = json.loads(result.stdout)
+    if scenario == "changed_account":
+        assert data["error"] == "work_account_changed"
+    else:
+        assert bool(data["rows"]) == (scenario in {"success", "wrapped", "static", "video_fetch", "cached"})
+    if scenario in {
+        "cached",
+        "filtered",
+        "sender",
+        "group",
+        "target",
+        "actor",
+        "message",
+        "own",
+        "card_work",
+        "short_id",
+    }:
+        assert data["requests"] == []
+    else:
+        assert data["requests"] == [
+            {
+                "method": "POST",
+                "url": "/aweme/v1/web/multi/aweme/detail/",
+                "noStatusCode": True,
+                "params": {
+                    "aweme_ids": "[123]",
+                    "origin_type": "chat",
+                    "request_source": "3",
+                    "conversation_short_id": "900",
+                },
+            }
+        ]
+
+
+async def test_background_detail_timeout_returns_to_existing_fallback():
+    cancelled = asyncio.Event()
+
+    async def stalled(*_):
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    page = SimpleNamespace(evaluate=AsyncMock(side_effect=stalled))
+    assert await read_work_media(page, {}, "", 0.01, resolve=True) is None
+    assert cancelled.is_set()
 
 
 @pytest.mark.parametrize("scenario", ["video", "video_slides", "video_missing", "video_live_card"])

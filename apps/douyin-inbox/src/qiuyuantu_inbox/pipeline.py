@@ -10,6 +10,7 @@ import re
 import time
 
 from .browser import BrowserUnavailable, acknowledged
+from .delivery import DeliveryRestricted
 from .media import UnsupportedMedia, blocking, file_md5
 from .native_bridge import NativeBridge
 
@@ -181,6 +182,13 @@ class NativePipeline:
 
     async def delivery_failure(self, job: dict, exc: Exception) -> None:
         parts = await asyncio.to_thread(self.store.parts, job)
+        if isinstance(exc, DeliveryRestricted):
+            part = next(part for part in parts if part["state"] == "sending")
+            await asyncio.to_thread(
+                self.store.reject_outbound, job, part["number"], exc.server_id, exc.code, time.time()
+            )
+            await self.engine.pause("platform_delivery_restricted")
+            return
         uncertain = any(part["state"] == "sending" for part in parts)
         await asyncio.to_thread(self.store.finish, job, "uncertain" if uncertain else "ready", time.time())
         if uncertain or not await self.engine.paused():

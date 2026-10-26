@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from qiuyuantu_inbox.delivery import DELIVERY_JS
 from qiuyuantu_inbox.native_live import CLIENT_JS, SEND_JS, UPLOAD_JS
 
 FIXTURE_JS = r"""
@@ -99,6 +100,7 @@ def run_adapter(scenario):
         FIXTURE_JS
         + "\n(async () => {try {const execute = async () => {"
         + CLIENT_JS
+        + DELIVERY_JS
         + UPLOAD_JS
         + SEND_JS
         + "}; if (scenario === 'bounded') {"
@@ -159,6 +161,8 @@ def test_native_send_contract(scenario, error, uploads):
             "from_me": True,
             "flight": 4,
             "server_status": 0,
+            "delivery_restricted": False,
+            "delivery_code": 0,
             "md5": "image-md5",
             "live_vid": "pair-id",
             "live_md5": "video-md5",

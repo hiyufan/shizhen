@@ -274,6 +274,25 @@ class OutboundStore:
                 (json.dumps([server_id]), job["id"], row["number"]),
             )
 
+    def reject_outbound(self, job: dict, number: int, server_id: str, code: int, now: float) -> None:
+        with self.transaction() as db:
+            self._owned(db, job)
+            changed = db.execute(
+                "UPDATE outbound SET state='rejected',server_id=?,updated=? "
+                "WHERE job=? AND number=? AND state='submitted'",
+                (server_id, now, job["id"], number),
+            ).rowcount
+            if changed != 1:
+                raise RuntimeError("受限回执不属于当前发送意图")
+            db.execute(
+                "UPDATE parts SET state='rejected',receipt=? WHERE job=? AND number=? AND state='sending'",
+                (json.dumps({"server_id": server_id, "delivery_restricted": True, "code": code}), job["id"], number),
+            )
+            db.execute(
+                "UPDATE jobs SET state='failed',error=?,token=NULL,lease=NULL,updated=? WHERE id=?",
+                (f"platform_delivery_restricted:{code}", now, job["id"]),
+            )
+
     def outbound_gate(self, db, now: float) -> bool:
         deadline = db.execute("SELECT value FROM meta WHERE key='next_send_at'").fetchone()
         cooldown = db.execute("SELECT value FROM meta WHERE key='send_cooldown'").fetchone()

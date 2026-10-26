@@ -185,6 +185,26 @@ async def test_event_receipt_commits_before_forgetting_page_state(pipeline):
     pipeline.bridge.forget.assert_awaited_once()
 
 
+async def test_restricted_server_acceptance_is_not_delivery_and_is_never_retried(pipeline):
+    ready(pipeline.store)
+    plan(pipeline.store)
+    assert await pipeline.dispatch_once()
+    entry = next(iter(pipeline.inflight.values()))
+    server = receipt(entry, delivery_restricted=True, delivery_code=8101)
+    pipeline.bridge.poll.return_value = [{"client_id": entry["row"]["client_id"], "row": server, "attempts": 1}]
+    await pipeline.observe_once()
+    job = pipeline.store.list_jobs()[0]
+    assert job["state"] == "failed" and job["error"] == "platform_delivery_restricted:8101"
+    row = pipeline.store.outbound_part(job, 0)
+    assert row["state"] == "rejected" and row["server_id"] == server["id"]
+    assert pipeline.store.parts(job)[0]["state"] == "rejected"
+    assert pipeline.store.get_meta("paused") == "platform_delivery_restricted"
+    pipeline.store.recover(time.time())
+    pipeline.store.set_meta("paused", "")
+    assert not await pipeline.dispatch_once()
+    assert pipeline.bridge.submit.await_count == 1
+
+
 @pytest.mark.parametrize("wrong", [{"conversation": "other"}, {"client_id": "other"}, {"data": {"text": "other"}}])
 async def test_mismatched_receipt_pauses_without_resubmission(pipeline, wrong):
     ready(pipeline.store)

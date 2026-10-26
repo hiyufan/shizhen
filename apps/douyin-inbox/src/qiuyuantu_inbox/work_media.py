@@ -4,7 +4,7 @@ import asyncio
 
 from .native_live import CLIENT_JS
 
-SOURCE_JS = r"""
+WORK_JS = r"""
 const workConversation = args => {
   const actors = args.conversation.split(':');
   return actors.length === 4 && actors.every(v => /^\d+$/.test(v)) && args.sender !== args.account &&
@@ -21,11 +21,16 @@ const workContext = (element, args) => {
   const target = sdk.getConversation({conversationId: args.conversation});
   return target?.id === args.conversation && target.type === 1 ? {app, sdk, target} : null;
 };
-const workCard = (context, args) => {
+const workSource = (context, args) => {
   const source = context.sdk.getConversationMessages({conversation: context.target})
     .find(m => String(m.serverId) === args.message);
   if (!source || ![8, 77].includes(source.type) || String(source.sender) !== args.sender ||
       String(source.sender) === args.account || source.conversationId !== args.conversation) return null;
+  return source;
+};
+const workCard = (context, args) => {
+  const source = workSource(context, args);
+  if (!source) return null;
   const card = JSON.parse(source.content);
   return String(card.itemId) === args.work_id ? card : null;
 };
@@ -61,17 +66,58 @@ const cachedWorkMedia = (element, args) => {
   if (!detail || cached.filted || String(detail.aweme_id) !== args.work_id) return null;
   return Array.isArray(detail.images) && detail.images.length ? workImages(detail, card) : workVideo(detail, card);
 };
-return cachedWorkMedia(element, args);
 """
 
+SOURCE_JS = WORK_JS + "return cachedWorkMedia(element, args);"
 
-async def read_work_media(page, request: dict, helpers: str, timeout: float) -> list[dict] | None:
+RESOLVE_JS = (
+    WORK_JS
+    + r"""
+const context = workContext(element, args);
+if (!context) return null;
+const card = workCard(context, args), source = workSource(context, args);
+if (!card || !source) return null;
+const cached = cachedWorkMedia(element, args);
+if (cached) return cached;
+if (context.app.store.awemeStore?.awemeDetailMap?.get(args.work_id)?.filted) return null;
+const shortId = String(context.target.shortId || '');
+if (!/^\d{1,32}$/.test(shortId) || shortId !== String(source.conversationShortId)) return null;
+// 与客户端后台补取作品详情相同，只查当前消息中的作品，不打开作品页或导出完整响应。
+let raw;
+try {
+  raw = await context.app.requestManager.request({method: 'POST', url: '/aweme/v1/web/multi/aweme/detail/',
+    noStatusCode: true, params: {aweme_ids: `[${args.work_id}]`, origin_type: 'chat', request_source: '3',
+      conversation_short_id: shortId}});
+} catch {return null;}
+const current = workContext(element, args);
+if (!current || !workCard(current, args) || String(current.target.shortId) !== shortId ||
+    String(workSource(current, args)?.conversationShortId) !== shortId) return null;
+const result = raw?.data?.status_code !== undefined ? raw.data : raw;
+if (result?.status_code !== 0 || !Array.isArray(result.aweme_details) || result.aweme_details.length !== 1 ||
+    result.filter_list?.some(row => String(row.aweme_id) === args.work_id)) return null;
+const detail = result.aweme_details[0];
+if (String(detail.aweme_id) !== args.work_id) return null;
+const currentCard = workCard(current, args);
+return Array.isArray(detail.images) && detail.images.length
+  ? workImages(detail, currentCard) : workVideo(detail, currentCard);
+"""
+)
+
+
+async def read_work_media(
+    page, request: dict, helpers: str, timeout: float, *, resolve: bool = False
+) -> list[dict] | None:
     script = (
-        "args=>{"
+        ("async args=>{" if resolve else "args=>{")
         + helpers
         + CLIENT_JS
         + 'const element = document.querySelector(\'[data-e2e="msg-item-content"], [data-e2e="conversation-item"]\');'
-        + SOURCE_JS
+        + (RESOLVE_JS if resolve else SOURCE_JS)
         + "}"
     )
-    return await asyncio.wait_for(page.evaluate(script, request), timeout=timeout)
+    try:
+        return await asyncio.wait_for(page.evaluate(script, request), timeout=timeout)
+    except asyncio.TimeoutError:
+        if not resolve:
+            raise
+        return None

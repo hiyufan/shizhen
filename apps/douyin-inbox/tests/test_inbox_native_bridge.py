@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from qiuyuantu_inbox.delivery import DELIVERY_JS
 from qiuyuantu_inbox.models import Settings
 from qiuyuantu_inbox.native_bridge import BRIDGE_JS, NativeBridge
 from qiuyuantu_inbox.native_live import CLIENT_JS, UPLOAD_JS
@@ -29,6 +30,9 @@ sdk.sendMessage = async ({message}) => {
   if (scenario === 'retry') throw Error('wire_failed');
   if (scenario === 'cooldown') return {statusCode: 429, retryAfterSeconds: 120};
   Object.assign(message, {serverId: 'receipt-' + counts.sends, flightStatus: 4, serverStatus: 0});
+  if (scenario.startsWith('restricted')) {
+    message.ext = {im_callback_status_code: '8101', 's:visible': message.sender};
+  }
   saved.push(message);
   for (const callback of app.imSdkService.imSdkManager.listenerObj.MessageSendSuccess) callback(message);
   return {success: true};
@@ -62,6 +66,14 @@ const execute = async () => {
     delete sdk.sendMessage; Object.setPrototypeOf(sdk, prototype); Object.preventExtensions(sdk);
   }
   const state = installBridge(base);
+  if (scenario === 'restricted_upgrade') {
+    state.adapterVersion = 2;
+    app.imSdkService.imSdkManager.listenerObj.MessageSendSuccess.push(raw => {
+      const entry = state.entries.get(raw.clientId);
+      if (entry) entry.receipt = {id: raw.serverId};
+    });
+    installBridge(base);
+  }
   if (scenario.startsWith('budget_')) return await budgetScenario(state, call, base);
   if (scenario === 'stream_cancel') {
     const first = {owner: base.owner, deadline: Date.now() + 1000};
@@ -99,9 +111,10 @@ const execute = async () => {
   await call('submit', {...resource, part, client_id: 'client', conversation: 'chat'});
   // 等 SDK manager 内部重试结束，但不依赖它返回来观察平台回执。
   await new Promise(resolve => setTimeout(resolve, 15));
+  const eventRestricted = state.entries.get('client')?.receipt?.delivery_restricted;
   const observed = await call('poll', {ids: ['client']});
   const content = state.uploads.get('first').resource.content;
-  return {observed, counts, active: state.activeStreams, cache: state.resources.size,
+  return {observed, counts, eventRestricted, active: state.activeStreams, cache: state.resources.size,
     contentType: {type: state.uploads.get('first').resource.type, awe: content.aweType}};
 };
 """
@@ -200,6 +213,7 @@ def run_bridge(scenario):
     script = (
         fixture
         + CLIENT_JS
+        + DELIVERY_JS
         + UPLOAD_JS
         + BRIDGE_JS
         + BRIDGE_FIXTURE
@@ -212,6 +226,15 @@ def run_bridge(scenario):
     )
     assert "private-image-key" not in result.stdout and "private-video-key" not in result.stdout
     return json.loads(result.stdout)
+
+
+@pytest.mark.parametrize("scenario", ["restricted", "restricted_upgrade"])
+def test_native_bridge_preserves_restricted_result_despite_successful_sdk_ack(scenario):
+    result = run_bridge(scenario)
+    assert result["eventRestricted"]
+    row = result["observed"][0]["row"]
+    assert row["delivery_restricted"] and row["delivery_code"] == 8101
+    assert result["counts"]["sends"] == 1
 
 
 @pytest.mark.parametrize("scenario", ["success", "video", "image", "detached", "reuse", "image_shared", "sealed"])

@@ -148,7 +148,8 @@ return {id: String(outbound.serverId || ''), type: outbound.type,
   conversation: outbound.conversationId, from_me: String(outbound.sender) === args.account,
   flight: outbound.flightStatus, server_status: outbound.serverStatus,
   md5: delivered.md5, live_vid: delivered.live_photo_video?.vid,
-  live_md5: delivered.live_photo_video?.md5, awe_type: delivered.aweType, data: {}, timings};
+  live_md5: delivered.live_photo_video?.md5, awe_type: delivered.aweType,
+  ...deliveryStatus(outbound), data: {}, timings};
 """
 
 

@@ -42,7 +42,8 @@ const snapshot = (state, raw) => {
   return {id: String(raw.serverId || ''), client_id: String(raw.clientId || ''), type: raw.type,
     conversation: String(raw.conversationId || ''), from_me: String(raw.sender) === state.account,
     flight: raw.flightStatus, server_status: raw.serverStatus, awe_type: content.aweType,
-    ...contentDigests(content), data: raw.type === 7 ? {text: String(content.text || '').slice(0, 4096)} : {}};
+    ...contentDigests(content), ...deliveryStatus(raw),
+    data: raw.type === 7 ? {text: String(content.text || '').slice(0, 4096)} : {}};
 };
 const matchingEntry = (state, raw) => {
   const entry = state.entries.get(String(raw?.clientId || ''));
@@ -104,7 +105,7 @@ const newBridge = args => {
   return state;
 };
 const installReceiptListeners = state => {
-  if (state.adapterVersion === 2) return;
+  if (state.adapterVersion === 3) return;
   state.detach.forEach(detach => detach()); state.detach = [];
   const manager = state.app.imSdkService.imSdkManager;
   for (const name of ['MessageSendSuccess', 'MessageSendFailed', 'MessageChange', 'ReceiveSelfMessage']) {
@@ -113,7 +114,7 @@ const installReceiptListeners = state => {
     manager.registerEvent(name, callback);
     state.detach.push(() => manager.unRegisterEvent(name, callback));
   }
-  state.adapterVersion = 2;
+  state.adapterVersion = 3;
 };
 const retireOwner = (state, args) => {
   if (state.owner && state.owner !== args.owner) {

@@ -153,11 +153,29 @@ async def test_passive_cache_miss_falls_back_under_ui_lock(engine):
     engine.processor._urls = AsyncMock(side_effect=AssertionError("已取得客户端详情"))
     _, parts = await engine.prepare_message(job, message)
     assert parts[0]["offer_video"]["live_photo_count"] == 1
-    engine.browser.cached_work_media.assert_awaited_once()
+    assert engine.browser.cached_work_media.await_count == 2
+    engine.browser.cached_work_media.assert_awaited_with(message, resolve=True)
     engine.browser.work_media.assert_awaited_once()
     with engine.store.connect() as db:
         phases = dict(db.execute("SELECT phase,seconds FROM timings WHERE job=?", (job["id"],)))
     assert "source_ui_wait" in phases and "source_ui_read" in phases
+
+
+async def test_missing_client_cache_loads_details_without_waiting_for_ui_or_anonymous_parser(engine):
+    message, job = work_job(engine)
+
+    async def read(_message, *, resolve=False):
+        return live_snapshot() if resolve else None
+
+    engine.browser.cached_work_media.side_effect = read
+    engine.processor._urls = AsyncMock(side_effect=AssertionError("不应重复打开匿名解析页"))
+    async with engine.ui:
+        _, parts = await asyncio.wait_for(engine.prepare_message(job, message), 1)
+    assert parts[0]["offer_video"]["live_photo_count"] == 1
+    engine.browser.work_media.assert_not_awaited()
+    with engine.store.connect() as db:
+        phases = dict(db.execute("SELECT phase,seconds FROM timings WHERE job=?", (job["id"],)))
+    assert "source_client_fetch" in phases and "source_ui_wait" not in phases
 
 
 async def test_missing_local_file_and_invalid_page_url_still_use_safe_parser_fallback(engine):

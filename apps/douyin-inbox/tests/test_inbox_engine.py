@@ -118,6 +118,7 @@ def engine(tmp_path):
         send=AsyncMock(return_value=["server-1"]),
         cached_work_media=AsyncMock(return_value=None),
         work_media=AsyncMock(return_value=None),
+        comment_status=AsyncMock(return_value="unknown"),
     )
     result = Engine(store, browser, set(), True)
     result.processor.describe = AsyncMock(return_value=None)
@@ -225,12 +226,42 @@ async def test_unavailable_comment_never_silently_returns_static_preview(engine,
     job = engine.store.list_jobs()[0]
     payload = json.loads(engine.store.parts(job)[0]["payload"])
     if notice:
-        assert "实况视频" in payload["text"]
-        assert "无水印" in payload["text"]
+        assert "核实" in payload["text"]
+        assert "LIVE" not in payload["text"]
         assert "保存" not in payload["text"]
         assert "files" not in payload
     else:
         assert payload["files"] == ["image.gif"]
+        engine.browser.comment_status.assert_not_awaited()
+
+
+@pytest.mark.parametrize("snapshot_verified", [False, True])
+@pytest.mark.parametrize("status", ["static", "motion", "unavailable"])
+async def test_static_comment_is_rechecked_after_download_instead_of_using_event_snapshot(
+    engine, snapshot_verified, status
+):
+    message = Message(
+        "1",
+        "chat",
+        "sender",
+        time.time(),
+        "media",
+        {"url": "https://p9.douyinpic.com/a", "comment_verified": snapshot_verified},
+    )
+    engine.browser.comment_status.return_value = status
+    engine.processor.prepare = AsyncMock(
+        return_value=("cache", {"files": ["image.jpg"], "md5": ["digest"], "details": [{"frames": 1}]})
+    )
+    engine.store.ingest(message)
+    assert await engine.prepare_once()
+    job = engine.store.list_jobs()[0]
+    payload = json.loads(engine.store.parts(job)[0]["payload"])
+    engine.browser.comment_status.assert_awaited_once_with(message)
+    if status == "static":
+        assert payload["files"] == ["image.jpg"]
+    else:
+        assert "files" not in payload
+        assert ("动态资源" if status == "motion" else "原评论目前不可见") in payload["text"]
 
 
 async def test_first_work_attempt_uses_page_media_and_retry_uses_parser(engine):
