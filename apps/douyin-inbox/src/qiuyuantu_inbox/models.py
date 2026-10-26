@@ -53,6 +53,14 @@ class Settings:
     ack_timeout: float = 60.0
     ack_window: int = 1
     choice_warmup: bool = True
+    auto_follow: bool = False
+    follow_poll_seconds: float = 30.0
+    follow_interval: float = 30.0
+    follow_hourly: int = 20
+    follow_daily: int = 100
+    follow_pending: int = 100
+    follow_scan_pages: int = 3
+    follow_timeout: float = 15.0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -78,6 +86,7 @@ class Settings:
         return type(default)(raw)
 
     def validate(self) -> None:
+        self._validate_follow_limits()
         if any(
             not math.isfinite(value) or value <= 0
             for field in fields(self)
@@ -99,6 +108,15 @@ class Settings:
             or self.upload_bytes < self.video_bytes + self.file_bytes
         ):
             raise ValueError("上传超时必须小于租约，上传字节池必须容纳一组实况")
+
+    def _validate_follow_limits(self) -> None:
+        if (
+            self.follow_hourly > self.follow_daily
+            or self.follow_scan_pages > 20
+            or self.follow_pending < 20
+            or self.follow_timeout >= self.lease_seconds
+        ):
+            raise ValueError("回关预算须覆盖每页 20 人，小时预算不超过每日预算，单轮最多扫描 20 页")
 
 
 @dataclass(frozen=True)

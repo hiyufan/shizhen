@@ -14,6 +14,7 @@ from pathlib import Path
 from .assets import ASSET_SCHEMA, SharedAssets
 from .choices import CHOICE_SCHEMA, VideoChoices
 from .controls import CONTROL_SCHEMA, Controls
+from .follow_store import FOLLOW_SCHEMA, FollowStore
 from .intake import INTAKE_SCHEMA, DurableIntake
 from .models import Message, Settings
 from .outbound import OUTBOUND_SCHEMA, OutboundStore, individual_parts
@@ -52,7 +53,7 @@ class LeaseLost(RuntimeError):
     pass
 
 
-class Store(VideoChoices, DurableIntake, SharedAssets, Controls, OutboundStore):
+class Store(VideoChoices, DurableIntake, SharedAssets, Controls, OutboundStore, FollowStore):
     def __init__(self, root: Path, settings: Settings):
         self.root, self.settings = root, settings
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -68,6 +69,7 @@ class Store(VideoChoices, DurableIntake, SharedAssets, Controls, OutboundStore):
                 + ASSET_SCHEMA
                 + CONTROL_SCHEMA
                 + OUTBOUND_SCHEMA
+                + FOLLOW_SCHEMA
             )
             columns = {row[1] for row in db.execute("PRAGMA table_info(video_choices)")}
             if "prompt_started" not in columns:
@@ -565,4 +567,5 @@ class Store(VideoChoices, DurableIntake, SharedAssets, Controls, OutboundStore):
             "send_interval": self.settings.send_interval,
             "outbound_mode": self.get_meta("outbound_mode", "legacy"),
             "outbound": self.outbound_status(),
+            "follows": self.follow_status(),
         }

@@ -30,6 +30,8 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("status", help="查看队列、心跳、积压和暂停原因")
     commands.add_parser("pause", help="暂停收件、解析和回传")
     commands.add_parser("resume", help="处理异常后恢复工作流")
+    commands.add_parser("follow-pause", help="只暂停自动回关，保留媒体工作流")
+    commands.add_parser("follow-resume", help="恢复后续回关；未知结果仍只查询，不重发")
     jobs = commands.add_parser("jobs", help="查看任务编号和状态，不输出原始消息与地址")
     jobs.add_argument(
         "--state",
@@ -67,6 +69,9 @@ def account_lock(root: Path):
 
 
 async def run(store: Store, args) -> None:
+    if store.settings.auto_follow and (not args.send or args.pilot_current):
+        raise ValueError("自动回关仅可与 --all --send 一起启用")
+
     from playwright.async_api import async_playwright
 
     from qiuyuantu.convert import net, relay
@@ -150,6 +155,9 @@ def main() -> None:
     elif args.command == "resolve":
         store.resolve(args.job, args.decision, time.time())
         print(json.dumps({"resolved": True}))
+    elif args.command in {"follow-pause", "follow-resume"}:
+        store.set_meta("follow_paused", "operator" if args.command == "follow-pause" else "")
+        print(json.dumps({"follow_paused": args.command == "follow-pause"}))
     else:
         store.set_meta("paused", "operator" if args.command == "pause" else "")
         print(json.dumps({"paused": args.command == "pause"}))

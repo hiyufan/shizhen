@@ -12,6 +12,7 @@ from dataclasses import replace
 from .assets import AssetCoordinator, DependencyPending
 from .browser import BrowserUnavailable
 from .events import EventReader
+from .follows import FollowBack
 from .media import (
     Asset,
     Processor,
@@ -421,6 +422,10 @@ class Engine:
             await pipeline.install()
         await asyncio.to_thread(self.store.set_meta, "outbound_mode", "native" if pipeline else "legacy")
         loops = [self.collect_loop(), self.maintenance_loop()]
+        follow_enabled = self.settings.auto_follow and self.send_enabled and not self.scope
+        await asyncio.to_thread(self.store.set_meta, "follow_enabled", "1" if follow_enabled else "0")
+        if follow_enabled:
+            loops.append(FollowBack(self).loop())
         if self.events:
             loops.append(self.event_loop())
         if pipeline:
