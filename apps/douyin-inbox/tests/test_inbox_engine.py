@@ -1,5 +1,6 @@
 """收件数据边界、服务端回执和发送失败时的工作流。"""
 
+import asyncio
 import json
 import time
 from types import SimpleNamespace
@@ -115,6 +116,7 @@ def engine(tmp_path):
         open=AsyncMock(),
         guard=AsyncMock(),
         send=AsyncMock(return_value=["server-1"]),
+        cached_work_media=AsyncMock(return_value=None),
         work_media=AsyncMock(return_value=None),
     )
     result = Engine(store, browser, set(), True)
@@ -306,6 +308,66 @@ async def test_partial_conversation_round_preserves_catchup_flag(engine):
     assert not await engine.collect_once()
     assert engine.browser.collect.await_count == 10
     assert engine.store.get_meta("catchup_required") == "1"
+
+
+async def test_scan_releases_ui_between_conversations_for_waiting_sender(engine):
+    engine.browser.conversations = AsyncMock(
+        return_value=[{"id": name, "last_at": 0, "unread": 0} for name in ("first", "second")]
+    )
+    first_entered, release_first = asyncio.Event(), asyncio.Event()
+    order = []
+
+    async def collect(cid, since):
+        order.append(cid)
+        if cid == "first":
+            first_entered.set()
+            await release_first.wait()
+        return [], True
+
+    async def foreground():
+        async with engine.ui:
+            order.append("send")
+
+    engine.browser.collect = AsyncMock(side_effect=collect)
+    scanner = asyncio.create_task(engine.collect_once())
+    sender = None
+    try:
+        await asyncio.wait_for(first_entered.wait(), 1)
+        sender = asyncio.create_task(foreground())
+        await asyncio.sleep(0)
+        release_first.set()
+        assert await asyncio.wait_for(scanner, 1)
+        await asyncio.wait_for(sender, 1)
+        assert order == ["first", "send", "second"]
+    finally:
+        tasks = [scanner, *([sender] if sender else [])]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def test_pause_mid_scan_preserves_remaining_cursor_and_catchup(engine):
+    engine.browser.conversations = AsyncMock(
+        return_value=[{"id": name, "last_at": 0, "unread": 0} for name in ("first", "second")]
+    )
+
+    async def collect(cid, since):
+        engine.store.set_meta("paused", "operator")
+        return [], True
+
+    engine.browser.collect = AsyncMock(side_effect=collect)
+    assert not await engine.collect_once()
+    assert engine.browser.collect.await_count == 1
+    assert engine.store.cursor("first") > 1000 and engine.store.cursor("second") == 1000
+    assert engine.store.get_meta("catchup_required") == "1"
+
+
+async def test_scan_does_not_capture_or_advance_cursor_for_wrong_conversation(engine):
+    engine.browser.conversations = AsyncMock(return_value=[{"id": "chat", "last_at": 0, "unread": 0}])
+    engine.browser.collect = AsyncMock(return_value=([event(conversation="other")], True))
+    with pytest.raises(BrowserUnavailable, match="conversation_changed_during_read"):
+        await engine.collect_once()
+    assert engine.store.inbound() == [] and engine.store.cursor("chat") == 1000
 
 
 async def test_capture_filters_new_conversation_history_without_resetting_existing_chat(engine):

@@ -1,12 +1,16 @@
 """运行真实 JS 桥的离线契约，验证 detached 上传、回执与 SDK 内部重试围栏。"""
 
+import asyncio
 import json
 import shutil
 import subprocess
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
-from qiuyuantu_inbox.native_bridge import BRIDGE_JS
+from qiuyuantu_inbox.models import Settings
+from qiuyuantu_inbox.native_bridge import BRIDGE_JS, NativeBridge
 from qiuyuantu_inbox.native_live import CLIENT_JS, UPLOAD_JS
 from test_inbox_native_live import FIXTURE_JS
 
@@ -48,15 +52,17 @@ document.createElement = type => {
   return {setAttribute(name, value) {this.id = value;}, remove() {inputs.delete(this.id);}};
 };
 URL.createObjectURL = () => 'local'; URL.revokeObjectURL = () => {};
-const mock = (name, type, content) => ({name, ...mockFile(type, content)});
+const mock = (name, type, content) => ({name, size: content.length, ...mockFile(type, content)});
 const execute = async () => {
-  const base = {owner: 'owner', account: 'account', interval: 1, streams: 2, operation: 'install'};
+  const base = {owner: 'owner', account: 'account', interval: 1, streams: 2,
+    workers: 2, bytes: 100, operation: 'install'};
   const call = (operation, extra = {}) => bridgeOperation({...base, operation, ...extra});
   if (scenario === 'sealed') {
     const prototype = {sendMessage: sdk.sendMessage};
     delete sdk.sendMessage; Object.setPrototypeOf(sdk, prototype); Object.preventExtensions(sdk);
   }
   const state = installBridge(base);
+  if (scenario.startsWith('budget_')) return await budgetScenario(state, call, base);
   if (scenario === 'stream_cancel') {
     const first = {owner: base.owner, deadline: Date.now() + 1000};
     const second = {...first}, third = {...first};
@@ -73,6 +79,7 @@ const execute = async () => {
     : scenario === 'video' ? [mock('a.mp4', 'video/mp4', 'video')]
     : [mock('a.jpg', 'image/jpeg', 'image'), mock('a.mp4', 'video/mp4', 'video')];
   const upload = async id => {
+    await call('reserve', {ticket: id, timeout: 10000, part, bytes: files.reduce((sum, file) => sum + file.size, 0)});
     await call('attach', {ticket: id, timeout: 10000, part});
     inputs.get(id).files = files;
     return await call('upload', {ticket: id, part: {...part, client_id: id}});
@@ -99,6 +106,90 @@ const execute = async () => {
 };
 """
 
+BUDGET_FIXTURE = r"""
+const tick = () => new Promise(resolve => setTimeout(resolve, 1));
+const budgetScenario = async (state, call, base) => {
+  const reserve = (ticket, bytes, warm = false) => call('reserve', {ticket, bytes, warm, timeout: 10000,
+    part: {files: ['a.jpg'], md5: ['image-md5']}});
+  if (['budget_shared', 'budget_count'].includes(scenario)) {
+    const size = scenario === 'budget_shared' ? 50 : 1;
+    await reserve('warm', size, true);
+    await reserve('first', size);
+    let admitted = false;
+    const second = reserve('second', size).then(() => {admitted = true;});
+    await tick();
+    const before = {usage: uploadUsage(state), admitted};
+    const warmSkipped = !await reserve('extra-warm', 1, true);
+    await call('remove', {ticket: 'warm'});
+    await second;
+    return {before, after: uploadUsage(state), warmSkipped, created: counts.created};
+  }
+  if (['budget_queued_cancel', 'budget_queued_forget'].includes(scenario)) {
+    await reserve('first', 100);
+    const cancelled = reserve('cancelled', 50).catch(error => error.message);
+    if (scenario === 'budget_queued_forget') {
+      await call('forget', {client_id: 'cancelled', handle: 'cancelled'});
+    } else {
+      await call('remove', {ticket: 'cancelled'});
+    }
+    const error = await cancelled;
+    await call('remove', {ticket: 'first'});
+    await reserve('next', 100);
+    return {error, usage: uploadUsage(state), queued: state.uploadBudget.waiters.length};
+  }
+  if (scenario === 'budget_stream_priority') {
+    const ticket = warm => ({owner: base.owner, warm, deadline: Date.now() + 10000});
+    await acquireStream(state, ticket(false)); await acquireStream(state, ticket(false));
+    const order = [];
+    const warm = acquireStream(state, ticket(true)).then(() => order.push('warm'));
+    const formal = acquireStream(state, ticket(false)).then(() => order.push('formal'));
+    releaseStream(state); await formal; releaseStream(state); await warm;
+    releaseStream(state); releaseStream(state);
+    return {order, active: state.activeStreams};
+  }
+  return await runningBudgetScenario(state, call, base, reserve);
+};
+const runningBudgetScenario = async (state, call, base, reserve) => {
+  let release, started;
+  const began = new Promise(resolve => {started = resolve;});
+  const gate = new Promise(resolve => {release = resolve;});
+  const pair = scenario === 'budget_pair_failure';
+  Uploader.prototype.uploadImage = async () => {
+    if (pair) throw new Error('image_failed');
+    started(); await gate;
+    return JSON.stringify({md5: 'image-md5', aweType: 2702});
+  };
+  Uploader.prototype.uploadVideo = async () => {
+    started(); await gate;
+    return JSON.stringify({video: {md5: 'video-md5', tkey: 'private-video-key'}});
+  };
+  const part = {files: ['a.jpg'], md5: ['image-md5']};
+  const files = [mock('a.jpg', 'image/jpeg', 'image')];
+  if (pair) {
+    Object.assign(part, {files: ['a.jpg', 'a.mp4'], md5: ['image-md5', 'video-md5'], live_pair: true});
+    files.push(mock('a.mp4', 'video/mp4', 'video'));
+  }
+  await call('reserve', {ticket: 'warm', bytes: pair ? 10 : 5, warm: true, timeout: 10000, part});
+  await call('attach', {ticket: 'warm'});
+  inputs.get('warm').files = files;
+  const pending = call('upload', {ticket: 'warm'}).catch(error => error.message);
+  await began;
+  if (scenario === 'budget_restart') {
+    base.owner = 'new-owner'; await call('install');
+  } else if (!pair) {
+    await call('remove', {ticket: 'warm'});
+  }
+  let admitted = false;
+  const formal = reserve('formal', 100).then(() => {admitted = true;});
+  await tick();
+  const before = {usage: uploadUsage(state), admitted};
+  release();
+  const error = await pending;
+  await formal;
+  return {before, error, after: uploadUsage(state), inputs: inputs.size};
+};
+"""
+
 
 def run_bridge(scenario):
     node = shutil.which("node")
@@ -112,6 +203,7 @@ def run_bridge(scenario):
         + UPLOAD_JS
         + BRIDGE_JS
         + BRIDGE_FIXTURE
+        + BUDGET_FIXTURE
         + "execute().then(result=>console.log(JSON.stringify(result)),"
         + "error=>console.log(JSON.stringify({error:error.message,counts})));"
     )
@@ -175,3 +267,71 @@ def test_explicit_rate_limit_creates_account_cooldown():
 
 def test_cancelled_waiter_releases_physical_upload_slot():
     assert run_bridge("stream_cancel") == {"active": 0, "error": "outbound_upload_expired"}
+
+
+@pytest.mark.parametrize(("scenario", "size"), [("budget_shared", 100), ("budget_count", 2)])
+def test_warmup_and_formal_uploads_share_one_byte_and_worker_pool(scenario, size):
+    result = run_bridge(scenario)
+    assert result == {
+        "before": {"usage": {"count": 2, "bytes": size}, "admitted": False},
+        "after": {"count": 2, "bytes": size},
+        "warmSkipped": True,
+        "created": 0,
+    }
+
+
+@pytest.mark.parametrize("scenario", ["budget_cancel", "budget_restart", "budget_pair_failure"])
+def test_budget_is_held_until_actual_upload_finishes_even_after_cancel_or_owner_change(scenario):
+    result = run_bridge(scenario)
+    assert result["before"] == {"usage": {"count": 1, "bytes": 10 if "pair" in scenario else 5}, "admitted": False}
+    assert result["after"] == {"count": 1, "bytes": 100}
+    assert result["inputs"] == 0
+    assert result["error"] == ("image_failed" if "pair" in scenario else "outbound_upload_expired")
+
+
+@pytest.mark.parametrize("scenario", ["budget_queued_cancel", "budget_queued_forget"])
+def test_queued_cancellation_does_not_consume_budget_or_block_future_upload(scenario):
+    assert run_bridge(scenario) == {
+        "error": "outbound_upload_expired",
+        "usage": {"count": 1, "bytes": 100},
+        "queued": 0,
+    }
+
+
+def test_formal_stream_waiter_precedes_speculative_waiter():
+    assert run_bridge("budget_stream_priority") == {"order": ["formal", "warm"], "active": 0}
+
+
+async def test_budget_wait_and_file_handoff_share_one_upload_deadline(tmp_path):
+    file = tmp_path / "a.jpg"
+    file.write_bytes(b"image")
+
+    async def reserve(operation, **kwargs):
+        if operation == "reserve":
+            await asyncio.sleep(0.03)
+            return True
+        return None
+
+    async def handoff(_files):
+        await asyncio.sleep(0.03)
+
+    input_files = AsyncMock(side_effect=handoff)
+    page = SimpleNamespace(locator=lambda selector: SimpleNamespace(set_input_files=input_files))
+    bridge = NativeBridge(SimpleNamespace(page=page, settings=Settings(upload_timeout=0.05)), asyncio.Lock())
+    bridge.call = AsyncMock(side_effect=reserve)
+    with pytest.raises(asyncio.TimeoutError):
+        await bridge.upload({"token": "ticket", "client_id": "client", "payload": '{"files":["a.jpg"]}'}, [file])
+    operations = [call.args[0] for call in bridge.call.await_args_list]
+    assert operations[-1] == "remove" and "upload" not in operations
+    assert not bridge.ui.locked()
+
+
+async def test_warmup_skipped_by_shared_budget_never_hands_files_to_page(tmp_path):
+    file = tmp_path / "a.jpg"
+    file.write_bytes(b"image")
+    page = SimpleNamespace(locator=AsyncMock())
+    bridge = NativeBridge(SimpleNamespace(page=page, settings=Settings()), asyncio.Lock())
+    bridge.call = AsyncMock(return_value=False)
+    assert await bridge.warm({"files": ["a.jpg"]}, [file]) is None
+    assert [call.args[0] for call in bridge.call.await_args_list] == ["reserve", "remove"]
+    page.locator.assert_not_called()

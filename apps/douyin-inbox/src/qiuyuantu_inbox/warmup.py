@@ -34,9 +34,10 @@ class ChoiceWarmup:
 
     async def loop(self) -> None:
         while not self.engine.stopped.is_set():
+            version = self.engine.wakes.version("warmup")
             if await self.idle():
                 await self.once()
-            await self.engine.delay(1)
+            await self.engine.wakes.wait("warmup", version, 1)
 
     async def once(self) -> bool:
         for row in await asyncio.to_thread(self.store.warm_candidates, time.time()):
@@ -86,6 +87,8 @@ class ChoiceWarmup:
             result = await asyncio.wait_for(
                 self.pipeline.bridge.warm(part, files), timeout=self.settings.upload_timeout
             )
+            if not result:
+                return
             await self.measure(row, "choice_warmup_upload", time.monotonic() - started)
             await self.measure(row, "choice_warmup_stream", result.get("upload_seconds", 0))
 

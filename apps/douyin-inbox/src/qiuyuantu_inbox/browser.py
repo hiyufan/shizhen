@@ -146,6 +146,10 @@ class Browser:
     async def work_media(self, message) -> list[dict] | None:
         await self.open(message.conversation)
         await self.guard(message.conversation)
+        return await self.cached_work_media(message)
+
+    async def cached_work_media(self, message) -> list[dict] | None:
+        """只读 SDK 中对应会话的消息和已加载详情，不依赖当前聊天或草稿状态。"""
         return await read_work_media(
             self.page,
             {
@@ -156,6 +160,7 @@ class Browser:
                 "work_id": message.data["work_id"],
             },
             JS,
+            self.settings.connect_timeout,
         )
 
     async def back(self) -> None:

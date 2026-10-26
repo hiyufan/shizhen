@@ -131,17 +131,25 @@ class Processor:
             raise UnsupportedMedia("缓存文件已过期或无效")
         return result
 
-    async def describe(self, message: Message, assets: list[Asset] | None = None) -> dict:
+    async def describe_cached(self, message: Message) -> dict | None:
         key = content_key(message)
         cached = await asyncio.to_thread(self.store.artifact, key, 0)
-        if cached:
+        if not cached or not cached.get("files"):
+            return None
+        try:
             self.files(cached)
-            return {
-                "prepared": cached,
-                "artifact": key,
-                "assets": [],
-                "selectable": bool(cached.get("live_photo_count") or cached["files"][0].endswith(".mp4")),
-            }
+        except UnsupportedMedia:
+            return None
+        return {
+            "prepared": cached,
+            "artifact": key,
+            "assets": [],
+            "selectable": bool(cached.get("live_photo_count") or cached["files"][0].endswith(".mp4")),
+        }
+
+    async def describe(self, message: Message, assets: list[Asset] | None = None) -> dict:
+        if cached := await self.describe_cached(message):
+            return cached
         assets = assets if assets is not None else await self._urls(message)
         if not 1 <= len(assets) <= self.settings.max_files:
             raise UnsupportedMedia("素材数量超过限制")

@@ -36,9 +36,11 @@ class NativePipeline:
         return files
 
     async def plan_once(self) -> None:
-        for row in await asyncio.to_thread(self.store.retire_outbound):
+        retired = await asyncio.to_thread(self.store.retire_outbound)
+        for row in retired:
             await self.bridge.forget(row | {"handle": row["handle"] or row["token"]})
-        for row in await asyncio.to_thread(self.store.unplanned_outbound, self.engine.scope):
+        pending = await asyncio.to_thread(self.store.unplanned_outbound, self.engine.scope)
+        for row in pending:
             try:
                 files = await self.files(json.loads(row["payload"]))
                 size = sum(file.stat().st_size for file in files)
@@ -47,12 +49,15 @@ class NativePipeline:
                 await asyncio.to_thread(self.store.plan_outbound, row, size, time.time())
             except (UnsupportedMedia, OSError, ValueError):
                 await asyncio.to_thread(self.store.fail_outbound_plan, row, time.time())
+        if retired or pending:
+            self.engine.wakes.notify("upload", "dispatch", "warmup")
 
     async def plan_loop(self) -> None:
         while not self.engine.stopped.is_set():
+            version = self.engine.wakes.version("plan")
             if not await self.engine.paused():
                 await self.plan_once()
-            await self.engine.delay(0.5)
+            await self.engine.wakes.wait("plan", version, 0.5)
 
     async def upload_once(self) -> bool:
         row = await asyncio.to_thread(self.store.claim_upload, time.time(), self.engine.scope)
@@ -80,17 +85,21 @@ class NativePipeline:
             log.warning(
                 "inbox preupload failed: job=%s reason=%s", row["job"][:12], reason[0] if reason else type(exc).__name__
             )
+        finally:
+            self.engine.wakes.notify("upload", "dispatch", "warmup")
         return True
 
     async def upload_loop(self) -> None:
         while not self.engine.stopped.is_set():
+            version = self.engine.wakes.version("upload")
             if await self.engine.paused() or not await self.upload_once():
-                await self.engine.delay(0.5)
+                await self.engine.wakes.wait("upload", version, 0.5)
 
     async def finish_job(self, job: dict) -> None:
         parts = await asyncio.to_thread(self.store.parts, job)
         state = "ready" if any(part["state"] != "sent" for part in parts) else "sent"
         await asyncio.to_thread(self.store.finish, job, state, time.time())
+        self.engine.wakes.notify("events", "plan", "upload", "dispatch", "warmup")
 
     async def fallback(self, job: dict, row: dict, part: dict) -> None:
         # 原生相册转发复用已验证的 UI 路径；窗口排空后执行，不与 detached 提交交叉。
@@ -141,24 +150,34 @@ class NativePipeline:
         return True
 
     async def submit(self, job: dict, row: dict, payload: dict) -> None:
+        waiting = time.monotonic()
         async with self.engine.ui:
+            ui_wait = time.monotonic() - waiting
             if await self.engine.paused():
                 await asyncio.to_thread(self.store.finish, job, "ready", time.time())
                 return
+            opening = time.monotonic()
             await self.browser.open(job["conversation"])
             await self.browser.guard(job["conversation"])
+            conversation_open = time.monotonic() - opening
             await asyncio.to_thread(self.store.begin_outbound, job, row, time.time())
             started = time.monotonic()
             await asyncio.wait_for(self.bridge.submit(job, row, payload), timeout=self.settings.connect_timeout)
             elapsed = time.monotonic() - started
         await asyncio.to_thread(self.store.charge_dispatch, job, payload, elapsed)
-        await asyncio.to_thread(self.store.outbound_measure, row, {"ui_submit": elapsed}, time.time())
+        await asyncio.to_thread(
+            self.store.outbound_measure,
+            row,
+            {"ui_submit": elapsed, "ui_wait": ui_wait, "conversation_open": conversation_open},
+            time.time(),
+        )
         self.inflight[row["client_id"]] = {
             "job": job,
             "row": row,
             "payload": payload,
             "started": time.time(),
         }
+        self.engine.wakes.notify("observe")
 
     async def delivery_failure(self, job: dict, exc: Exception) -> None:
         parts = await asyncio.to_thread(self.store.parts, job)
@@ -170,8 +189,9 @@ class NativePipeline:
 
     async def dispatch_loop(self) -> None:
         while not self.engine.stopped.is_set():
+            version = self.engine.wakes.version("dispatch")
             if await self.engine.paused() or not await self.dispatch_once():
-                await self.engine.delay(0.25)
+                await self.engine.wakes.wait("dispatch", version, 0.25)
 
     async def accept_receipt(self, entry: dict, observed: dict) -> bool:
         job, row, part = entry["job"], entry["row"], entry["payload"]
@@ -229,13 +249,14 @@ class NativePipeline:
 
     async def observe_loop(self) -> None:
         while not self.engine.stopped.is_set():
+            version = self.engine.wakes.version("observe")
             try:
                 await self.observe_once()
             except Exception as exc:
                 for entry in list(self.inflight.values()):
                     await self.delivery_failure(entry["job"], exc)
                 self.inflight.clear()
-            await self.engine.delay(0.25)
+            await self.engine.wakes.wait("observe", version, 0.25)
 
     async def close(self) -> None:
         with contextlib.suppress(Exception):

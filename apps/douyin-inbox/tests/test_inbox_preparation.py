@@ -9,7 +9,7 @@ import pytest
 
 from qiuyuantu_inbox.engine import Engine
 from qiuyuantu_inbox.media import Asset
-from qiuyuantu_inbox.models import Message, Settings
+from qiuyuantu_inbox.models import Message, Settings, content_key
 from qiuyuantu_inbox.store import Store
 
 
@@ -18,6 +18,7 @@ def engine(tmp_path):
     store = Store(tmp_path / "queue", Settings(send_interval=0.001))
     store.bind("account", 1000)
     browser = SimpleNamespace(
+        cached_work_media=AsyncMock(return_value=None),
         work_media=AsyncMock(return_value=None),
         open=AsyncMock(),
         guard=AsyncMock(),
@@ -86,3 +87,86 @@ async def test_shared_download_waiter_releases_worker_for_another_user(engine):
     release.set()
     await owner
     assert engine.store.status()["counts"] == {"ready": 2, "queued": 1}
+
+
+def work_job(engine):
+    message = Message("source", "chat", "sender", time.time(), "work", {"work_id": "123", "live": True})
+    engine.store.ingest(message)
+    return message, engine.store.claim("queued", time.time())
+
+
+def live_snapshot():
+    return [{"url": "https://p9.douyinpic.com/a", "video": "https://v3.douyinvod.com/a.mp4", "live": True}]
+
+
+async def test_client_cache_identifies_live_without_waiting_for_busy_ui_or_downloading(engine):
+    message, job = work_job(engine)
+    engine.browser.cached_work_media.return_value = live_snapshot()
+    engine.processor._urls = AsyncMock(side_effect=AssertionError("不得重新解析"))
+    engine.processor.prepare = AsyncMock(side_effect=AssertionError("选择前不得下载"))
+    await engine.ui.acquire()
+    try:
+        _, parts = await asyncio.wait_for(engine.prepare_message(job, message), 1)
+    finally:
+        engine.ui.release()
+    source = parts[0]["offer_video"]
+    assert source["live_photo_count"] == 1 and source["metadata_only"]
+    assert [asset["video"] for asset in source["assets"]] == [False, True]
+    engine.browser.work_media.assert_not_awaited()
+    engine.processor._urls.assert_not_awaited()
+    engine.processor.prepare.assert_not_awaited()
+    with engine.store.connect() as db:
+        phases = dict(db.execute("SELECT phase,seconds FROM timings WHERE job=?", (job["id"],)))
+    assert {"source_local_cache", "source_client_cache", "source_metadata"} <= phases.keys()
+    assert "source_ui_wait" not in phases and "source_parser" not in phases
+
+
+async def test_local_artifact_is_used_before_browser_or_parser_even_with_busy_ui(engine):
+    message, job = work_job(engine)
+    key = content_key(message)
+    directory = engine.processor.root / key
+    directory.mkdir()
+    file = directory / "source.mp4"
+    file.write_bytes(b"video")
+    manifest = {"files": [str(file.relative_to(engine.store.root))], "md5": ["digest"], "details": [{}]}
+    engine.store.cache(key, manifest, 5, time.time())
+    engine.processor._urls = AsyncMock(side_effect=AssertionError("不得重新解析"))
+    await engine.ui.acquire()
+    try:
+        _, parts = await asyncio.wait_for(engine.prepare_message(job, message), 1)
+    finally:
+        engine.ui.release()
+    assert parts == [{"offer_video": manifest}]
+    engine.browser.cached_work_media.assert_not_awaited()
+    engine.browser.work_media.assert_not_awaited()
+    engine.processor._urls.assert_not_awaited()
+
+
+async def test_passive_cache_miss_falls_back_under_ui_lock(engine):
+    message, job = work_job(engine)
+
+    async def read(_message):
+        assert engine.ui.locked()
+        return live_snapshot()
+
+    engine.browser.work_media.side_effect = read
+    engine.processor._urls = AsyncMock(side_effect=AssertionError("已取得客户端详情"))
+    _, parts = await engine.prepare_message(job, message)
+    assert parts[0]["offer_video"]["live_photo_count"] == 1
+    engine.browser.cached_work_media.assert_awaited_once()
+    engine.browser.work_media.assert_awaited_once()
+    with engine.store.connect() as db:
+        phases = dict(db.execute("SELECT phase,seconds FROM timings WHERE job=?", (job["id"],)))
+    assert "source_ui_wait" in phases and "source_ui_read" in phases
+
+
+async def test_missing_local_file_and_invalid_page_url_still_use_safe_parser_fallback(engine):
+    message, job = work_job(engine)
+    key = content_key(message)
+    engine.store.cache(key, {"files": [f"artifacts/{key}/deleted.mp4"]}, 1, time.time())
+    engine.browser.cached_work_media.return_value = [{"url": "http://127.0.0.1/private"}]
+    engine.processor._urls = AsyncMock(return_value=[Asset("https://v3.douyinvod.com/a.mp4", video=True)])
+    _, parts = await engine.prepare_message(job, message)
+    assert parts[0]["offer_video"]["selectable"]
+    engine.processor._urls.assert_awaited_once()
+    engine.browser.work_media.assert_awaited_once()

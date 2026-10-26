@@ -37,12 +37,13 @@ def test_cached_media_retains_pairing_and_file_limit():
 
 SOURCE_FIXTURE = r"""
 const scenario = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-const args = {message: 'message', conversation: 'chat', sender: 'sender', account: 'account', work_id: '123'};
+const cid = '0:1:100:200';
+const args = {message: 'message', conversation: cid, sender: '200', account: '100', work_id: '123'};
 const card = {itemId: '123', image_count: 1, is_live_photo: 1};
 const image = {url_list: ['https://p9.douyinpic.com/image'], live_photo_type: 1,
   download_url_list: ['https://p9.douyinpic.com/watermarked'],
   video: {play_addr: {url_list: ['https://v3.douyinvod.com/live.mp4']}}};
-const source = {serverId: 'message', conversationId: 'chat', sender: 'sender', type: 77};
+const source = {serverId: 'message', conversationId: cid, sender: '200', type: 77};
 const detail = {aweme_id: '123', images: [image], authentication_token: 'must-stay-in-page'};
 const cached = {detail, filted: false};
 if (scenario === 'sender') source.sender = 'other';
@@ -51,10 +52,16 @@ if (scenario === 'wrong_work') detail.aweme_id = '456';
 if (scenario === 'partial') card.image_count = 2;
 if (scenario === 'missing_video') delete image.video;
 if (scenario === 'filtered') cached.filted = true;
+if (scenario === 'message') source.serverId = 'other';
+if (scenario === 'own') {source.sender = '100';args.sender = '100';}
+if (scenario === 'card_work') card.itemId = '456';
+if (scenario === 'actor') args.conversation = source.conversationId = '0:1:100:300';
+if (scenario === 'malformed') args.conversation = source.conversationId = 'malformed';
 if (scenario === 'formats') image.url_list = ['https://p9.douyinpic.com/image.webp',
   'https://p9.douyinpic.com/image.jpg?signature=kept'];
 if (scenario.startsWith('video')) {
   source.type = 8;
+  card.is_live_photo = scenario === 'video_live_card' ? 1 : 0;
   delete detail.images;
   detail.desc = '视频标题';
   detail.video = {play_addr: {url_list: ['https://v3.douyinvod.com/source.mp4']}};
@@ -62,15 +69,37 @@ if (scenario.startsWith('video')) {
   if (scenario === 'video_missing') delete detail.video;
 }
 source.content = JSON.stringify(card);
-const sdk = {getConversationMessages: () => [source]};
-const app = {store: {awemeStore: {awemeDetailMap: new Map([['123', cached]])}}};
-const nativeContext = () => ({app, sdk, target: {}});
-const element = {};
+const sdk = {getConversationMessages: () => [source], getConversation: () => ({
+  id: scenario === 'target' ? 'other' : args.conversation, type: scenario === 'group' ? 2 : 1})};
+const app = {store: {awemeStore: {awemeDetailMap: new Map([['123', cached]])},
+  usersInfoStore: {curLoginUserInfo: {uid: scenario === 'account' ? 'other' : '100'}}},
+  imSdkService: {imSdkManager: {getImSdkInstance: () => sdk}}};
+const pageClient = () => app;
+const nativeContext = () => {throw Error('must_not_depend_on_active_chat_or_draft');};
+const element = scenario === 'missing_element' ? null : {};
 """
 
 
 @pytest.mark.parametrize(
-    "scenario", ["success", "formats", "sender", "conversation", "wrong_work", "partial", "missing_video", "filtered"]
+    "scenario",
+    [
+        "success",
+        "formats",
+        "sender",
+        "conversation",
+        "wrong_work",
+        "partial",
+        "missing_video",
+        "filtered",
+        "message",
+        "own",
+        "card_work",
+        "actor",
+        "malformed",
+        "target",
+        "group",
+        "missing_element",
+    ],
 )
 def test_cached_work_read_is_bound_to_the_received_source(scenario):
     node = shutil.which("node")
@@ -92,7 +121,18 @@ def test_cached_work_read_is_bound_to_the_received_source(scenario):
         assert json.loads(result.stdout) is None
 
 
-@pytest.mark.parametrize("scenario", ["video", "video_slides", "video_missing"])
+def test_passive_cache_read_rejects_changed_login_account():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("需要 Node.js")
+    script = SOURCE_FIXTURE + "try {(()=>{" + SOURCE_JS + "})();} catch(error) {console.log(error.message);}"
+    result = subprocess.run(
+        [node, "-e", script], input='"account"', text=True, capture_output=True, check=True, timeout=10
+    )
+    assert result.stdout.strip() == "work_account_changed"
+
+
+@pytest.mark.parametrize("scenario", ["video", "video_slides", "video_missing", "video_live_card"])
 def test_cached_ordinary_video_never_substitutes_for_missing_slides(scenario):
     node = shutil.which("node")
     if not node:

@@ -6,13 +6,13 @@ import shutil
 import subprocess
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from qiuyuantu_inbox.browser import JS
 from qiuyuantu_inbox.engine import Engine
-from qiuyuantu_inbox.events import EVENT_JS
+from qiuyuantu_inbox.events import EVENT_JS, EventReader
 from qiuyuantu_inbox.models import Message, Settings
 from qiuyuantu_inbox.store import Store
 
@@ -159,3 +159,65 @@ async def test_event_intake_continues_while_browser_is_busy_and_never_acks_faile
         engine.ui.release()
     events.ack.assert_awaited_once()
     assert store.status()["counts"] == {"queued": 1}
+
+
+async def test_binding_checks_source_owner_and_generation_and_stops_on_close():
+    page = SimpleNamespace(expose_binding=AsyncMock(), evaluate=AsyncMock(return_value={"generation": "g"}))
+    browser = SimpleNamespace(page=page, account="100", settings=Settings())
+    wake = Mock()
+    events = EventReader(browser, wake)
+    await events.install(set())
+    callback = page.expose_binding.await_args.args[1]
+    hint = {"owner": events.owner, "generation": "g", "sequence": 1, "gaps": 0}
+    callback({"page": object()}, hint)
+    callback({"page": page}, hint | {"owner": "old"})
+    callback({"page": page}, hint | {"generation": "old-page"})
+    callback({"page": page}, None)
+    wake.assert_not_called()
+    callback({"page": page}, hint)
+    wake.assert_called_once()
+    await events.install(set())
+    assert page.expose_binding.await_count == 1
+    await events.close()
+    callback({"page": page}, hint)
+    wake.assert_called_once()
+
+
+async def test_binding_failure_keeps_event_polling_usable():
+    page = SimpleNamespace(
+        expose_binding=AsyncMock(side_effect=RuntimeError()),
+        evaluate=AsyncMock(return_value={"generation": "g", "gaps": 0, "rows": []}),
+    )
+    browser = SimpleNamespace(page=page, account="100", settings=Settings())
+    reader = EventReader(browser, Mock())
+    assert (await reader.install(set()))["generation"] == "g"
+    assert page.evaluate.await_args.args[1]["binding"] == ""
+    assert await reader.read() == {"generation": "g", "gaps": 0, "rows": []}
+
+
+def test_page_burst_coalesces_hint_and_preserves_unacknowledged_rows_after_restart():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("需要 Node.js")
+    script = (
+        FIXTURE + JS + "const call=()=>{" + EVENT_JS + "}; (async()=>{"
+        "const hints=[]; args.binding='wake-one'; args.limit=100;"
+        "window['wake-one']=async hint=>hints.push(hint);args.batch=10;call();"
+        "for(let i=0;i<20;i++)callbacks.ReceiveNewMessage.forEach(fn=>fn(new Source()));"
+        "await new Promise(resolve=>setTimeout(resolve,40));"
+        "args.operation='install';args.owner='two';args.binding='wake-two';"
+        "window['wake-two']=async hint=>hints.push(hint);const after=call();"
+        "callbacks.ReceiveNewMessage.forEach(fn=>fn(new Source()));"
+        "await new Promise(resolve=>setTimeout(resolve,40));"
+        "console.log(JSON.stringify({hints,rows:after.rows.length,more:after.more,oldBinding:!!window['wake-one'],"
+        "listeners:callbacks.ReceiveNewMessage.length}));})();"
+    )
+    result = subprocess.run(
+        [node, "-e", script], input='"success"', text=True, capture_output=True, check=True, timeout=10
+    )
+    output = json.loads(result.stdout)
+    assert output["rows"] == 10 and output["more"] and not output["oldBinding"] and output["listeners"] == 1
+    assert len(output["hints"]) == 2
+    assert [hint["owner"] for hint in output["hints"]] == ["one", "two"]
+    assert [hint["sequence"] for hint in output["hints"]] == [20, 21]
+    assert all(set(hint) == {"owner", "generation", "sequence", "gaps"} for hint in output["hints"])

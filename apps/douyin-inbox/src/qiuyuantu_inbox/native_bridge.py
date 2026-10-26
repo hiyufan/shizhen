@@ -9,8 +9,11 @@ import uuid
 from pathlib import Path
 
 from .native_live import CLIENT_JS, UPLOAD_JS
+from .upload_budget import BUDGET_JS
 
-BRIDGE_JS = r"""
+BRIDGE_JS = (
+    BUDGET_JS
+    + r"""
 const bridgeSymbol = Symbol.for('qiuyuantu.inbox.outbound.v1');
 const accountOf = app => String(app?.store?.usersInfoStore?.curLoginUserInfo?.uid || '');
 const bridgeAccount = state => {
@@ -114,7 +117,7 @@ const installReceiptListeners = state => {
 };
 const retireOwner = (state, args) => {
   if (state.owner && state.owner !== args.owner) {
-    for (const ticket of state.uploads.values()) ticket.cancelled = true;
+    for (const id of state.uploads.keys()) removeUpload(state, {ticket: id});
     state.uploads.clear();
     for (const entry of state.entries.values()) entry.retired = true;
   }
@@ -147,12 +150,17 @@ const installBridge = args => {
   if (state && state.account !== args.account) throw new Error('outbound_account_changed');
   if (!state) {state = newBridge(args); window[bridgeSymbol] = state;}
   bridgeAccount(state);
+  if (!state.uploadBudget) {
+    // 从旧桥升级时必须先排空旧上传；新桥的预算可跨 Python 所有者交接保留。
+    if (state.activeStreams || state.waiters.length) throw new Error('outbound_previous_uploads_active');
+    state.uploadBudget = {active: new Set(), waiters: []};
+  }
   retireOwner(state, args);
   installReceiptListeners(state);
   installWire(state);
   Object.assign(state, {owner: args.owner, closed: false, interval: args.interval,
     streamLimit: args.streams, nextSubmit: Math.max(state.nextSubmit, args.next_submit || 0),
-    cooldown: Math.max(state.cooldown, args.cooldown || 0)});
+    cooldown: Math.max(state.cooldown, args.cooldown || 0), uploadLimit: args.workers, uploadBytes: args.bytes});
   return state;
 };
 const acquireStream = async (state, ticket) => {
@@ -164,6 +172,7 @@ const acquireStream = async (state, ticket) => {
 };
 const releaseStream = state => {
   state.activeStreams--;
+  state.waiters.sort((left, right) => Number(!!left.ticket.warm) - Number(!!right.ticket.warm));
   while (state.waiters.length) {
     const next = state.waiters.shift();
     if (next.ticket.cancelled || next.ticket.owner !== state.owner || Date.now() > next.ticket.deadline) {
@@ -240,8 +249,11 @@ const uploadFile = async (state, ticket, file, uploader, poster) => {
 };
 const uploadContent = async (state, ticket, files, args) => {
   const uploader = await pageUploader(state.app, args, () => bridgeTicket(state, ticket));
-  const contents = await Promise.all(files.map(file => uploadFile(state, ticket, file, uploader,
+  const results = await Promise.allSettled(files.map(file => uploadFile(state, ticket, file, uploader,
     ticket.part.live_pair && file.type === 'video/mp4' ? files[0] : null)));
+  const failed = results.find(result => result.status === 'rejected');
+  if (failed) throw failed.reason;
+  const contents = results.map(result => result.value);
   const digest = content => content.md5 || content.video?.md5 || '';
   if (contents.some((content, index) => digest(content) !== ticket.part.md5[index])) {
     throw new Error('outbound_uploaded_digest_changed');
@@ -264,12 +276,15 @@ const singleResource = (contents, part, file) => {
   return {type: 27, content: contents[0]};
 };
 const attachUpload = (state, args) => {
-  if (state.uploads.has(args.ticket)) throw new Error('outbound_upload_already_attached');
+  const ticket = state.uploads.get(args.ticket);
+  if (!ticket || !state.uploadBudget.active.has(ticket)) throw new Error('outbound_upload_not_reserved');
+  bridgeTicket(state, ticket);
+  if (document.querySelector('[data-qyt-outbound-upload="' + args.ticket + '"]')) {
+    throw new Error('outbound_upload_already_attached');
+  }
   const input = document.createElement('input');
   input.type = 'file'; input.multiple = true; input.hidden = true;
   input.setAttribute('data-qyt-outbound-upload', args.ticket); document.body.append(input);
-  state.uploads.set(args.ticket, {owner: args.owner, deadline: Date.now() + args.timeout,
-    part: args.part, cacheHits: 0, uploadSeconds: 0});
 };
 const prepareUpload = async (state, args) => {
   const ticket = state.uploads.get(args.ticket);
@@ -279,17 +294,27 @@ const prepareUpload = async (state, args) => {
   const files = Array.from(input?.files || []);
   const expected = ticket.part.live_pair ? 2 : 1;
   if (files.length !== expected) throw new Error('outbound_files_changed');
-  const resource = await uploadContent(state, ticket, files, args);
-  bridgeTicket(state, ticket);
-  ticket.resource = resource;
-  ticket.deadline = Date.now() + 3600000;
-  return {handle: args.ticket, generation: state.generation,
-    upload_seconds: ticket.uploadSeconds, cache_hits: ticket.cacheHits};
+  if (files.reduce((sum, file) => sum + file.size, 0) !== ticket.bytes) {
+    throw new Error('outbound_file_size_changed');
+  }
+  if (ticket.running) throw new Error('outbound_upload_already_running');
+  ticket.running = true;
+  try {
+    ticket.resource = await uploadContent(state, ticket, files, args);
+    bridgeTicket(state, ticket);
+    ticket.deadline = Date.now() + 3600000;
+    return {handle: args.ticket, generation: state.generation,
+      upload_seconds: ticket.uploadSeconds, cache_hits: ticket.cacheHits};
+  } finally {
+    ticket.running = false;
+    document.querySelector('[data-qyt-outbound-upload="' + args.ticket + '"]')?.remove();
+    releaseUploadBudget(state, ticket);
+  }
 };
 const removeUpload = (state, args) => {
   document.querySelector('[data-qyt-outbound-upload="' + args.ticket + '"]')?.remove();
   const ticket = state.uploads.get(args.ticket);
-  if (ticket && !ticket.resource) {ticket.cancelled = true; state.uploads.delete(args.ticket);}
+  if (ticket && !ticket.resource) {cancelUpload(state, ticket); state.uploads.delete(args.ticket);}
 };
 const readyResource = (state, args) => {
   const ticket = state.uploads.get(args.handle);
@@ -352,11 +377,14 @@ const forgetEntry = (state, args) => {
   const entry = state.entries.get(args.client_id);
   if (entry && !entry.finished) {entry.retired = true; return;}
   state.entries.delete(args.client_id);
-  if (args.handle) state.uploads.delete(args.handle);
+  if (args.handle) {
+    removeUpload(state, {ticket: args.handle});
+    state.uploads.delete(args.handle);
+  }
 };
 const closeBridge = state => {
   state.closed = true;
-  for (const ticket of state.uploads.values()) if (!ticket.resource) ticket.cancelled = true;
+  for (const id of state.uploads.keys()) removeUpload(state, {ticket: id});
   // 保留围栏：已退出的 manager 可能继续内部重试，不能恢复裸 SDK 后让重试绕过提交预算。
   // 未登记的人工 / 旧流程消息仍直接交给原 SDK。
 
@@ -367,6 +395,7 @@ const bridgeOperation = async args => {
   bridgeOwner(state, args);
   const operations = {
     install: () => ({generation: state.generation}),
+    reserve: () => reserveUpload(state, args),
     attach: () => attachUpload(state, args),
     upload: () => prepareUpload(state, args),
     remove: () => removeUpload(state, args),
@@ -380,6 +409,7 @@ const bridgeOperation = async args => {
   return await operations[args.operation]();
 };
 """
+)
 
 
 class NativeBridge:
@@ -399,35 +429,47 @@ class NativeBridge:
         await self.call(
             "install",
             streams=self.browser.settings.upload_streams,
+            workers=self.browser.settings.upload_workers,
+            bytes=self.browser.settings.upload_bytes,
             interval=self.browser.settings.send_interval * 1000,
             next_submit=next_submit * 1000,
             cooldown=cooldown * 1000,
         )
         self.installed = True
 
-    async def upload(self, row: dict, files: list[Path]) -> dict:
+    async def upload(self, row: dict, files: list[Path]) -> dict | None:
         part = json.loads(row["payload"])
         args = {
             "ticket": row["token"],
             "part": part | {"client_id": row["client_id"]},
             "timeout": self.browser.settings.upload_timeout * 1000,
+            "bytes": sum(path.stat().st_size for path in files),
+            "warm": row.get("warm", False),
         }
         try:
-            async with self.ui:
-                await self.call("attach", **args)
-                await self.browser.page.locator(f'[data-qyt-outbound-upload="{row["token"]}"]').set_input_files(
-                    [str(path) for path in files]
-                )
-            return await asyncio.wait_for(self.call("upload", **args), timeout=self.browser.settings.upload_timeout)
+            return await asyncio.wait_for(
+                self.handoff_upload(args, files), timeout=self.browser.settings.upload_timeout
+            )
         finally:
             with contextlib.suppress(Exception):
-                await self.call("remove", **args)
+                await asyncio.wait_for(self.call("remove", **args), timeout=self.browser.settings.connect_timeout)
 
-    async def warm(self, part: dict, files: list[Path]) -> dict:
+    async def handoff_upload(self, args: dict, files: list[Path]) -> dict | None:
+        if not await self.call("reserve", **args):
+            return None
+        async with self.ui:
+            await self.call("attach", **args)
+            await self.browser.page.locator(f'[data-qyt-outbound-upload="{args["ticket"]}"]').set_input_files(
+                [str(path) for path in files]
+            )
+        return await self.call("upload", **args)
+
+    async def warm(self, part: dict, files: list[Path]) -> dict | None:
         """只把文件传进页面资源缓存：不留句柄、不创建消息。之后同内容的正式上传按内容摘要直接复用。"""
-        row = {"token": uuid.uuid4().hex, "client_id": str(uuid.uuid4()), "payload": json.dumps(part)}
+        row = {"token": uuid.uuid4().hex, "client_id": str(uuid.uuid4()), "payload": json.dumps(part), "warm": True}
         result = await self.upload(row, files)
-        await self.call("forget", client_id=row["client_id"], handle=result["handle"])
+        if result:
+            await self.call("forget", client_id=row["client_id"], handle=result["handle"])
         return result
 
     async def ready(self, row: dict) -> bool:

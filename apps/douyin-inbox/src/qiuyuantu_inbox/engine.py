@@ -26,6 +26,7 @@ from .models import Message, content_key, message_from_snapshot
 from .pipeline import NativePipeline
 from .store import Store
 from .video_gif import gif_key, native_video_key
+from .wakeups import Wakeups
 from .warmup import ChoiceWarmup
 
 log = logging.getLogger(__name__)
@@ -40,8 +41,14 @@ class Engine:
         self.assets = AssetCoordinator(store)
         self.ui = asyncio.Lock()
         self.stopped = asyncio.Event()
-        self.events = EventReader(browser) if getattr(browser, "page", None) is not None else None
+        self.wakes = Wakeups()
+        self.events = (
+            EventReader(browser, lambda: self.wakes.notify("events"))
+            if getattr(browser, "page", None) is not None
+            else None
+        )
         self.event_receive_written = 0.0
+        self.event_gap_seen = None
 
     async def delay(self, seconds: float) -> None:
         with contextlib.suppress(asyncio.TimeoutError):
@@ -58,29 +65,37 @@ class Engine:
     async def collect_once(self) -> bool:
         async with self.ui:
             conversations = await self.browser.conversations()
-            candidates = []
-            catchup_required = not getattr(self.browser, "conversation_scan_complete", True)
-            for item in conversations:
-                if self.scope and item["id"] not in self.scope:
-                    continue
-                cursor = await asyncio.to_thread(self.store.cursor, item["id"])
-                # 网页重启后的懒加载会话可能尚无 lastMessage；不能把未知时间当成没有新消息。
-                if not item["last_at"] or item["last_at"] >= cursor or item["unread"]:
-                    candidates.append((cursor, item))
-            catchup_required = catchup_required or len(candidates) > self.settings.conversations_per_poll
-            for cursor, item in sorted(candidates, key=lambda pair: pair[0])[: self.settings.conversations_per_poll]:
-                started = time.time()
+        candidates, catchup_required = await self.collect_candidates(conversations)
+        for cursor, item in sorted(candidates, key=lambda pair: pair[0])[: self.settings.conversations_per_poll]:
+            if self.stopped.is_set() or await self.paused():
+                catchup_required = True
+                break
+            started = time.time()
+            # 每个会话独立占用界面；数据库处理在锁外，让已等候的发送者先取得下一个界面时段。
+            async with self.ui:
                 rows, complete = await self.browser.collect(item["id"], cursor - 60)
-                if any(raw["conversation"] != item["id"] for raw in rows):
-                    raise BrowserUnavailable("conversation_changed_during_read")
-                await self.capture_rows(rows)
-                if complete:
-                    await asyncio.to_thread(self.store.checkpoint, item["id"], max(cursor, started - 60))
-                else:
-                    catchup_required = True
-            await asyncio.to_thread(self.store.set_meta, "catchup_required", "1" if catchup_required else "")
-            await asyncio.to_thread(self.store.set_meta, "last_receive", str(time.time()))
-            return not catchup_required
+            if any(raw["conversation"] != item["id"] for raw in rows):
+                raise BrowserUnavailable("conversation_changed_during_read")
+            await self.capture_rows(rows)
+            if complete:
+                await asyncio.to_thread(self.store.checkpoint, item["id"], max(cursor, started - 60))
+            else:
+                catchup_required = True
+        await asyncio.to_thread(self.store.set_meta, "catchup_required", "1" if catchup_required else "")
+        await asyncio.to_thread(self.store.set_meta, "last_receive", str(time.time()))
+        return not catchup_required
+
+    async def collect_candidates(self, conversations: list[dict]) -> tuple[list, bool]:
+        candidates = []
+        for item in conversations:
+            if self.scope and item["id"] not in self.scope:
+                continue
+            cursor = await asyncio.to_thread(self.store.cursor, item["id"])
+            # 网页重启后的懒加载会话可能尚无 lastMessage；不能把未知时间当成没有新消息。
+            if not item["last_at"] or item["last_at"] >= cursor or item["unread"]:
+                candidates.append((cursor, item))
+        incomplete = not getattr(self.browser, "conversation_scan_complete", True)
+        return candidates, incomplete or len(candidates) > self.settings.conversations_per_poll
 
     async def capture_rows(self, rows: list[dict]) -> None:
         messages = []
@@ -98,8 +113,11 @@ class Engine:
             await self.consume_inbound()
 
     async def consume_inbound(self) -> None:
-        for event in await asyncio.to_thread(self.store.inbound):
+        events = await asyncio.to_thread(self.store.inbound)
+        for event in events:
             await asyncio.to_thread(self.store.handle_inbound, event, time.time())
+        if events:
+            self.wakes.notify("prepare", "plan", "dispatch")
 
     async def event_once(self) -> dict:
         try:
@@ -109,7 +127,13 @@ class Engine:
             await asyncio.to_thread(self.store.set_meta, "event_gap", "1")
         await self.capture_rows([item["row"] for item in batch["rows"]])
         await self.events.ack(batch)
-        # 事件每秒轮询一次；空批次只做状态展示用的心跳，降频写入，有消息时立即记录。
+        if batch.get("more"):
+            self.wakes.notify("events")
+        gap = (batch["generation"], batch["gaps"])
+        if batch["gaps"] and gap != self.event_gap_seen:
+            self.wakes.notify("collect")
+        self.event_gap_seen = gap
+        # 事件提示主动唤醒，轮询兜底；空批次的展示心跳降频写入，有消息时立即记录。
         if batch["rows"] or time.monotonic() - self.event_receive_written >= EVENT_RECEIVE_HEARTBEAT:
             await asyncio.to_thread(self.store.set_meta, "last_event_receive", str(time.time()))
             self.event_receive_written = time.monotonic()
@@ -118,6 +142,7 @@ class Engine:
     async def event_loop(self) -> None:
         failures = 0
         while not self.stopped.is_set():
+            version = self.wakes.version("events")
             reason = await asyncio.to_thread(self.store.get_meta, "paused")
             if reason in {"", "delivery_requires_review"}:
                 try:
@@ -129,11 +154,17 @@ class Engine:
                     failures += 1
                     await asyncio.to_thread(self.store.set_meta, "event_mode", "fallback")
                     log.warning("inbox events unavailable: %s", type(exc).__name__)
-            await self.delay(min(60, 2 ** min(failures, 6)) if failures else self.settings.event_poll_seconds)
+            seconds = min(60, 2 ** min(failures, 6)) if failures else self.settings.event_poll_seconds
+            if failures:
+                # 页面事件仍可能到达；不能用新提示打断故障退避，持续重试失败的适配器。
+                await self.delay(seconds)
+            else:
+                await self.wakes.wait("events", version, seconds)
 
     async def collect_loop(self) -> None:
         failures = 0
         while not self.stopped.is_set():
+            version = self.wakes.version("collect")
             if not await self.paused():
                 try:
                     batch = None
@@ -150,7 +181,9 @@ class Engine:
                     if isinstance(exc, BrowserUnavailable) or failures >= 3:
                         await self.pause("browser_or_login_requires_attention")
             mode = await asyncio.to_thread(self.store.get_meta, "event_mode")
-            await self.delay(self.settings.scan_seconds if mode == "active" else self.settings.poll_seconds)
+            await self.wakes.wait(
+                "collect", version, self.settings.scan_seconds if mode == "active" else self.settings.poll_seconds
+            )
 
     async def prepare_once(self) -> bool:
         job = await asyncio.to_thread(self.store.claim, "queued", time.time(), self.scope)
@@ -177,6 +210,7 @@ class Engine:
             log.warning("inbox prepare failed: job=%s reason=%s", job["id"][:12], type(exc).__name__)
         finally:
             await asyncio.to_thread(self.store.measure, job, "prepare", time.monotonic() - started)
+            self.wakes.notify("plan", "prepare", "warmup")
         return True
 
     async def prepare_message(self, job: dict, message: Message) -> tuple[str, list[dict]]:
@@ -210,12 +244,33 @@ class Engine:
     async def describe_source(self, job: dict, message: Message) -> dict | None:
         if message.kind == "media":
             return None
-        assets = None
-        if message.kind == "work" and job["attempts"] == 1:
-            async with self.ui:
+        async with self.measuring(job, "source_local_cache"):
+            cached = await self.processor.describe_cached(message)
+        if cached:
+            return cached
+        assets = await self.page_source(job, message) if message.kind == "work" and job["attempts"] == 1 else None
+        async with self.measuring(job, "source_parser" if assets is None else "source_metadata"):
+            return await self.processor.describe(message, assets)
+
+    async def page_source(self, job: dict, message: Message) -> list[Asset] | None:
+        async with self.measuring(job, "source_client_cache"):
+            rows = await self.browser.cached_work_media(message)
+        if (assets := assets_from_snapshot(rows, self.settings)) is not None:
+            return assets
+        waiting = time.monotonic()
+        async with self.ui:
+            await asyncio.to_thread(self.store.measure, job, "source_ui_wait", time.monotonic() - waiting)
+            async with self.measuring(job, "source_ui_read"):
                 rows = await self.browser.work_media(message)
-            assets = assets_from_snapshot(rows, self.settings)
-        return await self.processor.describe(message, assets)
+        return assets_from_snapshot(rows, self.settings)
+
+    @contextlib.asynccontextmanager
+    async def measuring(self, job: dict, phase: str):
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            await asyncio.to_thread(self.store.measure, job, phase, time.monotonic() - started)
 
     async def prepare_selected(self, job: dict, selected: dict) -> tuple[str, list[dict]]:
         selected = await self.prepare_choice_source(job, selected)
@@ -285,8 +340,9 @@ class Engine:
 
     async def prepare_loop(self) -> None:
         while not self.stopped.is_set():
+            version = self.wakes.version("prepare")
             if await self.paused() or not await self.prepare_once():
-                await self.delay(1)
+                await self.wakes.wait("prepare", version, 1)
 
     async def _send_part(self, job: dict, part: dict) -> None:
         payload = json.loads(part["payload"])
@@ -345,14 +401,18 @@ class Engine:
 
     async def send_loop(self) -> None:
         while not self.stopped.is_set():
+            version = self.wakes.version("dispatch")
             if await self.paused() or not await self.send_once():
-                await self.delay(1)
+                await self.wakes.wait("dispatch", version, 1)
+            else:
+                self.wakes.notify("events", "prepare", "warmup")
 
     async def maintenance_loop(self) -> None:
         while not self.stopped.is_set():
             await asyncio.to_thread(self.store.expire_choices, time.time())
             await self.processor.cleanup(time.time())
             await asyncio.to_thread(self.store.set_meta, "heartbeat", str(time.time()))
+            self.wakes.notify("plan", "prepare", "warmup")
             await self.delay(60)
 
     async def run(self) -> None:
@@ -380,8 +440,13 @@ class Engine:
                 task.result()
                 raise RuntimeError("账号工作流意外停止")
         finally:
-            for task in [*tasks, stop]:
-                task.cancel()
-            await asyncio.gather(*tasks, stop, return_exceptions=True)
-            if pipeline:
-                await pipeline.close()
+            await self.shutdown([*tasks, stop], pipeline)
+
+    async def shutdown(self, tasks: list[asyncio.Task], pipeline: NativePipeline | None) -> None:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if self.events:
+            await self.events.close()
+        if pipeline:
+            await pipeline.close()
