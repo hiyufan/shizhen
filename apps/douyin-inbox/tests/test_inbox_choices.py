@@ -55,13 +55,16 @@ def selection(number="choice", mode="gif", code="", sender="sender", conversatio
         ("３", "both", ""),
         ("2 #a1b2c3d4", "gif", "A1B2C3D4"),
         ("原视频 11223344", "video", "11223344"),
+        ("2 a1b2", "gif", "A1B2"),
+        ("8910B18B", None, "8910B18B"),
+        ("#8910", None, "8910"),
     ],
 )
 def test_selection_text_is_explicit_and_supports_keycap_digits(text, mode, code):
     assert parse_selection(text) == {"mode": mode, "code": code}
 
 
-@pytest.mark.parametrize("text", ["你好", "123", "gif anything", "GIF https://example.com", "都要坏编号"])
+@pytest.mark.parametrize("text", ["你好", "123", "gif anything", "GIF https://example.com", "都要坏编号", "ABCD12345"])
 def test_other_text_is_not_a_selection(text):
     assert parse_selection(text) is None
 
@@ -117,6 +120,101 @@ def test_multiple_waiting_videos_require_code_and_hint_is_rate_limited(store):
     assert store.select_video(selection("again"), 1012) == "ambiguous"
     assert store.status(1013)["counts"] == {"waiting": 2, "ready": 1}
     assert store.select_video(selection("numbered", code=second["code"]), 1014) == "selected"
+
+
+def test_ambiguous_format_then_code_survives_restart_and_selects_once(store):
+    offer(store)
+    second = offer(store, "2")
+    assert store.select_video(selection(), 1011) == "ambiguous"
+    recovered = Store(store.root, store.settings)
+    command = message_from_snapshot(
+        {
+            "id": "code-only",
+            "conversation": "chat",
+            "sender": "sender",
+            "created": 1012,
+            "kind": "text",
+            "data": {"text": second["code"][:4]},
+        }
+    )
+    recovered.capture([command], 1013)
+    assert recovered.handle_inbound(recovered.inbound()[0], 1013) == "selected"
+    assert recovered.inbound() == []
+    assert recovered.select_video(command, 1014) == "duplicate"
+    assert recovered.selection({"id": second["job"]})["mode"] == "gif"
+    repeated = selection("another-code", mode=None, code=second["code"], created=1015)
+    assert recovered.select_video(repeated, 1015) == "unmatched"
+
+
+def test_code_alone_never_assumes_a_format(store):
+    choice = offer(store)
+    assert store.select_video(selection(mode=None, code=choice["code"]), 1011) == "unmatched"
+    assert store.selection({"id": choice["job"]}) is None
+    assert store.status(1012)["counts"] == {"waiting": 1}
+
+
+@pytest.mark.parametrize("changes", [{"sender": "other"}, {"conversation": "other"}, {"created": 1009}])
+def test_code_followup_is_bound_to_sender_conversation_and_time(store, changes):
+    offer(store)
+    second = offer(store, "2")
+    assert store.select_video(selection(), 1011) == "ambiguous"
+    command = selection("code-only", mode=None, code=second["code"], created=1012)
+    assert store.select_video(replace(command, **changes), 1013) == "unmatched"
+    assert store.selection({"id": second["job"]}) is None
+
+
+def test_code_followup_cannot_select_newer_or_expired_requests(store):
+    offer(store)
+    offer(store, "2")
+    third = offer(store, "3", started=1020)
+    assert store.select_video(selection(), 1025) == "ambiguous"
+    command = selection("newer-code", mode=None, code=third["code"], created=1026)
+    assert store.select_video(command, 1026) == "unmatched"
+    assert store.select_video(replace(command, id="expired", created=1610), 1611) == "unmatched"
+    assert store.selection({"id": third["job"]}) is None
+
+
+def test_short_code_collision_requires_more_digits(store):
+    first = offer(store)
+    second = offer(store, "2")
+    with store.transaction() as db:
+        db.execute("UPDATE video_choices SET code='ABCD1111' WHERE job=?", (first["job"],))
+        db.execute("UPDATE video_choices SET code='ABCD2222' WHERE job=?", (second["job"],))
+    assert store.select_video(selection(code="ABCD"), 1011) == "ambiguous"
+    with store.connect() as db:
+        hint = json.loads(db.execute("SELECT payload FROM parts WHERE job=?", (selection().key,)).fetchone()[0])["text"]
+    assert "ABCD1111" in hint and "ABCD2222" in hint and "测试视频" in hint
+    assert store.select_video(selection("longer", mode=None, code="ABCD2", created=1012), 1013) == "selected"
+    assert store.selection({"id": second["job"]})["mode"] == "gif"
+
+
+def test_repeated_ambiguous_format_updates_even_when_notice_is_limited(store):
+    offer(store)
+    second = offer(store, "2")
+    assert store.select_video(selection(), 1011) == "ambiguous"
+    assert store.select_video(selection("change-format", mode="both", created=1012), 1013) == "ambiguous"
+    assert store.select_video(selection("code-only", mode=None, code=second["code"], created=1014), 1015) == "selected"
+    assert store.selection({"id": second["job"]})["mode"] == "both"
+
+
+def test_late_old_reply_cannot_replace_a_newer_format(store):
+    offer(store)
+    second = offer(store, "2")
+    assert store.select_video(selection("newer", mode="both", created=1012), 1013) == "ambiguous"
+    assert store.select_video(selection("late", mode="gif", created=1010), 1014) == "ambiguous"
+    assert store.select_video(selection("code-only", mode=None, code=second["code"], created=1015), 1016) == "selected"
+    assert store.selection({"id": second["job"]})["mode"] == "both"
+
+
+def test_short_code_reply_waits_for_inflight_prompt_receipt(store):
+    choice = offer(store)
+    with store.transaction() as db:
+        db.execute("UPDATE jobs SET state='sending' WHERE id=?", (choice["job"],))
+        db.execute("UPDATE video_choices SET expires=NULL WHERE job=?", (choice["job"],))
+    command = selection(code=choice["code"][:4])
+    assert store.select_video(command, 1011) == "deferred"
+    store.recover(1012)
+    assert store.select_video(command, 1013) == "selected"
 
 
 def test_later_prompt_does_not_make_earlier_reply_ambiguous(store):
