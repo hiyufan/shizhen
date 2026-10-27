@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
-from .errors import ParseError
+from .errors import ParseError, classify
 
 _REFERER = "https://www.bilibili.com/"
 
@@ -132,15 +132,7 @@ class BiliBili(BaseParser):
     async def parse_video_id(self, video_id: str, page: int = 1) -> VideoInfo:
         """page 是分 P 的序号（链接里的 ?p=13）。"""
         await self._ensure_buvid()
-
-        async def play_by_pagelist():
-            cid = await self._page_cid(video_id, page)
-            return await self._play_urls(video_id, cid) if cid else None
-
-        view, early = await asyncio.gather(
-            self._api(f"https://api.bilibili.com/x/web-interface/view?{id_param(video_id, 'aid')}"),
-            play_by_pagelist(),
-        )
+        view, early = await self._metadata_and_play(video_id, page)
         code = view.get("code")
         if code != 0:
             msg = view.get("message", "")
@@ -190,6 +182,7 @@ class BiliBili(BaseParser):
             duration=duration,
             height=height,
             formats=formats,
+            video_headers={"Referer": _REFERER, "Range": "bytes=0-"},
             # 高清档位下载时按这个地址重新取（convert/bilibili.py），分 P 要带上 ?p=
             page_url=f"https://www.bilibili.com/video/{bvid}" + (f"?p={page}" if page > 1 else ""),
             author=VideoAuthor(
@@ -199,11 +192,28 @@ class BiliBili(BaseParser):
             ),
         )
 
+    async def _metadata_and_play(self, video_id: str, page: int):
+        async def play_by_pagelist():
+            cid = await self._page_cid(video_id, page)
+            return await self._play_urls(video_id, cid) if cid else None
+
+        view, early = await asyncio.gather(
+            self._api(f"https://api.bilibili.com/x/web-interface/view?{id_param(video_id, 'aid')}"),
+            play_by_pagelist(),
+            return_exceptions=True,
+        )
+        if isinstance(early, BaseException):
+            raise early
+        if isinstance(view, BaseException):
+            view = self._playable_metadata(view, early)
+        return view, early
+
     async def _page_cid(self, video_id: str, page: int = 1) -> int | None:
         """第 page P 的 cid。拿不到（含超出范围）返回 None，由调用方按 view 里的分 P 列表处理。"""
         try:
             resp = await self._api(f"https://api.bilibili.com/x/player/pagelist?{id_param(video_id, 'aid')}")
             pages = resp.get("data") or []
+            self._pages = pages
             return (pages[page - 1].get("cid") or None) if 1 <= page <= len(pages) else None
         except Exception:  # noqa: BLE001
             return None
@@ -255,19 +265,60 @@ class BiliBili(BaseParser):
         """发送B站API请求"""
         async with create_async_client() as client:
             response = await client.get(api_url, headers=self.get_default_headers())
+            if response.status_code == 412 and urlparse(api_url).path == "/x/web-interface/view":
+                # 旧 view 的风控与播放器 API 不同；新版返回成功且身份匹配后才采用。
+                alternate = api_url.replace("/x/web-interface/view?", "/x/web-interface/wbi/view?", 1)
+                data = await self._alternate_view(client, alternate, api_url)
+                if data:
+                    return data
             if response.status_code == 412:
                 # 风控: 换一份 buvid 再试一次
                 BiliBili._buvid_cookie = ""
                 await self._ensure_buvid()
                 response = await client.get(api_url, headers=self.get_default_headers())
             if response.status_code == 412:
-                raise ValueError(
-                    "B站拒绝了服务器所在网络的访问 (412)，"
-                    "海外服务器请配置 PARSE_VIDEO_PROXY_CN 或 PARSE_VIDEO_BILI_COOKIE"
-                )
+                raise ParseError("blocked", "B站拒绝了服务器所在网络的访问 (412)")
             if response.status_code != 200:
                 raise ValueError(f"HTTP请求失败, 状态码: {response.status_code}")
             return response.json()
+
+    async def _alternate_view(self, client, alternate: str, original: str) -> dict | None:
+        reply = await client.get(alternate, headers=self.get_default_headers())
+        try:
+            data = reply.json() if reply.status_code == 200 else {}
+        except ValueError:
+            return None
+        return data if isinstance(data, dict) and _matches_video(data, original) else None
+
+    def _playable_metadata(self, error: BaseException, early) -> dict:
+        """作品详情被拦时，只有分 P 列表和实际播放响应同时有效才允许继续。"""
+        if classify(error).reason not in {"blocked", "network", "timeout"} or not early:
+            raise error
+        pages = getattr(self, "_pages", [])
+        playable = any(
+            isinstance(reply, dict)
+            and reply.get("code") == 0
+            and ((reply.get("data") or {}).get("durl") or (reply.get("data") or {}).get("dash"))
+            for reply in early
+        )
+        if not pages or not playable:
+            raise error
+        from ..progress import emit
+
+        emit("fallback", fallback=True)
+        return {"code": 0, "data": {"pages": pages, "title": pages[0].get("part") or "B站视频"}}
+
+
+def _matches_video(response: dict, api_url: str) -> bool:
+    data = response.get("data") or {}
+    if not isinstance(data, dict):
+        return False
+    query = parse_qs(urlparse(api_url).query)
+    key = "bvid" if "bvid" in query else "aid"
+    requested = query.get(key, [""])[0]
+    received = str(data.get(key, ""))
+    matches = received[:2].lower() == "bv" and received[2:] == requested[2:] if key == "bvid" else received == requested
+    return response.get("code") == 0 and bool(requested) and bool(received) and matches
 
 
 def _page_number(query: str) -> int:

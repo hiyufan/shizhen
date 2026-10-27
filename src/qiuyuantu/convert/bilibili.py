@@ -1,8 +1,7 @@
 """B 站的高清档位 / 仅音频：不经过 yt-dlp，自己下 DASH 的画面和声音再合并。
 
-yt-dlp 的 B 站提取器要先打开视频网页，而海外机房 IP 打开 www.bilibili.com/video/… 一律 412
-（2026-10 实测，带 buvid、换 UA、加 Referer 都一样），1080p 下载和仅音频全挂。解析用的 API
-和视频 CDN 都还能访问，所以这里用解析器同一套 API 拿分轨地址。
+yt-dlp 的 B 站提取器要先打开视频网页，网页可能受出口风控而返回 412。这里复用解析 API 取分轨，
+用播放器式完整 Range 请求下载；缺少 Range 时，部分 CDN 会返回 567。每个分轨按完整文件校验后再合并。
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..parser.bilibili import BiliBili
-from ..utils import gather_or_cancel
+from ..utils import current_source, gather_or_cancel
 from . import config, ffmpeg
 from .fetch import TooLarge, download_source, too_large_message
 
@@ -78,7 +77,7 @@ async def _fetch(stream: dict, dest: Path, on_bytes) -> None:
     last: Exception | None = None
     for url in _urls(stream):
         try:
-            await download_source(url, dest, {}, on_bytes)
+            await download_source(url, dest, {"Range": "bytes=0-"}, on_bytes)
             return
         except TooLarge:
             raise
@@ -90,13 +89,7 @@ async def _fetch(stream: dict, dest: Path, on_bytes) -> None:
 async def download(
     page_url: str, format_spec: str, out_dir: Path, stem: str, report: Report, *, fit: bool = False
 ) -> Path:
-    parser = BiliBili()
-    await parser._ensure_buvid()
-    bvid, page = await parser._video_ref(page_url)
-    cid = await parser._page_cid(bvid, page)
-    if not cid:
-        raise RuntimeError("B站没有返回分P信息")
-    dash, _ = await parser._play_urls(bvid, cid)
+    dash = await _dash_for_page(page_url)
     if isinstance(dash, BaseException):
         raise dash
     data = dash.get("data") or {}
@@ -130,3 +123,19 @@ async def download(
         for _, path in parts:
             path.unlink(missing_ok=True)
     return out
+
+
+async def _dash_for_page(page_url: str) -> dict:
+    # 转换任务在解析上下文结束后运行；显式恢复平台，国内代理和中继才会接管 API。
+    token = current_source.set("bilibili")
+    try:
+        parser = BiliBili()
+        await parser._ensure_buvid()
+        bvid, page = await parser._video_ref(page_url)
+        cid = await parser._page_cid(bvid, page)
+        if not cid:
+            raise RuntimeError("B站没有返回分P信息")
+        dash, _ = await parser._play_urls(bvid, cid)
+        return dash
+    finally:
+        current_source.reset(token)

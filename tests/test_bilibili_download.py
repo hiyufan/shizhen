@@ -85,6 +85,7 @@ async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
     running, peak, reports, merged, asked = [0], [0], [], [], []
 
     async def fake_download(url, dest, headers, on_bytes):
+        assert headers["Range"] == "bytes=0-"
         running[0] += 1
         peak[0] = max(peak[0], running[0])
         await asyncio.sleep(0.02)
@@ -102,6 +103,9 @@ async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
         return None
 
     async def cid(self, bvid, page):
+        from qiuyuantu.utils import current_source
+
+        assert current_source.get() == "bilibili"
         asked.append((bvid, page))
         return 1
 
@@ -121,6 +125,10 @@ async def test_video_and_audio_tracks_download_together(monkeypatch, tmp_path):
     assert asked == [("BV1", 13)]  # 高清下载取的是链接里那一 P（issue #6）
     assert reports == sorted(reports)  # 两条一起报，进度也不会往回跳
     assert not list(tmp_path.glob("*.m4s"))  # 分轨用完就删
+
+    from qiuyuantu.utils import current_source
+
+    assert current_source.get() == ""
 
 
 @pytest.mark.parametrize(

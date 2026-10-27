@@ -47,7 +47,7 @@ async def _stream_to_file(
     """边下边写，超过 limit 就停；不管什么原因中断，半截文件都删掉。"""
     async with client.stream("GET", url, headers=headers_for(url, headers)) as resp:
         resp.raise_for_status()
-        total = int(resp.headers.get("content-length") or 0)
+        total = _complete_body_size(resp)
         if total > limit:
             raise TooLarge(too_large)
         done = 0
@@ -60,9 +60,24 @@ async def _stream_to_file(
                     f.write(chunk)
                     if on_bytes:
                         on_bytes(done, total)
+                if resp.status_code == 206 and done != total:
+                    raise ValueError("源站返回的文件不完整，请重新解析再试")
         except BaseException:
             dest.unlink(missing_ok=True)
             raise
+
+
+def _complete_body_size(response: httpx.Response) -> int:
+    length = int(response.headers.get("content-length") or 0)
+    if response.status_code != 206:
+        return length
+    match = re.fullmatch(r"bytes 0-(\d+)/(\d+)", response.headers.get("content-range", ""))
+    if not match:
+        raise ValueError("源站只返回了部分文件，请重新解析再试")
+    end, total = map(int, match.groups())
+    if total <= 0 or end + 1 != total or (length and length != total):
+        raise ValueError("源站只返回了部分文件，请重新解析再试")
+    return total
 
 
 async def download_source(url: str, dest: Path, headers: dict[str, str], on_bytes: ByteProgress) -> None:
