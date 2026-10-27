@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image, UnidentifiedImageError
 
-from . import ffmpeg
+from . import ffmpeg, tgs
 
 
 def _write_frames(source: Path, directory: Path, stopped: threading.Event) -> float:
@@ -47,14 +47,7 @@ async def prepare(source: Path, destination: Path, *, alpha_destination: Path | 
     # 取消时先停止并等解码线程退出，再删除帧目录，避免清理与写入交叉。
     with TemporaryDirectory(prefix="animation-", dir=source.parent) as temporary:
         directory = Path(temporary)
-        stopped = threading.Event()
-        task = asyncio.create_task(asyncio.to_thread(_write_frames, source, directory, stopped))
-        try:
-            duration = await asyncio.shield(task)
-        except asyncio.CancelledError:
-            stopped.set()
-            await task
-            raise
+        duration = await _frames(source, directory)
         # 清单由上面的固定文件名生成。safe=0 允许 framerate 选项，保留毫秒级帧时长；
         # ffmpeg.run 仍逐输入限制为 file 协议，清单不使用平台返回的文本或文件名。
         inputs = ["-f", "concat", "-safe", "0", "-i", str(directory / "frames.txt")]
@@ -105,3 +98,18 @@ async def prepare(source: Path, destination: Path, *, alpha_destination: Path | 
             if alpha_destination:
                 alpha_destination.unlink(missing_ok=True)
             raise
+
+
+async def _frames(source: Path, directory: Path) -> float:
+    with source.open("rb") as stream:
+        prefix = stream.read(4096)
+    if prefix.startswith(b"\x1f\x8b") or prefix.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"{"):
+        return await tgs.render_frames(source, directory)
+    stopped = threading.Event()
+    task = asyncio.create_task(asyncio.to_thread(_write_frames, source, directory, stopped))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        stopped.set()
+        await task
+        raise

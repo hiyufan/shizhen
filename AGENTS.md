@@ -26,6 +26,7 @@
 
 - 解析器用 `BaseParser.get_json()` / `get_text()` 发请求，以 `ParseError` 表达失败原因。同步上游修复时按差异迁移，不能用上游文件整份覆盖本地解析器。
 - 保留 `VideoInfo` 的语义：可直接下载的清晰度放 `formats` 并带 `url`，需服务端合并的格式放 `format_spec`。
+- 目录使用 `entries`、`entry_total`、`next_page_url` 与 `content_kind=directory`，不当成媒体批量递归下载；小说等纯文本使用 `documents`，前端按文本呈现。Ugoira 的原始帧包放 `assets`，合成 MP4 放 `formats`，逐帧时序为 `animation_frames`；转换时从平台重新读取并校验帧包与时序。
 - 修改接口时检查前端调用方和现有兼容接口；新增进度能力时保留 JSON 解析接口的可用性。配置仍通过 `PARSE_VIDEO_*` 环境变量提供。
 - 普通抖音账号助手独立管理于 [apps/douyin-inbox/](apps/douyin-inbox/README.md)，源码包为 `qiuyuantu_inbox`；账号工具、测试、部署与文档均放在该目录，具体约定见 [子项目 AGENTS.md](apps/douyin-inbox/AGENTS.md)。它单向复用核心解析器和转换层；核心安装包及 Web 镜像不包含账号助手，不从 Web 路由启动账号进程。
 - 修改共享下载或转换工具时保持现有默认行为，账号专属限制通过可选参数传入。账号源码不放回 `src/qiuyuantu/`；账号依赖与运行数据继续隔离。
@@ -58,6 +59,7 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 
 - 超限时按职责提取函数、分离数据与控制流、减少重复分支；函数名要说明行为。不要为凑阈值机械切碎代码，也不要用提高阈值、`noqa`、`eslint-disable` 或排除文件掩盖问题。
 - 保留已有有理由的例外：`seo.py` 与 `guides.py` 仅豁免 `E501`，不是免除其他检查。新增例外需有具体原因和最小作用范围；任务未要求时不放宽现有质量门槛。
+- Telegram 匿名贴纸取自公开目录已收录素材，Discord 贴纸匹配官方匿名目录，不使用账号凭证；TGS / Lottie 的 `rlottie-python` 为 `stickers` 可选依赖，Web 镜像包含该依赖。原生渲染在有超时与资源限制的子进程中执行，拒绝外部图片、字体资源和超限动画。
 - 异步路径复用现有客户端、任务和子进程封装，避免在事件循环中加入阻塞网络或媒体处理。保留超时、取消、子进程回收与并发配额。
 - 注释说明非显然的原因、兼容约束和失败模式；面向没有本次对话上下文的维护者，不记录提示词或迭代过程。
 

@@ -43,7 +43,11 @@
 | --- | --- |
 | 视频与图片 | 抖音、小红书、快手、YouTube、X、B站、Instagram 等 |
 | 静态与动态封面 | [QQ 音乐](https://ynvan.com/qq-music-cover)、[网易云音乐](https://ynvan.com/netease-music-cover)、[Apple Music](https://ynvan.com/apple-music-cover) |
-| 游戏素材 | [Steam 动态头像、头像框与背景](https://ynvan.com/steam-assets)、[HoYoPlay 启动器壁纸](https://ynvan.com/hoyoplay-wallpaper) |
+| 游戏素材 | [Steam 动态头像、头像框与背景](https://ynvan.com/steam-assets)、[HoYoPlay 启动器壁纸](https://ynvan.com/hoyoplay-wallpaper)、[鸣潮国际服壁纸](https://ynvan.com/wuthering-waves-wallpaper) |
+| 匿名贴纸与视频号 | [Telegram 已收录贴纸](https://ynvan.com/telegram-stickers)（TGS 转透明 GIF / 实况）、[视频号下载](https://ynvan.com/wechat-channels)（公益接口补充视频，支持下载与转换） |
+| Discord 公开贴纸 | [公开贴纸包与单个贴纸](https://ynvan.com/discord-stickers)：原始 APNG / Lottie JSON 下载，转透明 GIF、实况与动态照片，无需账号 Token |
+| 社区与装扮 | [米游社帖子原图与 GIF](https://ynvan.com/miyoushe-images)、[B站装扮与收藏集公开素材](https://ynvan.com/bilibili-assets) |
+| Pixiv | [插画、漫画与小说 TXT](https://ynvan.com/pixiv-download)、[Ugoira 转 GIF / 实况](https://ynvan.com/pixiv-ugoira)、[Sketch 原图](https://ynvan.com/pixiv-sketch)；公开目录按页选择作品，无需账号 |
 
 支持的视频、图集、实况类型与清晰度见[完整平台表](docs/usage.md#支持的平台)。音乐工具只提取封面。
 

@@ -6,7 +6,8 @@ import {
   directOf, mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob,
 } from './api.js';
 import { openConverter } from './converter.js';
-import { assetImages } from './assets.js';
+import { assetImages, independentAssets } from './assets.js';
+import { contentSections } from './content.js';
 import { $, el, fmtClock, fmtSize, safeName, sleep } from './dom.js';
 import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, imageButton, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
 import { jobCard } from './ui.js';
@@ -19,7 +20,10 @@ const PLATFORMS = {
   qqvideo: t('腾讯视频'), sohu: t('搜狐视频'), cctv: t('央视网'), vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
   qqmusic: t('QQ 音乐'), netease: t('网易云音乐'),
-  steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music',
+  steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', telegram: 'Telegram', discord: 'Discord',
+  wutheringwaves: t('鸣潮'), miyoushe: t('米游社'), 'bilibili-assets': t('B站装扮与收藏集'),
+  'wechat-channels': t('视频号'),
+  pixiv: 'Pixiv', 'pixiv-sketch': 'Pixiv Sketch',
 };
 
 /** 视频 / 音频的下载按钮：有国内边缘地址就从边缘下（国内直达），探通了直连就直连，否则服务器转发 */
@@ -79,14 +83,19 @@ function resultBody(d, baseName) {
     const audio = download(d.music_url, baseName + '.mp3', t('下载音频'), 'btn');
     parts.push(el('div', { class: 'side' }, el('div', { class: 'group' }, audio), el('div', { class: 'jobs' })));
   }
-  if (images.length) {
-    if (['steam', 'hoyoplay'].includes(d.source)) parts.push(assetImages(d, baseName));
-    else parts.push(...imageSection(d, images, baseName, hasVideo));
-  }
+  parts.push(...resultImages(d, images, baseName, hasVideo));
+  if (d.assets?.length) parts.push(independentAssets(d, baseName));
+  parts.push(...contentSections(d, baseName));
   if (!parts.length) {
     parts.push(el('div', { class: 'notice' }, t('解析成功但没有拿到任何视频或图片，这条内容可能已被删除或需要登录。')));
   }
   return parts;
+}
+
+function resultImages(data, images, baseName, hasVideo) {
+  if (!images.length) return [];
+  return ['steam', 'hoyoplay', 'wutheringwaves', 'miyoushe', 'wechat-channels', 'pixiv', 'pixiv-sketch'].includes(data.source)
+    ? [assetImages(data, baseName)] : imageSection(data, images, baseName, hasVideo);
 }
 
 function coverSection(image, baseName, data) {
@@ -141,7 +150,7 @@ function videoSection(d, baseName, jobsBox) {
   return el('div', { class: 'res-body' }, preview, side);
 }
 
-const isPortrait = (d) => (d.width && d.height ? d.height > d.width : !['steam', 'hoyoplay'].includes(d.source));
+const isPortrait = (d) => (d.width && d.height ? d.height > d.width : !['steam', 'hoyoplay', 'wutheringwaves'].includes(d.source));
 
 const videoExtension = (data) => ['steam', 'hoyoplay'].includes(data.source) && /\.webm(?:[?#]|$)/.test(data.video_url) ? 'webm' : 'mp4';
 

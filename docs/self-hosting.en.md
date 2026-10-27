@@ -76,6 +76,16 @@ See [YouTube troubleshooting](youtube.md) (Chinese) for measured results, limita
 
 Set `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS=7` to update yt-dlp weekly and restart the app when idle, helping it keep up with platform changes.
 
+## Anonymous stickers and Channels
+
+Telegram pack extraction uses publicly cataloged Stickers.wiki assets and requires no Bot token. For local TGS conversion install `pip install -e ".[web,cli,stickers]"`; the Web Docker image includes the renderer. Catalog coverage may differ from Telegram’s current packs.
+
+Discord uses only the official anonymous `/api/v10/sticker-packs` catalog, matching pack IDs, store SKUs or sticker IDs. Individual pack and sticker API endpoints currently require authentication and are not called. APNG uses the existing image decoder; Lottie JSON uses the same `stickers` dependency and isolated render worker as TGS. Raw JSON is limited to 1 MB and retains dimension, frame, duration, total pixel and external resource limits. Private servers and stickers outside the catalog are not supported.
+
+Channels extraction first reads the official anonymous `shortUri` preview. When video is missing, the [public BugPk service](https://api.bugpk.com/) supplements it only if both title and author match. No account cookies, tokens or API keys are sent. A real public video was fully downloaded and converted. Provider quality labels may differ from actual dimensions and are not displayed as verified resolution.
+
+`PARSE_VIDEO_CHANNELS_PUBLIC_FALLBACK=1` is the default; set it to `0` to use only the official preview. Calls are serialized per process with at least 1.05 seconds between starts. Congestion, throttling, identity mismatches and provider failures retain the official cover. Multi-process or multi-instance deployments must enforce the provider's published QPS=1 at a shared egress. The public service has no availability guarantee.
+
 ## Configuration
 
 All configuration uses environment variables. Every variable is optional.

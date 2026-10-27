@@ -196,8 +196,12 @@ a.card { display: block; text-decoration: none; }
 .wallpaper-picker span { font-size: 13px; color: var(--ink-2); white-space: nowrap; }
 .wallpaper-picker select { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 12px; padding: 8px; background: var(--surface); color: var(--ink); font-size: 16px; }
 .asset-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; margin-top: 24px; }
-.asset-tile img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 10px; background: repeating-conic-gradient(var(--card) 0% 25%, var(--surface) 0% 50%) 50% / 16px 16px; }
-.asset-tile .group { margin-top: 16px; }
+.asset-tile img, .asset-tile video { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 10px; background: repeating-conic-gradient(var(--card) 0% 25%, var(--surface) 0% 50%) 50% / 16px 16px; }
+.asset-tile h3 { overflow-wrap: anywhere; margin-bottom: 12px; }
+.asset-tile .group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.asset-item img, .asset-item video { height: 280px; aspect-ratio: auto; }
+.asset-placeholder { min-height: 280px; display: grid; place-content: center; gap: 12px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; color: var(--ink-3); background: var(--surface); }
+.asset-placeholder strong { font-family: var(--mono); letter-spacing: .1em; }
 @media (max-width: 600px) {
   .hero { padding: 40px 0 56px; }
   .hero h1 { font-size: clamp(2.2rem, 10.5vw, 3.5rem); line-height: 1.02; }
@@ -571,3 +575,5 @@ html:lang(en) .strip.loading::before { content: "Generating thumbnails…"; }
 .preferences-apply { margin-top: 12px; }
 
 @media (pointer: coarse) { .preferences-toggle, .language-options label { min-height: 44px; } }
+.text-document { margin-block: 16px; }
+.text-document pre { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

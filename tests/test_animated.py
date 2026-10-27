@@ -56,6 +56,7 @@ def test_unusable_images_are_rejected_with_a_specific_reason(tmp_path, kind):
 
 async def test_cancel_waits_for_decoder_before_removing_temporary_frames(tmp_path, monkeypatch):
     started, finished = threading.Event(), threading.Event()
+    (tmp_path / "cover").write_bytes(b"RIFF")
 
     def decode(_source, directory, stopped):
         (directory / "frame.png").write_bytes(b"frame")

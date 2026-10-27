@@ -22,13 +22,18 @@ from . import config, relay
 
 # 各家 CDN 直链需要带的 Referer，缺了会 403
 _REFERERS = {
+    "pximg.net": "https://www.pixiv.net/",
+    "img-sketch.pixiv.net": "https://sketch.pixiv.net/",
     "steamstatic.com": "https://store.steampowered.com/",
     "steamusercontent.com": "https://store.steampowered.com/",
+    "upload-bbs.mihoyo.com": "https://www.miyoushe.com/",
+    "miyoushe.com": "https://www.miyoushe.com/",
     "mihoyo.com": "https://hyp.mihoyo.com/",
     "mzstatic.com": "https://music.apple.com/",
     "itunes.apple.com": "https://music.apple.com/",
     "bilivideo.com": "https://www.bilibili.com/",
     "hdslb.com": "https://www.bilibili.com/",
+    "finder.video.qq.com": "https://channels.weixin.qq.com/",
     "acfun.cn": "https://www.acfun.cn/",
     "xhscdn.com": "https://www.xiaohongshu.com/",
     "xiaohongshu.com": "https://www.xiaohongshu.com/",

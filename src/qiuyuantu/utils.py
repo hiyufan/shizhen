@@ -19,6 +19,9 @@ CN_SOURCES = {
     "redbook",
     "kuaishou",
     "bilibili",
+    "bilibili-assets",
+    "miyoushe",
+    "wechat-channels",
     "weibo",
     "xigua",
     "pipixia",
@@ -47,6 +50,9 @@ CN_SOURCES = {
 # 国内平台的域名关键字：页面 / CDN 地址里带这些的，海外服务器访问时走国内代理
 CN_HOST_KEYWORDS = (
     "bilibili",
+    "miyoushe.com",
+    "upload-bbs.mihoyo.com",
+    "channels.weixin.qq.com",
     "b23.tv",
     "xiaohongshu",
     "douyin",

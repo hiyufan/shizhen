@@ -8,8 +8,11 @@ from .acfun import AcFun
 from .applemusic import AppleMusic
 from .base import VideoInfo, VideoSource
 from .bilibili import BiliBili
+from .bilibili_assets import BiliAssets, is_asset_page
 from .cctv import CCTV
 from .direct import direct_media
+from .discord import Discord
+from .discord import is_sticker_page as is_discord_sticker
 from .doupai import DouPai
 from .douyin import DouYin
 from .errors import ParseError, classify
@@ -20,9 +23,12 @@ from .kuaishou import KuaiShou
 from .lishipin import LiShiPin
 from .lvzhou import LvZhou
 from .meipai import MeiPai
+from .miyoushe import MiYouShe
 from .music import NetEaseMusic, QQMusic
 from .pipigaoxiao import PiPiGaoXiao
 from .pipixia import PiPiXia
+from .pixiv import Pixiv
+from .pixiv_sketch import PixivSketch
 from .qqvideo import QQVideo
 from .quanmin import QuanMin
 from .quanminkge import QuanMinKGe
@@ -30,9 +36,12 @@ from .redbook import RedBook
 from .sixroom import SixRoom
 from .sohu import Sohu
 from .steam import Steam
+from .telegram import Telegram, is_sticker_page
 from .twitter import Twitter
+from .wechat_channels import WeChatChannels, is_share_page
 from .weibo import WeiBo
 from .weishi import WeiShi
+from .wutheringwaves import WutheringWaves
 from .xigua import XiGua
 from .xinpianchang import XinPianChang
 from .ytdlp import YtDlp
@@ -42,8 +51,16 @@ logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
+    VideoSource.PixivSketch: {"domain_list": ["sketch.pixiv.net"], "parser": PixivSketch},
+    VideoSource.Pixiv: {"domain_list": ["pixiv.net", "pixiv.me", "i.pximg.net"], "parser": Pixiv},
     VideoSource.Steam: {"domain_list": ["store.steampowered.com"], "parser": Steam},
     VideoSource.HoYoPlay: {"domain_list": ["hyp-api.mihoyo.com"], "parser": HoYoPlay},
+    VideoSource.WutheringWaves: {"domain_list": ["prod-alicdn-gamestarter.kurogame.com"], "parser": WutheringWaves},
+    VideoSource.MiYouShe: {"domain_list": ["miyoushe.com"], "parser": MiYouShe},
+    VideoSource.BiliAssets: {"domain_list": [], "parser": BiliAssets},
+    VideoSource.Telegram: {"domain_list": [], "parser": Telegram},
+    VideoSource.Discord: {"domain_list": [], "parser": Discord},
+    VideoSource.WeChatChannels: {"domain_list": [], "parser": WeChatChannels},
     VideoSource.AppleMusic: {"domain_list": ["music.apple.com"], "parser": AppleMusic},
     VideoSource.QQMusic: {
         "domain_list": ["y.qq.com"],
@@ -227,6 +244,14 @@ def detect_source(share_url: str) -> VideoSource:
     里藏着 "t.co"，会被当成 X 的链接；参数里带个 x.com 也一样。
     """
     try:
+        if is_asset_page(share_url):
+            return VideoSource.BiliAssets
+        if is_sticker_page(share_url):
+            return VideoSource.Telegram
+        if is_discord_sticker(share_url):
+            return VideoSource.Discord
+        if is_share_page(share_url):
+            return VideoSource.WeChatChannels
         host = (urlparse(share_url).hostname or "").lower()
     except ValueError:
         host = ""
@@ -275,7 +300,16 @@ async def parse_video_share_url(share_url: str) -> VideoInfo:
         current_source.reset(token)
     video_info.source = video_info.source or source.value
     video_info.page_url = video_info.page_url or share_url
-    if not (video_info.video_url or video_info.images or video_info.music_url or video_info.formats):
+    if not (
+        video_info.video_url
+        or video_info.images
+        or video_info.music_url
+        or video_info.formats
+        or video_info.assets
+        or video_info.entries
+        or video_info.documents
+        or video_info.content_kind == "directory"
+    ):
         raise ParseError("empty")
     return video_info
 

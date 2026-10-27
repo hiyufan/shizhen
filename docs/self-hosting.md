@@ -19,9 +19,9 @@ DOMAIN=your.domain docker compose up -d
 
 push 到 main 且涉及核心 / Web 运行文件时，测试通过后自动上线，自检不过自动回滚；仅改文档或账号助手只执行检查：配置方法见 [docs/deploy.md](deploy.md)。
 
-### 海外服务器必看：小红书 / B站 会拒绝海外和机房 IP
+### 海外出口受限时：小红书 / B站
 
-B站 API 返回 412，小红书返回验证页。四种办法，任选其一：
+B站旧作品详情接口可能返回 412，而分 P 和播放接口仍可用。解析器会尝试身份匹配的新版详情；详情仍被拦时，仅在分 P 与播放数据同时有效的情况下继续解析。下载使用播放器式 Range 请求，并核对完整文件范围。整条链路都受限时再配置下列出口；小红书也可能返回验证页。
 
 **1. 给国内平台单独配一个国内出口**（推荐）
 
@@ -47,7 +47,7 @@ PARSE_VIDEO_RELAY_CN=https://<函数域名>/relay
 PARSE_VIDEO_RELAY_TOKEN=<同一个 TOKEN>
 ```
 
-可以再开 `PARSE_VIDEO_EDGE_IMG=1` / `PARSE_VIDEO_EDGE_MEDIA=1`，让国内用户直接从边缘节点取图片和视频，不用绕海外服务器。局限：yt-dlp 走不了中继，B站 只有 480p 直链。部署、探测出口和口令的注意事项见 [docs/esa-relay.md](esa-relay.md)。
+可以再开 `PARSE_VIDEO_EDGE_IMG=1` / `PARSE_VIDEO_EDGE_MEDIA=1`，让国内用户直接从边缘节点取图片和视频，不用绕海外服务器。yt-dlp 走不了中继；B站高清合并使用核心原生 API 下载器，任务会恢复平台上下文以复用中继。最终清晰度和可用性仍以平台及媒体出口为准。部署、探测出口和口令的注意事项见 [docs/esa-relay.md](esa-relay.md)。
 
 **3. 贴登录 Cookie**
 
@@ -75,6 +75,16 @@ PO Token 不保证解除 IP 风控。其它部署可配置 `PARSE_VIDEO_PROXY_YO
 实测结果、限制与排查方法见 [YouTube 排障](youtube.md)。
 
 `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS=7` 会每周升级 yt-dlp 并在空闲时原地重启，平台改版全靠它跟进。
+
+## 匿名贴纸与视频号
+
+Telegram 贴纸使用 Stickers.wiki 已公开收录素材，无需 Bot Token。本地 TGS 转换需安装 `pip install -e ".[web,cli,stickers]"`，Web 镜像已包含渲染依赖。原生 TGS 渲染在限时子进程中完成，保留依赖自身的许可证；公开目录不保证与 Telegram 当前包一致。
+
+Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配包 ID、商店 SKU 或贴纸 ID。单包 / 单贴纸 API 当前需认证，因此不调用，也不要求用户提供 Token。APNG 使用已有图片解码器；Lottie JSON 使用上述 `stickers` 依赖和同一隔离渲染子进程，原 JSON 上限 1 MB，沿用尺寸、帧数、时长、总像素及外部资源限制。私人服务器和目录外贴纸不在支持范围内。
+
+视频号先调用官方匿名 `shortUri` 预览；未提供视频时，默认通过 [BugPk 公益接口](https://api.bugpk.com/) 补充视频，仅接受标题与作者均匹配的结果。不发送账号 Cookie、Token 或 API Key。真实公开样例已完整下载并转换；接口的画质标签与实际尺寸可能不符，因此不据此标注分辨率。
+
+`PARSE_VIDEO_CHANNELS_PUBLIC_FALLBACK=1` 为默认值；设为 `0` 可关闭第三方备用，只请求官方预览。备用接口按进程串行且间隔至少 1.05 秒，拥堵、限流、身份不匹配或接口失败时保留官方封面。多进程或多实例部署需在出口统一限流，遵守运营方公布的 QPS=1；公益服务没有可用性保证。
 
 ## 配置
 

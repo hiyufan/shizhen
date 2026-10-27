@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..utils import gather_or_cancel, run_ytdlp
-from . import animated, artwork, bilibili, config, ffmpeg, livephoto, store
+from . import animated, artwork, bilibili, config, ffmpeg, livephoto, store, ugoira
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
 from .net import safe_filename
@@ -31,12 +31,14 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
 
     from . import youtube_native
 
+    if ugoira.handles(page_url):
+        return await ugoira.download(page_url, out_dir, stem, report)
     if artwork.handles(page_url):
         return await artwork.download(page_url, format_spec, out_dir, stem, report)
     if youtube_native.handles_format(page_url, format_spec):
         return await youtube_native.download(page_url, format_spec, out_dir, stem, report)
     if bilibili.handles(page_url):
-        # B 站网页对海外机房 IP 一律 412，yt-dlp 打不开，走解析用的 API 自己下（见 bilibili.py）
+        # B 站网页可能被出口风控拦截，高清合并复用解析 API（见 bilibili.py）。
         return await bilibili.download(page_url, format_spec, out_dir, stem, report, fit=fit)
     try:
         return await run_ytdlp(

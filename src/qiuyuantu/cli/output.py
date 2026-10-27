@@ -27,7 +27,20 @@ def format_text_output(info: VideoInfo) -> str:
                 lines.append(f"  [{i}] {img.url}")
     else:
         lines.append("图片数量: 0")
+    lines.extend(_content_lines(info))
     return "\n".join(lines)
+
+
+def _content_lines(info: VideoInfo) -> list[str]:
+    lines = [f"素材: {asset.label or asset.ext} {asset.url}" for asset in info.assets]
+    lines.extend(f"作品: {entry.title} {entry.url}" for entry in info.entries)
+    for document in info.documents:
+        lines.extend((f"正文: {document.title}", document.content))
+    if info.next_page_url:
+        lines.append(f"下一页: {info.next_page_url}")
+    if info.animation_frames:
+        lines.append(f"动画帧数: {len(info.animation_frames)}（逐帧时序见 JSON 输出）")
+    return lines
 
 
 def format_json_output(info: VideoInfo) -> str:

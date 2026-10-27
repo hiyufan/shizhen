@@ -121,6 +121,10 @@ curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/8x0AeP8prW8/"
 }
 ```
 
+Extraction results may include an `assets` array for independent theme and collection media: `{url, label, kind: image|animation|video, cover_url, ext}`. These are separate assets rather than quality variants or native Live Photo pairs. Existing `images`, `formats`, JSON and SSE contracts remain available; asset and preview URLs are signed in `sig`. Send `image: true` to `/api/prepare` for animated images; use normal preparation for videos.
+
+Pixiv / Sketch directories use `entries: [{url, title, cover_url, kind, available}]`, `entry_total` and `next_page_url`. An empty `content_kind=directory` page is valid. `documents: [{title, content}]` holds plain text rendered through text nodes and local TXT downloads, never HTML. `animation_frames: [{file, delay}]` provides timing JSON. Original Ugoira ZIPs belong in `assets` (`kind=archive`); composed MP4 uses `formats[].format_spec=pixiv-ugoira`. Preparation re-fetches trusted platform metadata and keeps signing, quotas, cancellation and the existing job queue. Directory references are not signed as media; only their preview images are. Selecting a work uses the normal extraction endpoint.
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/parse?url=` | Extract from share text / links. Failures return a `reason`: `deleted` `login` `blocked` `network` `timeout` `unsupported` `empty` `parse` |

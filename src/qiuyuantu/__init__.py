@@ -1,5 +1,14 @@
 from .parser import parse_video_id, parse_video_share_url
-from .parser.base import FormatInfo, ImgInfo, VideoAuthor, VideoInfo, VideoSource
+from .parser.base import (
+    ContentEntry,
+    FormatInfo,
+    ImgInfo,
+    MediaAsset,
+    TextDocument,
+    VideoAuthor,
+    VideoInfo,
+    VideoSource,
+)
 
 __all__ = [
     "VideoSource",
@@ -7,6 +16,9 @@ __all__ = [
     "VideoAuthor",
     "ImgInfo",
     "FormatInfo",
+    "MediaAsset",
+    "ContentEntry",
+    "TextDocument",
     "parse_video_share_url",
     "parse_video_id",
 ]

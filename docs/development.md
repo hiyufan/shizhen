@@ -123,6 +123,10 @@ curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/8x0AeP8prW8/"
 }
 ```
 
+解析结果新增可选的 `assets` 数组，用于装扮和收藏集里的独立素材：`{url, label, kind: image|animation|video, cover_url, ext}`。这些不是同一视频的不同清晰度，也不是原生实况配对。原有 `images`、`formats`、JSON 与 SSE 接口继续可用；所有素材地址与预览图均在 `sig` 中签名。动态图片传 `image: true` 到 `/api/prepare`，视频使用普通准备流程。
+
+Pixiv / Sketch 目录使用 `entries: [{url, title, cover_url, kind, available}]`、`entry_total` 与 `next_page_url`；`content_kind=directory` 的空页也是有效目录。`documents: [{title, content}]` 为纯文本，前端通过文本节点与本地 TXT 下载呈现，不能当 HTML 插入。`animation_frames: [{file, delay}]` 供时序 JSON 下载；Ugoira 原始 ZIP 放 `assets`（`kind=archive`），合成 MP4 使用 `formats[].format_spec=pixiv-ugoira`。准备任务重新读取可信平台元数据，并复用现有签名、配额、取消与任务队列。目录引用不签成媒体地址，只有预览图加入媒体签名；点击作品后走原有解析接口。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/api/parse?url=` | 解析分享文字 / 链接。失败时返回 `reason`：`deleted` `login` `blocked` `network` `timeout` `unsupported` `empty` `parse` |

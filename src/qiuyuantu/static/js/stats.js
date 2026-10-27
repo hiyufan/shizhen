@@ -19,7 +19,10 @@ const PLATFORMS = {
   tiktok: 'TikTok', instagram: 'Instagram', xigua: translate('西瓜视频'), pipixia: translate('皮皮虾'), acfun: 'AcFun', ytdlp: translate('其它（yt-dlp）'),
   '': translate('未识别'),
   qqmusic: translate('QQ 音乐'), netease: translate('网易云音乐'),
-  steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music',
+  steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', discord: 'Discord',
+  pixiv: 'Pixiv', 'pixiv-sketch': 'Pixiv Sketch', telegram: 'Telegram',
+  wutheringwaves: translate('鸣潮'), miyoushe: translate('米游社'),
+  'bilibili-assets': translate('B站装扮与收藏集'), 'wechat-channels': translate('视频号'),
 };
 const BLUE = '#4A94CC';
 const ORANGE = '#E8702A';

@@ -170,6 +170,10 @@ def render_tool_page(request: Request, page: seo.Page):
     )
     ctx["faq"] = page.all_faq
     ctx["related_guides"] = guides.pick(page.guides)
+    if page.slug == "discord-stickers":
+        from ..parser.discord import EXAMPLE_PACKS
+
+        ctx["sticker_examples"] = EXAMPLE_PACKS
     if page.slug == "hoyoplay-wallpaper":
         from ..parser.hoyoplay import GAMES, game_url
 
@@ -177,6 +181,12 @@ def render_tool_page(request: Request, page: seo.Page):
         ctx["wallpaper_games"] = [{"id": key, "name": value[0], "url": game_url(key)} for key, value in GAMES.items()]
         ctx["wallpaper_selected"] = selected if selected in GAMES else ""
         ctx["wallpaper_url"] = game_url(selected) if selected in GAMES else ""
+    elif page.slug == "wuthering-waves-wallpaper":
+        from ..parser.wutheringwaves import CONFIG_URL
+
+        ctx["wallpaper_games"] = [{"id": "global", "name": "鸣潮（国际服）", "url": CONFIG_URL}]
+        ctx["wallpaper_selected"] = "global"
+        ctx["wallpaper_url"] = CONFIG_URL
     return render(request, "index.html", ctx)
 
 

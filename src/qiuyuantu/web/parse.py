@@ -128,6 +128,9 @@ def _media_urls(data: dict) -> set[str]:
     for img in data["images"]:
         urls |= {img.get("url"), img.get("live_photo_url")}
     urls |= {f.get("url") for f in data["formats"]}
+    for asset in data.get("assets", []):
+        urls |= {asset.get("url"), asset.get("cover_url")}
+    urls |= {entry.get("cover_url") for entry in data.get("entries", [])}
     return {u for u in urls if u}
 
 
@@ -138,10 +141,13 @@ def _edge_urls(data: dict) -> dict[str, str]:
     edges = {}
     if relay.edge_img_enabled():
         images = {data.get("cover_url")} | {img.get("url") for img in data["images"]}
+        images |= {asset.get("cover_url") for asset in data.get("assets", [])}
+        images |= {asset.get("url") for asset in data.get("assets", []) if asset.get("kind") != "video"}
         edges |= {u: edge for u in images if u and (edge := relay.edge_img_url(u, ttl))}
     if relay.edge_media_enabled():
         media = {data.get("video_url"), data.get("music_url")} | {f.get("url") for f in data["formats"]}
         media |= {img.get("live_photo_url") for img in data["images"]}
+        media |= {asset.get("url") for asset in data.get("assets", []) if asset.get("kind") == "video"}
         edges |= {u: edge for u in media if u and (edge := relay.edge_media_url(u, ttl))}
     return edges
 

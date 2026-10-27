@@ -13,7 +13,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 COPY pyproject.toml ./
 RUN mkdir -p src/qiuyuantu src/parse_video_py \
     && touch src/qiuyuantu/__init__.py src/parse_video_py/__init__.py \
-    && pip install --no-cache-dir ".[web,cli,douyin,youtube]" \
+    && pip install --no-cache-dir ".[web,cli,douyin,youtube,stickers]" \
     && pip uninstall -y qiuyuantu && rm -rf src \
     && playwright install --with-deps chromium \
     && chmod -R a+rX /opt/pw-browsers

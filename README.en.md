@@ -43,7 +43,11 @@ Supports 30+ platforms. Available formats and quality depend on the source:
 | --- | --- |
 | Videos and images | Douyin, Xiaohongshu, Kuaishou, YouTube, X, Bilibili, Instagram and more |
 | Still and animated artwork | [QQ Music](https://ynvan.com/qq-music-cover), [NetEase Cloud Music](https://ynvan.com/netease-music-cover), [Apple Music](https://ynvan.com/apple-music-cover) |
-| Game assets | [Steam animated avatars, frames and backgrounds](https://ynvan.com/steam-assets), [HoYoPlay launcher wallpapers](https://ynvan.com/hoyoplay-wallpaper) |
+| Game assets | [Steam animated avatars, frames and backgrounds](https://ynvan.com/steam-assets), [HoYoPlay launcher wallpapers](https://ynvan.com/hoyoplay-wallpaper), [Wuthering Waves international wallpaper](https://ynvan.com/wuthering-waves-wallpaper) |
+| Anonymous stickers & Channels | [Cataloged Telegram stickers](https://ynvan.com/telegram-stickers) (TGS to transparent GIF / Live Photo), [Channels downloader](https://ynvan.com/wechat-channels) (public service supplies video for downloading and conversion) |
+| Public Discord stickers | [Public packs and individual stickers](https://ynvan.com/discord-stickers): original APNG / Lottie JSON downloads, transparent GIFs, Live Photos and Motion Photos; no account token |
+| Community & theme assets | [MiYouShe post images and GIFs](https://ynvan.com/miyoushe-images), [public Bilibili themes and collections](https://ynvan.com/bilibili-assets) |
+| Pixiv | [Illustrations, manga and novel TXT](https://ynvan.com/pixiv-download), [Ugoira to GIF / Live Photo](https://ynvan.com/pixiv-ugoira), [Sketch originals](https://ynvan.com/pixiv-sketch); browse public directories by page, without an account |
 
 See the [platform and format matrix](docs/usage.en.md#supported-platforms) for supported media types, quality options and limitations. Music tools extract artwork only.
 

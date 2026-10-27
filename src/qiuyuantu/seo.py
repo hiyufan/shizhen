@@ -17,7 +17,7 @@ from .guides import GUIDES, Guide
 
 SITE_NAME = "求原图"
 SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "").rstrip("/")  # 如 https://example.com；不填就按请求地址
-UPDATED = "2026-10-26"
+UPDATED = "2026-10-27"
 
 # 站长验证 / 统计代码：直接贴 <meta> 或 <script> 片段
 SITE_VERIFICATION_HTML = os.environ.get("PARSE_VIDEO_SITE_VERIFICATION", "")
@@ -89,6 +89,262 @@ DEFAULT_COMMON = ["watermark", "ratelimit", "free"]
 ALL_COMMON = list(COMMON_FAQ)
 
 PAGES: list[Page] = [
+    Page(
+        slug="pixiv-download",
+        title="Pixiv原图下载_漫画、小说与动图在线解析 - 求原图",
+        description="解析 Pixiv 公开插画、漫画、小说和 Ugoira。保存原图、TXT 与帧包，作者、系列、标签、榜单和集合按页选择作品，无需账号。",
+        h1="Pixiv 的作品，<br>原图与动画一起保存。",
+        lead="粘贴公开作品或目录链接。图片按原格式下载，小说另存 TXT；作者、系列和集合先选作品，Ugoira 还能转 GIF 与实况。",
+        keywords="Pixiv原图下载,Pixiv漫画下载,Pixiv小说TXT,Pixiv链接解析",
+        placeholder="粘贴 Pixiv 作品、作者、系列或集合链接…",
+        nav_label="Pixiv 原图与小说",
+        body=[
+            (
+                "单篇作品与目录",
+                "插画和漫画保留正文页序；作者、系列、标签、排行榜与 Collections 按页列出作品，点选后继续解析。目录不会自动整批下载。",
+            ),
+            (
+                "小说与插图分别保存",
+                "小说提供纯文本 TXT，保留 Pixiv 原文标记；封面、上传插图和引用作品分别列出。集合里的外部链接只提供原页面入口。",
+            ),
+            (
+                "公开访问的范围",
+                "只处理平台匿名提供的内容。私密、年龄受限、已删除、收藏夹和关注动态可能无法读取；URL 限定作品需要完整链接。",
+            ),
+        ],
+        faq=[
+            (
+                "支持所有 Pixiv 链接吗？",
+                "支持主站主要公开作品和目录，以及常见短链、旧作品链接；不保证账号或权限受限内容，也不包含 FANBOX、BOOTH 等独立服务。",
+            )
+        ],
+        guides=["pixiv-original-images", "pixiv-ugoira-to-gif"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="pixiv-ugoira",
+        title="Pixiv动图下载_Ugoira转GIF与实况照片 - 求原图",
+        description="下载 Pixiv Ugoira 帧包与逐帧时序 JSON，转为 MP4、GIF、iPhone 实况包或安卓动态照片。保留播放节奏，无需登录。",
+        h1="Pixiv 动图，<br>把帧包变成 <em>GIF</em>。",
+        lead="Ugoira 不是普通 GIF。下载帧包与时序文件，或直接交给转换器，制作 GIF、实况照片和安卓动态照片。",
+        keywords="Pixiv动图下载,Ugoira转GIF,Pixiv转实况,Ugoira MP4",
+        placeholder="粘贴 Pixiv Ugoira 作品链接…",
+        nav_label="Pixiv 动图转 GIF",
+        body=[
+            (
+                "帧包需要配合时序",
+                "ZIP 保存每一帧，JSON 保存每帧停留时长。两份文件一起保留才能还原动画；转换器按实际时序准备视频。",
+            ),
+            (
+                "帧包尺寸与原图尺寸",
+                "平台播放帧包可能小于作者的独立原始帧。这里下载平台返回的帧包，不按文件名推断原始画质。当前转换上限为 600 帧、30 秒，并受文件和像素限制。",
+            ),
+        ],
+        faq=[("静态插画可以转动图吗？", "静态作品直接保存原图；只有平台提供逐帧动画的 Ugoira 才显示动画转换入口。")],
+        guides=["pixiv-ugoira-to-gif", "pixiv-original-images"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="pixiv-sketch",
+        title="Pixiv Sketch原图下载_公开帖子图片提取 - 求原图",
+        description="粘贴 Pixiv Sketch 公开帖子或作者链接，按页选择帖子，保存平台提供的原始图片。不需要 Pixiv 账号。",
+        h1="Sketch 里的画，<br>按原始格式保存。",
+        lead="复制 Sketch 公开帖子或作者主页链接。目录按页展示，点选帖子后保存原始图片。",
+        keywords="Pixiv Sketch下载,Sketch原图,Pixiv Sketch图片保存",
+        placeholder="粘贴 sketch.pixiv.net 帖子或作者链接…",
+        nav_label="Pixiv Sketch 原图",
+        body=[
+            (
+                "公开图片与作者目录",
+                "只提取公开帖子的图片，不包含直播、私密或年龄受限内容。作者目录可以翻页，图片逐张保存。",
+            )
+        ],
+        faq=[
+            (
+                "Sketch 和 Pixiv 主站是同一个入口吗？",
+                "两者使用各自的公开接口。这个页面用于 sketch.pixiv.net；主站插画、漫画、小说和动图请使用 Pixiv 工具。",
+            )
+        ],
+        guides=["pixiv-original-images"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="discord-stickers",
+        title="Discord动态贴纸下载_APNG与Lottie转透明GIF - 求原图",
+        description="粘贴 Discord 公开贴纸包或贴纸素材链接，下载 APNG、Lottie JSON 原文件，转透明 GIF、iPhone 实况包和安卓动态照片。匿名读取官方公开目录，无需 Token。",
+        h1="Discord 贴纸，<br>换个地方接着动。",
+        lead="从官方公开目录提取贴纸，下载 APNG 与 Lottie 原文件，或转成透明 GIF、实况与动态照片。不需要 Discord 账号或 Bot Token。",
+        keywords="Discord贴纸下载,Discord动态贴纸,APNG转GIF,Lottie转GIF,Discord sticker downloader",
+        placeholder="粘贴 Discord 贴纸包商店链接或 stickers 素材链接…",
+        nav_label="Discord 贴纸",
+        body=[
+            (
+                "公开贴纸包与单个贴纸",
+                "支持官方公开目录中的贴纸包商店链接、贴纸包编号链接，以及对应的 stickers 素材链接。按目录中的真实格式下载，不读取聊天记录或私人服务器。",
+            ),
+            (
+                "APNG 与 Lottie 转 GIF",
+                'APNG 是会动的 PNG，下载后相册可能只显示首帧；Lottie 是 JSON 动画，点「转 GIF」后可预览。透明 GIF 保留背景透明，实况与动态照片使用普通视频画面。<a href="/guide/discord-stickers-to-gif">查看保存与转换教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "为什么有些 Discord 贴纸无法解析？",
+                "这个入口只匹配 Discord 官方当前公开目录中的素材。私人服务器、聊天消息、表情符号和目录外的贴纸暂不支持；不需要为此上传账号 Token。",
+            ),
+            (
+                "保存贴纸后能在 Discord 中发送吗？",
+                "这里只下载和转换公开素材。Discord 内的贴纸发送权限仍由账号、服务器和订阅规则决定。",
+            ),
+        ],
+        guides=["discord-stickers-to-gif", "telegram-tgs-to-gif"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="telegram-stickers",
+        title="Telegram贴纸下载_TGS转GIF与实况照片 - 求原图",
+        description="粘贴 Telegram 贴纸包链接，提取公开目录已收录的 TGS 与 WebP 素材。TGS 可转透明 GIF、iPhone 实况包和安卓动态照片，无需账号或 Bot Token。",
+        h1="Telegram 贴纸，<br>保存后接着动。",
+        lead="粘贴 addstickers 贴纸包链接，读取公开目录已收录的素材。下载 TGS 原文件，或选一个表情转成透明 GIF、实况与动态照片。",
+        keywords="Telegram贴纸下载,TGS转GIF,Telegram动态贴纸,透明GIF,Telegram sticker downloader",
+        placeholder="粘贴 Telegram 贴纸包链接，如 https://t.me/addstickers/HotCherry",
+        nav_label="Telegram 贴纸",
+        body=[
+            (
+                "公开收录的贴纸包",
+                "素材来自 Stickers.wiki 公开目录，不需要在本站登录 Telegram。目录未收录、已经下架或版本不同的贴纸包可能无法取得；结果会标明来源。",
+            ),
+            (
+                "TGS 转透明 GIF",
+                "每个动态贴纸可单独下载 TGS，或点「转 GIF」。GIF 保留透明背景；实况与动态照片使用普通视频画面。<a "
+                'href="/guide/telegram-tgs-to-gif">查看贴纸保存与转换教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "为什么有些贴纸包没有结果？",
+                "匿名读取依赖公开目录已经收录的版本，无法覆盖全部 Telegram 贴纸包。请核对 addstickers 链接；这个入口目前不提供聊天记录、自定义表情包或私人素材下载。",
+            )
+        ],
+        guides=["telegram-tgs-to-gif", "wechat-gif-1mb"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="wechat-channels",
+        title="微信视频号视频下载_匿名解析分享链接与封面图片 - 求原图",
+        description="粘贴视频号 sph 分享链接，匿名解析视频与封面，支持下载、转 GIF、实况与动态照片。官方预览核对作品，BugPk 公益接口补充视频，无需微信或元宝凭证。",
+        h1="视频号的片段，<br>下载或做成实况。",
+        lead="复制视频号的 sph 分享链接，下载公开视频与封面。选一小段转 GIF、iPhone 实况包或安卓动态照片，不需要账号凭证。",
+        keywords="微信视频号视频下载,视频号封面下载,视频号转GIF,视频号实况照片,视频号分享链接解析",
+        placeholder="粘贴视频号分享链接，如 https://weixin.qq.com/sph/…",
+        nav_label="微信视频号",
+        body=[
+            (
+                "视频与封面分别保存",
+                "标题、作者与封面来自视频号官方公开预览。视频由 BugPk 公益接口匿名补充，核对标题与作者一致后才展示，不要求微信或元宝 Cookie。",
+            ),
+            (
+                "下载后也能转换",
+                '有可用视频时，可直接下载或截取片段转换。公益接口不可用或作品核对失败时保留官方封面，并明确提示。<a href="/guide/wechat-channels-download">查看视频下载与转换教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "为什么能显示封面，却没有视频下载？",
+                "官方匿名预览可能只开放封面，视频另依赖公益接口当前可用性。失效、受限或无法核对的作品可能只有封面；不保证私人内容、付费内容与直播回放，也不承诺固定清晰度。",
+            )
+        ],
+        guides=["wechat-channels-download", "video-to-live-photo"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="wuthering-waves-wallpaper",
+        title="鸣潮国际服启动器壁纸下载_动态背景转GIF与实况 - 求原图",
+        description="下载鸣潮国际服当前启动器的公开壁纸与背景视频。静态首帧按原图保存，动态背景可截取片段，转 GIF、iPhone 实况包或安卓动态照片。",
+        h1="鸣潮启动器的风景，<br>也能随身收藏。",
+        lead="选择鸣潮国际服，读取当前启动器公开背景。下载原图或视频，也可以选一小段做成 GIF 与实况照片。",
+        keywords="鸣潮壁纸下载,鸣潮启动器动态背景,Wuthering Waves wallpaper,鸣潮动态壁纸转GIF",
+        nav_label="鸣潮壁纸",
+        body=[
+            (
+                "当前国际服背景",
+                "工具跟随启动器当前配置，展示实际提供的图片与视频。版本更新后素材可能变化；不提供国服或历史版本壁纸档案。",
+            ),
+            (
+                "选一段，做成动态照片",
+                "动态背景点「转 GIF」或「做成实况照片」，准备完成后选择片段。安卓用户可切换动态照片；<a "
+                'href="/guide/wuthering-waves-wallpaper-download">查看保存与导入步骤</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "每个版本都有动态壁纸吗？",
+                "取决于启动器当前提供的素材。只有图片时只显示原图下载，视频存在时才提供动态转换。",
+            )
+        ],
+        guides=["wuthering-waves-wallpaper-download", "video-to-live-photo"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="miyoushe-images",
+        title="米游社帖子原图下载_高清图集与动态GIF保存 - 求原图",
+        description="粘贴米游社单篇帖子链接，提取正文图片并按原始格式逐张保存。支持原神、星穹铁道、绝区零等社区帖子，GIF 保留动效，也能继续转换。",
+        h1="米游社里的好图，<br>按原格式保存。",
+        lead="复制单篇帖子的完整分享链接。提取正文图集，逐张下载原图；帖子里的 GIF 还能转成实况或安卓动态照片。",
+        keywords="米游社原图下载,米游社图集保存,原神壁纸原图,星穹铁道壁纸下载,米游社GIF保存",
+        placeholder="粘贴米游社帖子链接，如 https://www.miyoushe.com/ys/article/…",
+        nav_label="米游社原图",
+        body=[
+            (
+                "提取正文，不混入头像与推荐图",
+                "按当前帖子的正文图片列表保留顺序与原始地址，不把作者头像、单独的封面或推荐帖图片混进图集。图片尺寸以平台提供的文件为准。",
+            ),
+            (
+                "下载后保留真实图片格式",
+                'PNG、JPEG、GIF 按文件实际类型保存。动态 GIF 可以继续转换，静态图直接下载；<a href="/guide/miyoushe-original-images">查看米游社原图保存教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "支持作者主页、评论区或 HoYoLAB 吗？",
+                "目前支持米游社单篇公开帖子的正文图集，不批量抓取作者主页、评论区，也不把 HoYoLAB 当作已支持的平台。纯视频帖没有正文图片时会提示无图。",
+            )
+        ],
+        guides=["miyoushe-original-images", "hoyoplay-wallpaper-download"],
+        common=["free", "ratelimit"],
+    ),
+    Page(
+        slug="bilibili-assets",
+        title="B站装扮与收藏集公开素材下载_动态卡片转GIF - 求原图",
+        description="粘贴 B 站装扮或收藏集详情链接，下载公开展示的背景、卡片图片与动态视频。每份素材独立预览、下载，动态素材可转 GIF、实况与动态照片。",
+        h1="B站的动态卡片，<br>下载后继续创作。",
+        lead="粘贴装扮或收藏集详情页的完整链接，读取当前公开素材。选中喜欢的图片或视频，单独下载，也能把动态视频做成 GIF。",
+        keywords="B站装扮下载,B站收藏集动态卡片下载,B站背景视频,Bilibili动态卡片转GIF",
+        placeholder="粘贴 B 站装扮或收藏集详情页完整链接…",
+        nav_label="B站装扮与收藏集",
+        body=[
+            (
+                "图片和视频分别展示",
+                "同一套装里的背景、卡片和表情是不同素材，每份都可单独下载。动态视频旁可直接打开转换器，不需要把整个套装先下载到电脑。",
+            ),
+            (
+                "以公开展示的素材为准",
+                '只读取平台公开返回的图片与视频，不解锁账号权益，也不提供客户端私有缓存中的素材。<a href="/guide/bilibili-collection-assets">查看链接格式与转换教程</a>。',
+            ),
+        ],
+        faq=[
+            (
+                "为什么收藏集链接缺少参数会失败？",
+                "收藏集详情链接需要同时保留 act_id 与 lottery_id，装扮链接需要 id。请打开详情页复制完整网址；首页、搜索页和缩短后的不完整链接不对应具体素材。",
+            ),
+            (
+                "所有装扮动画都能下载吗？",
+                "不能。只显示当前公开接口提供的图片与视频；专用动画包和账号内素材不在范围内。视频链接可能过期，下载失败时可重新解析。",
+            ),
+        ],
+        guides=["bilibili-collection-assets", "wechat-gif-1mb"],
+        common=["free", "ratelimit"],
+    ),
     Page(
         slug="steam-assets",
         title="Steam动态头像与头像框下载_APNG转GIF - 求原图",

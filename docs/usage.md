@@ -51,7 +51,15 @@
 | 网易云音乐 | – | 封面 | – | 平台提供的原始尺寸 | 歌曲、专辑、歌单分享链接；动态封面可保留原格式或转 GIF / 实况 / 动态照片 |
 | Steam 点数商店 | ✅ | GIF / APNG 等素材 | – | 平台提供的原始素材 | 单个物品链接；动态头像、透明头像框、贴纸、MP4 / WebM 背景；动画可转换 |
 | HoYoPlay | ✅ | 当前启动器壁纸 | – | 平台提供的原始素材 | 选择四款游戏，读取当前国服公开背景；有视频时可转换，不含历史档案 |
+| 鸣潮 | 当前背景视频 | 启动器首帧或静态图 | – | 国际服当前公开文件 | [工具](https://ynvan.com/wuthering-waves-wallpaper)；不含历史版本；视频可转三种格式 |
+| 米游社 | – | 正文原图与 GIF | – | 平台提供的原始文件 | [工具](https://ynvan.com/miyoushe-images)；单篇帖子，不含主页、评论与 HoYoLAB；GIF 可转换 |
+| B站装扮与收藏集 | 公开动态素材 | 公开图片 | – | 平台当前返回的素材 | [工具](https://ynvan.com/bilibili-assets)；每份独立下载与转换，不解锁账号权益；不含专用动画包 |
+| Telegram 贴纸 | – | TGS / WebP | – | 公开目录已收录文件 | [工具](https://ynvan.com/telegram-stickers)；无需账号凭证；TGS 可转透明 GIF / 实况 / 动态照片；不含私人素材或全部实时贴纸包 |
+| 微信视频号 | 公开视频 | 公开预览封面 | – | 以实际文件为准，不信任接口画质标签 | [工具](https://ynvan.com/wechat-channels)；官方 sph 分享链接，官方预览核对作品，BugPk 公益接口补充视频；匿名下载与转换，不要求账号凭证，公益接口失败时保留封面 |
+| Discord | – | 公开目录贴纸 | – | APNG / Lottie JSON 等目录实际格式 | [工具](https://ynvan.com/discord-stickers)；公开贴纸包商店或编号链接、对应的 stickers 素材链接；逐项下载，动态素材可转透明 GIF / 实况 / 动态照片；不读取私人服务器或聊天 |
 | Apple Music | 动态封面 | 封面 | – | 图片最高请求 3000px；动态视频最高 1080p | 歌曲、专辑、歌单公开封面；动态视频按作品提供情况显示，不下载歌曲音频 |
+| Pixiv | Ugoira 合成 MP4 | 插画 / 漫画原图、帧包 | – | 平台提供的图片与播放帧包 | [原图与小说](https://ynvan.com/pixiv-download)、[动图](https://ynvan.com/pixiv-ugoira)；小说 TXT、封面与插图分开保存；作者、系列、标签、榜单、Collections 分页点选作品。转换 ≤600 帧 / 30 秒，另有体积与像素限制；不接账号凭证 |
+| Pixiv Sketch | – | 公开帖子原图 | – | 平台返回的 original 图片 | [工具](https://ynvan.com/pixiv-sketch)；帖子链接或作者目录，按页选择；不包含直播、私密和年龄受限内容 |
 | 微博、西瓜、皮皮虾、AcFun、TikTok … | ✅ | 部分 | – | | 30+ 平台，其余交给 yt-dlp 兜底 |
 
 > 解析依赖各平台网页结构，平台改版可能暂时失效。上游 parse-video-py 更新较勤，修了某个平台时可以对照着改 `parser/` 里的解析器（不能直接覆盖，见[贡献](development.md#贡献)）。

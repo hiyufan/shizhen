@@ -11,7 +11,7 @@ import { askForStarAfterDownload, feedbackBox } from './ui.js';
 
 const REASON_TIPS = {
   deleted: t('确认一下原内容还在，或者重新复制一次分享链接（小红书的链接会过期）。'),
-  login: t('站长可以在服务器上配置 cookies 解决；换个平台的链接不受影响。'),
+  login: t('请换成公开作品链接，或在原平台查看这条内容。'),
   blocked: t('过几分钟再试。这是平台对服务器的限制，不是你的问题。'),
   network: t('稍后再试。'),
   timeout: t('稍后再试，或者换一个链接。'),
@@ -62,7 +62,8 @@ function cancelParse() {
 }
 
 function showParseError(err) {
-  notice(err.message.replace(/[。.]$/, '') + (isEnglish ? '. ' : '。') + (REASON_TIPS[err.reason] || ''));
+  const message = err.reason === 'login' ? t('这条内容需要在原平台登录后查看。') : err.message;
+  notice(message.replace(/[。.]$/, '') + (isEnglish ? '. ' : '。') + (REASON_TIPS[err.reason] || ''));
   // 是不是整个平台出问题了：状态页上有每小时的自检结果
   $('#notice').append(' ', el('a', { href: '/status', target: '_blank' }, t('看各平台现在的解析状态')));
   if (err.feedback) $('#notice').append(feedbackBox(err.feedback));
@@ -151,6 +152,13 @@ pasteBtn.addEventListener('click', async () => {
 });
 if (!navigator.clipboard || !navigator.clipboard.readText) pasteBtn.hidden = true;
 syncTools();
+
+document.addEventListener('qyt:parse-link', (event) => {
+  if (typeof event.detail !== 'string' || !hasLink(event.detail)) return;
+  urlBox.value = event.detail;
+  syncTools();
+  form.requestSubmit();
+});
 
 // 壁纸页使用游戏选择器，复用同一个解析、取消与结果流程。
 const wallpaperGame = $('#wallpaper-game');

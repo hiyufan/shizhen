@@ -21,6 +21,9 @@
       </div>
       <button class="btn dark" id="parse-btn" type="submit">{{ t("解析") }}</button>
     </form>
+    {% if sticker_examples %}
+    <p class="supports">{{ t('试试公开贴纸包：') }}{% for name, url in sticker_examples %}<a href="{{ page.path }}?url={{ url | urlencode }}">{{ name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    {% endif %}
     <p class="supports" data-reveal style="--i:4"><b>{{ t("支持") }}</b> {{ t("抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。") }}</p>
     <p class="supports music-supports" data-reveal style="--i:4">{{ t('音乐封面也能取：') }}<a href="/qq-music-cover">{{ t('QQ 音乐封面') }}</a> · <a href="/netease-music-cover">{{ t('网易云音乐封面') }}</a>{{ t('。') }}{{ t('动态封面可保留原格式，或转成 GIF 与实况照片。') }}</p>
     <p class="supports music-supports" data-reveal style="--i:4"><a href="/steam-assets">{{ t('Steam 动态素材') }}</a> · <a href="/hoyoplay-wallpaper">{{ t('HoYoPlay 壁纸') }}</a> · <a href="/apple-music-cover">{{ t('Apple Music 封面') }}</a></p>
@@ -68,6 +71,15 @@
       <a class="card" href="/steam-assets" data-reveal="card" style="--i:8"><h3>{{ t('Steam 动态素材') }}</h3><p>{{ t('动态头像、透明头像框、贴纸与背景视频，原格式下载或转 GIF。') }}</p><span class="spec">GIF · APNG · MP4 · WebM</span></a>
       <a class="card" href="/hoyoplay-wallpaper" data-reveal="card" style="--i:9"><h3>{{ t('HoYoPlay 壁纸') }}</h3><p>{{ t('选择游戏，保存当前启动器背景；有动态视频时还能做成实况照片。') }}</p><span class="spec">{{ t('原图 · 动态背景 · 实况') }}</span></a>
       <a class="card" href="/apple-music-cover" data-reveal="card" style="--i:10"><h3>{{ t('Apple Music 封面') }}</h3><p>{{ t('下载专辑与歌单封面，公开动态封面另存 MP4，也能继续转换。') }}</p><span class="spec">{{ t('封面图片 · 动态 MP4') }}</span></a>
+      <a class="card" href="/wuthering-waves-wallpaper" data-reveal="card" style="--i:11"><h3>{{ t('鸣潮壁纸') }}</h3><p>{{ t('保存当前国际服启动器的原图与背景视频，选一段转 GIF 或实况。') }}</p><span class="spec">{{ t('原图 · 动态背景 · 实况') }}</span></a>
+      <a class="card" href="/miyoushe-images" data-reveal="card" style="--i:12"><h3>{{ t('米游社原图') }}</h3><p>{{ t('提取单篇帖子正文图集，逐张保存原图，GIF 保留动效并支持转换。') }}</p><span class="spec">{{ t('原图 · GIF · 图集') }}</span></a>
+      <a class="card" href="/bilibili-assets" data-reveal="card" style="--i:13"><h3>{{ t('B站装扮与收藏集') }}</h3><p>{{ t('逐项保存公开背景、卡片图片与动态视频，直接接着转 GIF 或实况。') }}</p><span class="spec">{{ t('卡片 · 背景 · 动态视频') }}</span></a>
+      <a class="card" href="/telegram-stickers" data-reveal="card" style="--i:14"><h3>{{ t('Telegram 贴纸') }}</h3><p>{{ t('公开目录收录的 TGS 与 WebP；下载原文件，动态贴纸还能转 GIF 与实况。') }}</p><span class="spec">TGS · WebP · GIF</span></a>
+      <a class="card" href="/wechat-channels" data-reveal="card" style="--i:15"><h3>{{ t('微信视频号') }}</h3><p>{{ t('匿名解析公开分享链接，下载视频与封面，或截取片段转换。') }}</p><span class="spec">{{ t('视频 · 封面 · 实况') }}</span></a>
+      <a class="card" href="/discord-stickers" data-reveal="card" style="--i:16"><h3>{{ t('Discord 贴纸') }}</h3><p>{{ t('公开贴纸包的 APNG 与 Lottie，下载原文件，或转透明 GIF 与实况。') }}</p><span class="spec">APNG · Lottie · GIF</span></a>
+      <a class="card" href="/pixiv-download" data-reveal="card" style="--i:17"><h3>{{ t('Pixiv 原图与小说') }}</h3><p>{{ t('保存插画、漫画原图和小说 TXT；目录按页选择作品。') }}</p><span class="spec">Pixiv · TXT · Collections</span></a>
+      <a class="card" href="/pixiv-ugoira" data-reveal="card" style="--i:18"><h3>{{ t('Pixiv 动图转 GIF') }}</h3><p>{{ t('下载 Ugoira 帧包与时序，或转 MP4、GIF 与实况。') }}</p><span class="spec">Ugoira · GIF · MP4</span></a>
+      <a class="card" href="/pixiv-sketch" data-reveal="card" style="--i:19"><h3>{{ t('Pixiv Sketch 原图') }}</h3><p>{{ t('从 Sketch 公开帖子和作者目录保存原始图片。') }}</p><span class="spec">Pixiv Sketch</span></a>
     </div>
     {% else %}
     <div class="sec-head">

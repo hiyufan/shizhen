@@ -46,7 +46,15 @@ class VideoSource(Enum):
     NetEaseMusic = "netease"  # 网易云音乐封面
     Steam = "steam"  # Steam 点数商店素材
     HoYoPlay = "hoyoplay"  # HoYoPlay 官方启动器壁纸
+    WutheringWaves = "wutheringwaves"  # 鸣潮国际服启动器壁纸
+    MiYouShe = "miyoushe"  # 米游社单篇正文图集
+    BiliAssets = "bilibili-assets"  # B 站公开装扮素材
+    Telegram = "telegram"  # 公开目录收录的 Telegram 贴纸
+    Discord = "discord"  # Discord 官方公开目录中的贴纸
+    WeChatChannels = "wechat-channels"  # 视频号匿名公开预览
     AppleMusic = "applemusic"  # Apple Music 公开封面
+    Pixiv = "pixiv"
+    PixivSketch = "pixiv-sketch"
     YtDlp = "ytdlp"  # YouTube / TikTok / Instagram 等，交给 yt-dlp
 
 
@@ -108,6 +116,36 @@ class FormatInfo:
 
 
 @dataclasses.dataclass
+class MediaAsset:
+    """同一套装里的独立素材；不属于同一视频的清晰度，也不是原生实况配对。"""
+
+    url: str
+    label: str = ""
+    kind: str = "image"  # image / animation / video
+    cover_url: str = ""
+    ext: str = ""  # TGS 等原始格式不能按普通图片下载
+
+
+@dataclasses.dataclass
+class ContentEntry:
+    """目录中的可选作品或外部引用，不是可直接下载的媒体。"""
+
+    url: str
+    title: str = ""
+    cover_url: str = ""
+    kind: str = "artwork"
+    available: bool = True
+
+
+@dataclasses.dataclass
+class TextDocument:
+    """纯文本正文；调用方不得作为 HTML 插入页面。"""
+
+    title: str
+    content: str
+
+
+@dataclasses.dataclass
 class VideoInfo:
     """
     视频信息
@@ -154,6 +192,14 @@ class VideoInfo:
 
     # 给用户看的一句说明：平台不给的那部分是什么、怎么办（页面上显示在结果标题下面）
     notice: str = ""
+
+    assets: list[MediaAsset] = dataclasses.field(default_factory=list)
+    entries: list[ContentEntry] = dataclasses.field(default_factory=list)
+    documents: list[TextDocument] = dataclasses.field(default_factory=list)
+    next_page_url: str = ""
+    entry_total: int = 0
+    animation_frames: list[dict] = dataclasses.field(default_factory=list)
+    content_kind: str = "media"  # media / directory / document
 
 
 def json_in_html(html: str, pattern: str, what: str) -> Any:
