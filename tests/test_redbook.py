@@ -304,6 +304,20 @@ async def test_short_link_can_recover_from_long_link_in_redirect_history(monkeyp
     assert calls == [SHARE, OLD_URL, SECURITY_PAGE[0], INTERNATIONAL_URL]
 
 
+async def test_short_link_cannot_replace_requested_note_with_redirected_recommendation(monkeypatch):
+    another = "688758420000000025019653"
+
+    def handler(request):
+        if request.url.host == "xhslink.cn":
+            return httpx.Response(302, headers={"Location": OLD_URL})
+        if request.url.path.endswith(NOTE_ID):
+            return httpx.Response(302, headers={"Location": OLD_URL.replace(NOTE_ID, another)})
+        return httpx.Response(200, text=_international_page(another))
+
+    with pytest.raises(ParseError, match="笔记与请求不一致"):
+        await _request_parse(monkeypatch, SHARE, handler, mobile_first=True)
+
+
 @pytest.mark.parametrize("returned_id", ["688758420000000025019653", None])
 async def test_international_entry_rejects_other_or_missing_note_id(monkeypatch, returned_id):
     calls = []

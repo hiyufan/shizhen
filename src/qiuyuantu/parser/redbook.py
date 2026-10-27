@@ -160,7 +160,9 @@ class RedBook(BaseParser):
             response.raise_for_status()
         final_url = str(response.url)
         for page in [*getattr(response, "history", ()), response]:
-            if _note_id(str(page.url)):
+            note_id = _note_id(str(page.url))
+            expected = _note_id(self._resolved_note_url)
+            if note_id and (not expected or note_id == expected):
                 self._resolved_note_url = str(page.url)
         self._last_page = (final_url, _title(response.text))
         return final_url, response.text
