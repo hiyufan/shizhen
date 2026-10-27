@@ -5,6 +5,7 @@ import json
 import logging
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from qiuyuantu.parser import redbook
@@ -239,3 +240,178 @@ def test_note_or_token_numbers_are_not_error_codes():
     assert not redbook._security_limit("https://www.xiaohongshu.com/explore/300013?xsec_token=300013", "")
     assert not redbook._security_limit("https://www.xiaohongshu.com/404?originalUrl=https://x.test/?code=300013", "")
     assert not redbook._security_limit("https://www.xiaohongshu.com/404", "<p>安全限制 13000130</p>")
+
+
+NOTE_ID = "650ef945000000001f005918"
+OLD_URL = f"https://www.xiaohongshu.com/explore/{NOTE_ID}?xsec_token=AB_test%2B%3D&xsec_source=pc_user"
+INTERNATIONAL_URL = OLD_URL.replace("www.xiaohongshu.com", "www.rednote.com")
+
+
+def _international_page(note_id=NOTE_ID, **changes):
+    note = {**IMAGE_NOTE, "noteId": note_id, **changes}
+    return "<script>window.__INITIAL_STATE__=" + json.dumps({"noteData": {"data": {"noteData": note}}}) + "</script>"
+
+
+async def _request_parse(monkeypatch, url, handler, *, cookie="", mobile_first=False, instance=None):
+    monkeypatch.setenv("PARSE_VIDEO_XHS_COOKIE", cookie)
+    monkeypatch.setattr(RedBook, "_prefer_mobile", False)
+    monkeypatch.setattr(RedBook, "_mobile_first", staticmethod(lambda: mobile_first))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True) as client:
+
+        class _Client:
+            async def __aenter__(self):
+                return client
+
+            async def __aexit__(self, *args):
+                return False
+
+        monkeypatch.setattr(redbook, "create_async_client", lambda **kwargs: _Client())
+        return await (instance or RedBook()).parse_share_url(url)
+
+
+async def test_old_long_link_uses_official_mobile_entry_and_preserves_token(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, text=_international_page())
+
+    info = await _request_parse(monkeypatch, OLD_URL, handler)
+    assert len(calls) == 1
+    assert str(calls[0].url) == INTERNATIONAL_URL
+    assert "iPhone" in calls[0].headers["user-agent"]
+    assert "cookie" not in calls[0].headers
+    assert info.page_url == INTERNATIONAL_URL
+    assert info.title == IMAGE_NOTE["title"] and len(info.images) == 3
+    assert info.images[1].live_photo_url == "live2"
+
+
+async def test_short_link_can_recover_from_long_link_in_redirect_history(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        if request.url.host == "xhslink.cn":
+            return httpx.Response(302, headers={"Location": OLD_URL})
+        if request.url.host == "www.rednote.com":
+            return httpx.Response(200, text=_international_page())
+        if request.url.path.startswith("/explore/"):
+            return httpx.Response(302, headers={"Location": SECURITY_PAGE[0]})
+        return httpx.Response(200, text=SECURITY_PAGE[1])
+
+    info = await _request_parse(monkeypatch, SHARE, handler, mobile_first=True)
+    assert info.title == IMAGE_NOTE["title"]
+    assert calls == [SHARE, OLD_URL, SECURITY_PAGE[0], INTERNATIONAL_URL]
+
+
+@pytest.mark.parametrize("returned_id", ["688758420000000025019653", None])
+async def test_international_entry_rejects_other_or_missing_note_id(monkeypatch, returned_id):
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        if request.url.host == "www.rednote.com":
+            return httpx.Response(200, text=_international_page(returned_id))
+        return httpx.Response(200, text=SECURITY_PAGE[1], headers={})
+
+    with pytest.raises(ParseError, match="笔记与请求不一致"):
+        await _request_parse(monkeypatch, OLD_URL, handler)
+    assert calls == [INTERNATIONAL_URL]
+
+
+async def test_international_video_keeps_direct_formats(monkeypatch):
+    def handler(request):
+        return httpx.Response(200, text=_international_page(**VIDEO_NOTE))
+
+    info = await _request_parse(monkeypatch, OLD_URL, handler)
+    assert info.video_url == "v1080b" and info.duration == 12
+    assert [f.url for f in info.formats] == ["v720", "v265"]
+
+
+async def test_reusing_parser_does_not_reuse_previous_note_or_route(monkeypatch):
+    calls = []
+    instance = RedBook()
+    another = "688758420000000025019653"
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, text=_international_page(request.url.path.rsplit("/", 1)[-1]))
+
+    await _request_parse(monkeypatch, OLD_URL, handler, instance=instance)
+    await _request_parse(monkeypatch, OLD_URL.replace(NOTE_ID, another), handler, instance=instance)
+    assert calls == [INTERNATIONAL_URL, INTERNATIONAL_URL.replace(NOTE_ID, another)]
+
+
+async def test_international_request_never_receives_configured_xhs_cookie(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, text=_international_page())
+
+    await _request_parse(monkeypatch, INTERNATIONAL_URL, handler, cookie="web_session=private")
+    assert len(calls) == 1 and "cookie" not in calls[0].headers
+
+
+async def test_configured_xhs_cookie_keeps_original_desktop_entry(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        state = {"note": {"currentNoteId": NOTE_ID, "noteDetailMap": {NOTE_ID: {"note": IMAGE_NOTE}}}}
+        return httpx.Response(200, text="<script>window.__INITIAL_STATE__=" + json.dumps(state) + "</script>")
+
+    await _request_parse(monkeypatch, OLD_URL, handler, cookie="web_session=private")
+    assert len(calls) == 1 and str(calls[0].url) == OLD_URL
+    assert calls[0].headers["cookie"] == "web_session=private"
+    assert "iPhone" not in calls[0].headers["user-agent"]
+
+
+async def test_international_failure_can_use_original_mobile_entry_once(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        if request.url.host == "www.rednote.com":
+            return httpx.Response(503)
+        return httpx.Response(200, text=_international_page())
+
+    assert (await _request_parse(monkeypatch, OLD_URL, handler)).title == IMAGE_NOTE["title"]
+    assert calls == [INTERNATIONAL_URL, OLD_URL]
+
+
+@pytest.mark.parametrize("code", ["300012", "300013"])
+async def test_international_security_limit_is_not_retried(monkeypatch, code):
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, text=f"<title>安全限制</title><p>{code}</p>")
+
+    with pytest.raises(ParseError) as exc:
+        await _request_parse(monkeypatch, OLD_URL, handler)
+    assert exc.value.reason == "blocked" and code in exc.value.detail
+    assert calls == [INTERNATIONAL_URL]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://www.xiaohongshu.com.evil.test/explore/{NOTE_ID}",
+        f"https://www.xiaohongshu.com@evil.test/explore/{NOTE_ID}",
+        f"https://private@www.xiaohongshu.com/explore/{NOTE_ID}",
+        f"https://www.xiaohongshu.com:22/explore/{NOTE_ID}",
+        f"https://www.xiaohongshu.com/user/profile/{NOTE_ID}",
+    ],
+)
+def test_international_entry_only_rewrites_official_note_urls(monkeypatch, url):
+    monkeypatch.delenv("PARSE_VIDEO_XHS_COOKIE", raising=False)
+    assert not redbook._international_note_url(url)
+
+
+def test_rednote_links_use_the_xiaohongshu_parser():
+    from qiuyuantu.parser import VideoSource, detect_source
+
+    assert detect_source(INTERNATIONAL_URL) == VideoSource.RedBook
+    assert detect_source(INTERNATIONAL_URL.replace("www.rednote.com", "rednote.com")) == VideoSource.RedBook
+    assert detect_source(INTERNATIONAL_URL.replace("www.rednote.com", "rednote.com.evil.test")) != VideoSource.RedBook

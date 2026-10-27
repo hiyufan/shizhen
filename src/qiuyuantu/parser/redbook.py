@@ -20,6 +20,8 @@ _MOBILE_UA = (
     "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
 )
 _STATE_RE = re.compile(r"window\.__INITIAL_STATE__\s*=\s*(.*?)</script>", re.DOTALL)
+_NOTE_PATH_RE = re.compile(r"/(?:explore|discovery/item|search_result)/([a-f0-9]{24})/?$", re.I)
+_NOTE_HOSTS = {"xiaohongshu.com", "www.xiaohongshu.com", "rednote.com", "www.rednote.com"}
 
 log = logging.getLogger("uvicorn.error")
 
@@ -28,32 +30,30 @@ class RedBook(BaseParser):
     """
     小红书
 
-    两条路：
-    - 桌面页 (note.noteDetailMap)：住宅 IP 或带登录 cookie 时可用，视频档位最全
-    - 手机分享页 (noteData.data.noteData)：给"在手机浏览器里打开分享链接"用的落地页，
-      机房 / 边缘 IP 不要求登录。桌面页被要求登录时自动切过来，之后优先走这条。
+    桌面页提供较全的视频档位，手机分享页提供 noteData.data.noteData。
+    匿名笔记长链优先使用官方 rednote 手机页；部分 pc_user 链接在国内域名
+    返回安全跳转，在该入口仍可读取。保留原始参数，并核对返回的笔记 ID。
     """
 
     _prefer_mobile = False  # 桌面页撞过一次登录墙后就先走手机页
 
     def __init__(self) -> None:
         self._last_page = ("", "")  # 最近一次请求跳到的地址和页面标题, 失败时写进日志
+        self._resolved_note_url = ""
+        self._international_attempted = False
 
     @staticmethod
     def _mobile_first() -> bool:
-        """走中继又没配 cookie 时，桌面页必然是登录墙，别拿一次跨洋往返去撞。
-
-        中继的出口是边缘节点，也就是机房 IP，小红书对这类出口一律要求登录。
-        _prefer_mobile 只是进程内的记忆，重启就忘，等于每次重启后的第一个用户
-        都要替后面的人垫一次白跑的请求。配了 PARSE_VIDEO_XHS_COOKIE 就仍然先走
-        桌面页——那条路的视频档位更全。
-        """
+        """中继匿名访问优先手机页，避免先请求通常需要登录的桌面入口。"""
         from ..convert import relay
 
         return relay.enabled() and not os.getenv("PARSE_VIDEO_XHS_COOKIE")
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        mobile_first = RedBook._prefer_mobile or self._mobile_first()
+        self._last_page = ("", "")
+        self._resolved_note_url = ""
+        self._international_attempted = False
+        mobile_first = bool(_international_note_url(share_url)) or RedBook._prefer_mobile or self._mobile_first()
         queue = ["mobile", "desktop"] if mobile_first else ["desktop", "mobile"]
         expired: _Expired | None = None
         last_error: Exception | None = None
@@ -65,9 +65,9 @@ class RedBook(BaseParser):
                 emit("fallback", fallback=True)
             try:
                 info = await (self._parse_mobile if mode == "mobile" else self._parse_desktop)(share_url)
-            except _SecurityLimit as e:
+            except (_SecurityLimit, _WrongNote) as e:
                 self._log_failure(mode, e)
-                raise  # 已明确被限流，立即换 UA 重试只会继续消耗平台请求。
+                raise  # 明确受限或返回其他笔记时立即停止，避免继续请求或误取推荐内容。
             except _LoginWall as e:
                 RedBook._prefer_mobile = True
                 last_error = last_error or e  # 手机页先失败时, 它的原因比登录墙有用
@@ -107,8 +107,8 @@ class RedBook(BaseParser):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-CN,zh;q=0.9",
         }
-        # 海外 / 机房 IP 经常拿到登录页, 带上登录后的 cookie 就正常了
-        if cookie := os.getenv("PARSE_VIDEO_XHS_COOKIE"):
+        # 保留配置过的国内桌面会话，不向国际域名发送它的 Cookie。
+        if (cookie := os.getenv("PARSE_VIDEO_XHS_COOKIE")) and not _is_rednote(share_url):
             headers["Cookie"] = cookie
         final_url, html = await self._get(share_url, headers)
         json_data = self._state(final_url, html)
@@ -117,8 +117,8 @@ class RedBook(BaseParser):
         note = json_data["note"]
         note_id = note.get("currentNoteId")
         data = ((note.get("noteDetailMap") or {}).get(note_id) or {}).get("note")
-        if not data and _security_limit(final_url, html):
-            raise _SecurityLimit()
+        if not data and (code := _security_limit(final_url, html)):
+            raise _SecurityLimit(code)
         # 验证返回：小红书的分享链接有有效期，过期后会返回 undefined
         if not note_id or note_id == "undefined":
             raise _Expired("parse fail: note id in response is undefined")
@@ -128,19 +128,30 @@ class RedBook(BaseParser):
 
     # ------------------------------------------------------------------ 手机分享页
     async def _parse_mobile(self, share_url: str) -> VideoInfo:
+        target = share_url
+        if not self._international_attempted and (
+            alternate := _international_note_url(self._resolved_note_url or share_url)
+        ):
+            target = alternate
+            self._international_attempted = True
         headers = {
             "User-Agent": _MOBILE_UA,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-CN,zh;q=0.9",
         }
-        if cookie := os.getenv("PARSE_VIDEO_XHS_COOKIE"):
+        if (cookie := os.getenv("PARSE_VIDEO_XHS_COOKIE")) and not _is_rednote(target):
             headers["Cookie"] = cookie
-        final_url, html = await self._get(share_url, headers)
+        final_url, html = await self._get(target, headers)
         json_data = self._state(final_url, html)
         data = ((json_data.get("noteData") or {}).get("data") or {}).get("noteData")
         if not data:
             raise self._block_error(final_url, html)
-        return self._build(data, image_url_key="url", nick_key="nickName")
+        expected = _note_id(target) or _note_id(self._resolved_note_url)
+        if expected and data.get("noteId") != expected:
+            raise _WrongNote()
+        info = self._build(data, image_url_key="url", nick_key="nickName")
+        info.page_url = final_url
+        return info
 
     # ------------------------------------------------------------------ 公共
     async def _get(self, url: str, headers: dict) -> tuple[str, str]:
@@ -148,6 +159,9 @@ class RedBook(BaseParser):
             response = await client.get(url, headers=headers)
             response.raise_for_status()
         final_url = str(response.url)
+        for page in [*getattr(response, "history", ()), response]:
+            if _note_id(str(page.url)):
+                self._resolved_note_url = str(page.url)
         self._last_page = (final_url, _title(response.text))
         return final_url, response.text
 
@@ -209,8 +223,8 @@ class RedBook(BaseParser):
         """页面不是笔记时, 说清楚小红书到底返回了什么, 站长才知道该配 cookie 还是代理。"""
         title_text = _title(html)
         path = urlparse(final_url).path
-        if _security_limit(final_url, html):
-            return _SecurityLimit()
+        if code := _security_limit(final_url, html):
+            return _SecurityLimit(code)
         if path.startswith("/404/sec_"):
             # 相同跳转既可能是无效链接，也可能是 300013 安全拦截，不能据此断言作品已删除。
             return ParseError("restricted", "小红书返回安全跳转，无法确认笔记已删除或链接过期")
@@ -233,11 +247,38 @@ class RedBook(BaseParser):
 _MODE_NAME = {"mobile": "手机", "desktop": "桌面"}
 
 
-def _security_limit(final_url: str, html: str) -> bool:
+def _note_id(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.hostname not in _NOTE_HOSTS or parsed.username or parsed.password:
+        return ""
+    match = _NOTE_PATH_RE.fullmatch(parsed.path)
+    return match[1].lower() if match else ""
+
+
+def _is_rednote(url: str) -> bool:
+    return urlparse(url).hostname in {"rednote.com", "www.rednote.com"}
+
+
+def _international_note_url(url: str) -> str:
+    if not _note_id(url) or (os.getenv("PARSE_VIDEO_XHS_COOKIE") and not _is_rednote(url)):
+        return ""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.netloc.lower() not in _NOTE_HOSTS:
+        return ""
+    # 只替换官方域名，不重新编码 xsec_token，也不携带国内域名的登录 Cookie。
+    return parsed._replace(netloc="www.rednote.com").geturl()
+
+
+def _security_limit(final_url: str, html: str) -> str:
     query = parse_qs(urlparse(final_url).query)
-    if any(query.get(key) == ["300013"] for key in ("code", "error_code", "errorCode")):
-        return True
-    return bool(re.search(r"(?<!\d)300013(?!\d)", html)) and any(marker in html for marker in ("访问频繁", "安全限制"))
+    for code in ("300012", "300013"):
+        if any(query.get(key) == [code] for key in ("code", "error_code", "errorCode")):
+            return code
+    if any(marker in html for marker in ("访问频繁", "安全限制", "IP存在风险")) and (
+        match := re.search(r"(?<!\d)(300012|300013)(?!\d)", html)
+    ):
+        return match[1]
+    return ""
 
 
 def _is_404(final_url: str) -> bool:
@@ -320,8 +361,14 @@ class _LoginWall(ValueError):
 
 
 class _SecurityLimit(ParseError):
+    def __init__(self, code: str = "300013") -> None:
+        cause = "IP 存在风险" if code == "300012" else "访问频繁"
+        super().__init__("blocked", f"小红书安全限制：{cause}，错误码 {code}")
+
+
+class _WrongNote(ParseError):
     def __init__(self) -> None:
-        super().__init__("blocked", "小红书安全限制：访问频繁，错误码 300013")
+        super().__init__("restricted", "小红书返回的笔记与请求不一致")
 
 
 class _Expired(ValueError):

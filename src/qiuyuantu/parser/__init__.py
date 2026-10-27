@@ -159,6 +159,7 @@ video_source_info_mapping = {
     VideoSource.RedBook: {
         "domain_list": [
             "www.xiaohongshu.com",
+            "rednote.com",
             "xhslink.com",
             "xhslink.cn",
         ],
