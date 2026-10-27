@@ -8,7 +8,7 @@
 - Python 支持 3.10+；CI 和应用镜像使用 3.12。前端是 Jinja2 模板、CSS 和浏览器原生 ES 模块。
 - 主包、安装包和命令行入口为 `qiuyuantu`。`src/parse_video_py/` 与旧命令 `parse-video-py` 仅提供兼容入口；新代码使用 `qiuyuantu`，旧导入必须与新导入共享模块状态。上游署名和 `PARSE_VIDEO_*` 环境变量继续保留。
 - 在仓库根目录创建或复用虚拟环境，安装 `python -m pip install -e ".[web,cli,dev]"`，用 `python main.py` 启动。以下命令均在根目录、已激活的虚拟环境中运行。
-- [README.md](README.md#贡献) 说明开发约定；[pyproject.toml](pyproject.toml)、[eslint.config.mjs](eslint.config.mjs) 和 [CI 工作流](.github/workflows/ci.yml) 是工具规则和检查命令的事实来源。修改这些配置时同步本文件。
+- [README.md](README.md) 提供项目与文档入口，[CONTRIBUTING.md](CONTRIBUTING.md) 是贡献入口，[开发说明](docs/development.md#贡献) 说明开发约定；[pyproject.toml](pyproject.toml)、[eslint.config.mjs](eslint.config.mjs) 和 [CI 工作流](.github/workflows/ci.yml) 是工具规则和检查命令的事实来源。修改这些配置时同步本文件。
 - 先读目标模块和相邻测试，沿用已有封装；修改范围围绕当前任务，避免顺带重构无关代码。
 
 ## 代码分层
@@ -104,6 +104,6 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 
 - CI 的测试 job 使用 Python 3.12、Node.js 22，执行 Ruff、ESLint、核心 pytest、独立账号助手 pytest 和 ShellCheck，并检查 README 嵌入同步；命令以 [.github/workflows/ci.yml](.github/workflows/ci.yml) 为准。
 - 本地 `.pre-commit-config.yaml` 仅运行 Ruff 检查及格式化，且可能自动修改文件；它不覆盖 ESLint、测试或完整 CI。
-- 解析、下载、转换行为的交付还应按 [README 的贡献说明](README.md#贡献) 做真实链接与三种格式的烟测。外网验证与离线测试分开；受平台风控、凭证或工具限制时，说明未验证的部分，不能把替身测试当作真实平台成功。
+- 解析、下载、转换行为的交付还应按 [开发说明](docs/development.md#贡献) 做真实链接与三种格式的烟测。外网验证与离线测试分开；受平台风控、凭证或工具限制时，说明未验证的部分，不能把替身测试当作真实平台成功。
 - `push` 到 `main` 包含核心 / Web 运行变更且 CI 通过会自动部署生产环境，流程见 [docs/deploy.md](docs/deploy.md)。不要把推送 `main` 或运行 `scripts/deploy.sh` 当成本地验证步骤；仅在任务已授权发布时执行。账号助手独占的改动只执行检查，不触发 Web 部署；共享核心或 Web 运行文件变化才部署 Web。
 - 交付说明写清行为变化、已执行检查及结果、尚未验证的部分。规则与实现不符时核对上述事实来源并修订本文件，不继续叠加矛盾条款。

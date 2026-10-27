@@ -1,6 +1,6 @@
 # 自动部署与上线清单
 
-基础部署（`docker compose up -d`）见 [README](../README.md#-生产部署)。这里是在那之上的两件事：push 到 main 自动上线，以及公开上线后要做的收录工作。
+基础部署（`docker compose up -d`）见[自部署与配置](self-hosting.md#生产部署)。这里是在那之上的两件事：push 到 main 自动上线，以及公开上线后要做的收录工作。
 
 ## 自动部署（CI/CD）
 
