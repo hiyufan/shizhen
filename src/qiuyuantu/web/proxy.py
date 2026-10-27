@@ -22,7 +22,16 @@ from .auth import SITE_AUTH
 
 router = APIRouter()
 
-_PASSTHROUGH_HEADERS = ("content-type", "content-length", "content-range", "accept-ranges", "last-modified", "etag")
+# 响应体按原始字节转发，编码头也必须保留；否则压缩传输的 JSON 等会被下载为不可读的内容。
+_PASSTHROUGH_HEADERS = (
+    "content-type",
+    "content-encoding",
+    "content-length",
+    "content-range",
+    "accept-ranges",
+    "last-modified",
+    "etag",
+)
 _EXT_BY_TYPE = (("video", "mp4"), ("jpeg", "jpg"), ("png", "png"), ("webp", "webp"))
 _TIMEOUT = httpx.Timeout(30, read=120)
 
