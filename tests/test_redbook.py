@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from qiuyuantu.parser import redbook
-from qiuyuantu.parser.errors import classify
+from qiuyuantu.parser.errors import ParseError, classify
 from qiuyuantu.parser.redbook import RedBook
 
 
@@ -96,7 +96,8 @@ NOTE_PAGE = (
 )
 # 分享链接跳过去的地址里本来就有 xsec_token, 不能因为它就当成 404
 EMPTY_PAGE = (NOTE_PAGE[0], '<title>小红书</title><script>window.__INITIAL_STATE__={"noteData":{}}</script>')
-GONE_PAGE = ("https://www.xiaohongshu.com/404/sec_Ab12?source=xhs_sec_server", "<title>小红书</title>")
+SECURITY_PAGE = ("https://www.xiaohongshu.com/404/sec_Ab12?source=xhs_sec_server", "<title>小红书</title>")
+GONE_PAGE = ("https://www.xiaohongshu.com/404", "<title>小红书</title>")
 LOGIN_PAGE = ("https://www.xiaohongshu.com/login?redirectPath=x", "<title>登录</title>")
 
 
@@ -134,7 +135,7 @@ def _parse(monkeypatch, pages, *, mobile_first):
 
 
 def test_transient_404_is_retried_on_mobile_when_desktop_is_a_login_wall(monkeypatch, caplog):
-    pages = _Pages(mobile=[GONE_PAGE, NOTE_PAGE])
+    pages = _Pages(mobile=[SECURITY_PAGE, NOTE_PAGE])
     with caplog.at_level(logging.INFO, logger="uvicorn.error"):
         info = _parse(monkeypatch, pages, mobile_first=True)
     assert info.title == "图文"
@@ -179,3 +180,62 @@ def test_page_gone_title_is_reported_as_deleted(monkeypatch):
     with pytest.raises(ValueError) as e:
         _parse(monkeypatch, _Pages(mobile=[gone, gone]), mobile_first=True)
     assert classify(e.value).reason == "deleted"
+
+
+def test_security_redirect_remains_unknown_instead_of_claiming_deleted(monkeypatch):
+    pages = _Pages(mobile=[SECURITY_PAGE, SECURITY_PAGE])
+    with pytest.raises(ParseError) as exc:
+        _parse(monkeypatch, pages, mobile_first=True)
+    assert exc.value.reason == "restricted" and "无法确认" in exc.value.detail
+    assert pages.calls == ["mobile", "mobile"]
+
+
+def test_security_redirect_takes_priority_over_another_route_404(monkeypatch):
+    pages = _Pages(desktop=[GONE_PAGE], mobile=[SECURITY_PAGE])
+    with pytest.raises(ParseError) as exc:
+        _parse(monkeypatch, pages, mobile_first=False)
+    assert exc.value.reason == "restricted"
+    assert pages.calls == ["desktop", "mobile"]
+
+
+@pytest.mark.parametrize("mobile_first", [True, False])
+@pytest.mark.parametrize(
+    "page",
+    [
+        (SECURITY_PAGE[0] + "&code=300013", "<title>小红书</title>"),
+        ("https://www.xiaohongshu.com/website-login/error?error_code=300013", "<title>小红书</title>"),
+        (SECURITY_PAGE[0], "<h1>安全限制</h1><p>访问频繁，请稍后再试</p><span>300013</span>"),
+        (SECURITY_PAGE[0], '<script>window.__INITIAL_STATE__={"noteData":{"data":{}}}</script><p>安全限制 300013</p>'),
+        (
+            "https://www.xiaohongshu.com/explore/n1",
+            '<script>window.__INITIAL_STATE__={"note":{'
+            '"currentNoteId":undefined,"noteDetailMap":{}}}</script><p>访问频繁 300013</p>',
+        ),
+    ],
+)
+def test_explicit_frequency_limit_is_blocked_and_never_retried(monkeypatch, mobile_first, page):
+    mode = "mobile" if mobile_first else "desktop"
+    pages = _Pages(**{mode: [page]})
+    with pytest.raises(ParseError) as exc:
+        _parse(monkeypatch, pages, mobile_first=mobile_first)
+    assert exc.value.reason == "blocked" and "300013" in exc.value.detail
+    assert pages.calls == [mode]
+
+
+def test_normal_note_mentioning_security_error_is_still_parsed(monkeypatch):
+    page = (NOTE_PAGE[0], NOTE_PAGE[1] + "<p>安全限制 300013 解决方法</p>")
+    assert _parse(monkeypatch, _Pages(mobile=[page]), mobile_first=True).title == "图文"
+
+
+def test_login_error_route_falls_back_to_mobile(monkeypatch):
+    login = ("https://www.xiaohongshu.com/website-login/error", "<title>小红书</title>")
+    pages = _Pages(desktop=[login], mobile=[NOTE_PAGE])
+    assert _parse(monkeypatch, pages, mobile_first=False).title == "图文"
+    assert pages.calls == ["desktop", "mobile"]
+    assert RedBook._prefer_mobile is True
+
+
+def test_note_or_token_numbers_are_not_error_codes():
+    assert not redbook._security_limit("https://www.xiaohongshu.com/explore/300013?xsec_token=300013", "")
+    assert not redbook._security_limit("https://www.xiaohongshu.com/404?originalUrl=https://x.test/?code=300013", "")
+    assert not redbook._security_limit("https://www.xiaohongshu.com/404", "<p>安全限制 13000130</p>")

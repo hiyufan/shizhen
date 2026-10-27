@@ -3,10 +3,11 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
+from .errors import ParseError
 
 # 原图: ci.xiaohongshu.com 上按 key 取, w/0 表示不缩放; 页面里给的都是缩到 1080 宽的版本
 _ORIGINAL_IMAGE = "https://ci.xiaohongshu.com/{key}?imageView2/2/w/0/format/jpg/q/90"
@@ -64,15 +65,16 @@ class RedBook(BaseParser):
                 emit("fallback", fallback=True)
             try:
                 info = await (self._parse_mobile if mode == "mobile" else self._parse_desktop)(share_url)
+            except _SecurityLimit as e:
+                self._log_failure(mode, e)
+                raise  # 已明确被限流，立即换 UA 重试只会继续消耗平台请求。
             except _LoginWall as e:
                 RedBook._prefer_mobile = True
                 last_error = last_error or e  # 手机页先失败时, 它的原因比登录墙有用
             except _Expired as e:
                 self._log_failure(mode, e)
-                if expired:
-                    raise  # 两次都说不在了, 那就是真不在
-                # 小红书偶尔把还在的笔记也报成不存在 (同一条链接 15 秒后重试就好了), 换条路确认一次
-                expired = e
+                # 404 也可能是暂时返回，队列最多换路确认一次。
+                expired = expired or e
             except Exception as e:  # noqa: BLE001 - 换一条路再试
                 self._log_failure(mode, e)
                 last_error = e
@@ -83,7 +85,9 @@ class RedBook(BaseParser):
             if mode == "mobile" and queue == ["desktop"] and (RedBook._prefer_mobile or mobile_first):
                 # 这个出口上桌面页只会是登录墙, 白跑一趟不如把手机页再请求一次
                 queue = ["mobile"]
-        raise expired or last_error or ValueError("小红书解析失败")
+        raise (last_error if isinstance(last_error, ParseError) else expired or last_error) or ValueError(
+            "小红书解析失败"
+        )
 
     def _log_failure(self, mode: str, err: Exception) -> None:
         final_url, title = self._last_page
@@ -112,10 +116,12 @@ class RedBook(BaseParser):
             raise self._block_error(final_url, html)
         note = json_data["note"]
         note_id = note.get("currentNoteId")
+        data = ((note.get("noteDetailMap") or {}).get(note_id) or {}).get("note")
+        if not data and _security_limit(final_url, html):
+            raise _SecurityLimit()
         # 验证返回：小红书的分享链接有有效期，过期后会返回 undefined
         if not note_id or note_id == "undefined":
             raise _Expired("parse fail: note id in response is undefined")
-        data = ((note.get("noteDetailMap") or {}).get(note_id) or {}).get("note")
         if not data:
             raise _Expired("parse fail: note detail is empty (链接可能过期或需要 xsec_token)")
         return self._build(data, image_url_key="urlDefault", nick_key="nickname")
@@ -133,8 +139,6 @@ class RedBook(BaseParser):
         json_data = self._state(final_url, html)
         data = ((json_data.get("noteData") or {}).get("data") or {}).get("noteData")
         if not data:
-            if _is_404(final_url):
-                raise _Expired("链接过期或笔记不存在")
             raise self._block_error(final_url, html)
         return self._build(data, image_url_key="url", nick_key="nickName")
 
@@ -145,8 +149,6 @@ class RedBook(BaseParser):
             response.raise_for_status()
         final_url = str(response.url)
         self._last_page = (final_url, _title(response.text))
-        if "/login" in urlparse(final_url).path:
-            raise _LoginWall("小红书要求这个出口登录")
         return final_url, response.text
 
     def _state(self, final_url: str, html: str) -> dict:
@@ -206,9 +208,15 @@ class RedBook(BaseParser):
     def _block_error(final_url: str, html: str) -> Exception:
         """页面不是笔记时, 说清楚小红书到底返回了什么, 站长才知道该配 cookie 还是代理。"""
         title_text = _title(html)
+        path = urlparse(final_url).path
+        if _security_limit(final_url, html):
+            return _SecurityLimit()
+        if path.startswith("/404/sec_"):
+            # 相同跳转既可能是无效链接，也可能是 300013 安全拦截，不能据此断言作品已删除。
+            return ParseError("restricted", "小红书返回安全跳转，无法确认笔记已删除或链接过期")
         if _is_404(final_url) or "页面不见了" in title_text:
             return _Expired("链接过期或笔记不存在 (小红书跳到了 404)")
-        if "/login" in final_url:
+        if path == "/login" or path.startswith(("/login/", "/website-login/")):
             return _LoginWall("小红书要求这个出口登录")
         markers = ("验证", "captcha", "verify", "安全", "网络连接异常", "海外")
         if any(m in html[:20000] or m in title_text for m in markers):
@@ -225,8 +233,15 @@ class RedBook(BaseParser):
 _MODE_NAME = {"mobile": "手机", "desktop": "桌面"}
 
 
+def _security_limit(final_url: str, html: str) -> bool:
+    query = parse_qs(urlparse(final_url).query)
+    if any(query.get(key) == ["300013"] for key in ("code", "error_code", "errorCode")):
+        return True
+    return bool(re.search(r"(?<!\d)300013(?!\d)", html)) and any(marker in html for marker in ("访问频繁", "安全限制"))
+
+
 def _is_404(final_url: str) -> bool:
-    """笔记不在时会跳到 /404 或 /404/sec_xxx。只看路径: 分享链接的参数里本来就有 xsec_token。"""
+    """是否为 404 路由；调用方需先区分 sec 安全跳转，参数中含 token 不代表 404。"""
     path = urlparse(final_url).path
     return path == "/404" or path.startswith("/404/")
 
@@ -302,6 +317,11 @@ def _video_tracks(video: dict) -> _VideoTracks:
 
 class _LoginWall(ValueError):
     """机房 / 边缘 IP 打开桌面页被要求登录; 归类成 login 让前端提示站长, 但先换手机页再说"""
+
+
+class _SecurityLimit(ParseError):
+    def __init__(self) -> None:
+        super().__init__("blocked", "小红书安全限制：访问频繁，错误码 300013")
 
 
 class _Expired(ValueError):
