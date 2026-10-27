@@ -387,11 +387,28 @@ async def test_international_failure_can_use_original_mobile_entry_once(monkeypa
     def handler(request):
         calls.append(str(request.url))
         if request.url.host == "www.rednote.com":
-            return httpx.Response(503)
+            return httpx.Response(200, text=EMPTY_PAGE[1])
         return httpx.Response(200, text=_international_page())
 
     assert (await _request_parse(monkeypatch, OLD_URL, handler)).title == IMAGE_NOTE["title"]
     assert calls == [INTERNATIONAL_URL, OLD_URL]
+
+
+@pytest.mark.parametrize("error", [503, 504, "transport"])
+async def test_temporary_network_failure_retries_same_international_entry(monkeypatch, error):
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        if len(calls) == 1:
+            if error == "transport":
+                raise httpx.TransportError("temporary relay failure", request=request)
+            return httpx.Response(error)
+        return httpx.Response(200, text=_international_page())
+
+    info = await _request_parse(monkeypatch, OLD_URL, handler)
+    assert info.title == IMAGE_NOTE["title"]
+    assert calls == [INTERNATIONAL_URL, INTERNATIONAL_URL]
 
 
 @pytest.mark.parametrize("code", ["300012", "300013"])

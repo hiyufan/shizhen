@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, urlparse
 
+import httpx
+
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
@@ -141,7 +143,7 @@ class RedBook(BaseParser):
         }
         if (cookie := os.getenv("PARSE_VIDEO_XHS_COOKIE")) and not _is_rednote(target):
             headers["Cookie"] = cookie
-        final_url, html = await self._get(target, headers)
+        final_url, html = await self._get_mobile_page(target, headers)
         json_data = self._state(final_url, html)
         data = ((json_data.get("noteData") or {}).get("data") or {}).get("noteData")
         if not data:
@@ -152,6 +154,15 @@ class RedBook(BaseParser):
         info = self._build(data, image_url_key="url", nick_key="nickName")
         info.page_url = final_url
         return info
+
+    async def _get_mobile_page(self, url: str, headers: dict) -> tuple[str, str]:
+        try:
+            return await self._get(url, headers)
+        except (httpx.TransportError, httpx.HTTPStatusError) as err:
+            if isinstance(err, httpx.TransportError) or err.response.status_code >= 500:
+                # 中继冷连接偶发超时，应重试同一入口，不立即回退到已受限的国内域名。
+                self._international_attempted = False
+            raise
 
     # ------------------------------------------------------------------ 公共
     async def _get(self, url: str, headers: dict) -> tuple[str, str]:
