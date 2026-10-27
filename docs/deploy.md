@@ -28,3 +28,7 @@ for f in /etc/ssh/ssh_host_*_key.pub; do echo "<服务器 IP> $(cut -d' ' -f1,2 
 - 在百度 / Google / Bing 站长平台验证站点（验证用的 `<meta>` 填进 `PARSE_VIDEO_SITE_VERIFICATION`）并提交 `/sitemap.xml`
 - 运行 `python scripts/push_urls.py` 向百度主动推送
 - 国内服务器需要 ICP 备案
+
+## 搜索与推广效果
+
+配置 `PARSE_VIDEO_STATS_TOKEN` 后，`/stats` 展示搜索与推广来源、落地页及后续操作；新版本上线后开始采集，历史来源不能回填。推广链接生成、统计口径和三家搜索站长平台的报表入口见[搜索表现与推广来源](analytics.md)。

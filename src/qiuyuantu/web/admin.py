@@ -6,13 +6,13 @@ import asyncio
 import time
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
-from .. import failures, stats
+from .. import failures, seo, stats
 from ..convert import config, jobs, store, updater, youtube_native
 from . import limits, parse
 from .auth import require_stats_enabled, require_stats_token
-from .rendering import PRIVATE_PAGE_HEADERS, page_context, render
+from .rendering import PRIVATE_PAGE_HEADERS, base_url, page_context, render
 
 router = APIRouter()
 
@@ -59,13 +59,20 @@ async def api_stats(range: str = "24h", tz: int = 0):  # noqa: A002 - 查询参�
     data = await asyncio.to_thread(stats.summary, since, now, step, tz_offset)
     data["failures"] = await asyncio.to_thread(failures.recent, max(since, now - failures.RETENTION_DAYS * 86400))
     data["range"] = range
-    return data
+    return JSONResponse(data, headers=PRIVATE_PAGE_HEADERS)
 
 
 @router.get("/stats", response_class=HTMLResponse, dependencies=[Depends(require_stats_token)])
 async def stats_page(request: Request, token: str = ""):
     ctx = page_context(request, title="使用统计 - 求原图", path="/stats")
-    ctx.update({"ranges": list(STATS_RANGES), "token": token})
+    ctx.update(
+        {
+            "ranges": list(STATS_RANGES),
+            "token": token,
+            "traffic_paths": sorted(seo.all_paths()),
+            "traffic_base": base_url(request),
+        }
+    )
     return render(request, "stats.html", ctx, headers=PRIVATE_PAGE_HEADERS)
 
 

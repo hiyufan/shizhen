@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 
 from .. import seo, stats
 from ..convert import relay
-from . import limits
+from . import attribution, limits
 
 _INLINE_SCRIPT = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
 _SCRIPT_ORIGIN = re.compile(r"<script\b[^>]*\bsrc=[\"']?(https://[^/\"'\s>]+)", re.I)
@@ -127,9 +127,16 @@ def _strip_trailing_slash(request: Request) -> Response | None:
 
 
 async def site_headers(request: Request, call_next) -> Response:
-    # 要在 call_next 之前设：接口里起的转换任务会继承这个「不计入」标记
-    if stats.enabled() and _excluded_from_stats(request):
-        stats.mute()
+    excluded = stats.enabled() and _excluded_from_stats(request)
+    visit = attribution.visit_for(request) if stats.enabled() and not excluded else None
+    # 后台任务继承创建时的来源；finally 恢复上下文，不能串到另一位访客。
+    with stats.request_context(muted=excluded, visit=visit):
+        response = await _site_response(request, call_next)
+        attribution.set_cookie(request, response, visit)
+        return response
+
+
+async def _site_response(request: Request, call_next) -> Response:
 
     try:
         response = _strip_trailing_slash(request) or await call_next(request)

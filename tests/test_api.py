@@ -66,6 +66,7 @@ def calls(monkeypatch):
 @pytest.fixture
 def recorded(monkeypatch):
     rows = []
+    monkeypatch.setattr(stats, "TOKEN", "test-token")
     monkeypatch.setattr(stats, "record", lambda kind, ip, **kw: rows.append((kind, kw)))
     return rows
 

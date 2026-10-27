@@ -12,7 +12,7 @@
       <div class="tabs" role="tablist" id="ranges">
         {% for r in ranges %}<button type="button" role="tab" data-range="{{ r }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ {'24h': '最近 24 小时', '7d': '7 天', '30d': '30 天', '90d': '90 天'}[r] | t }}</button>{% endfor %}
       </div>
-      <span class="dash-note mono" id="updated"></span>
+      <span class="dash-note mono" id="updated" role="status" aria-live="polite"></span>
     </div>
 
     <div id="empty" class="notice info" hidden>{{ t("还没有数据。设置了") }} <code class="mono">PARSE_VIDEO_STATS_TOKEN</code> {{ t("之后才开始记录，等有人用一次再来看。") }}</div>
@@ -21,8 +21,45 @@
       <div class="card stat"><div class="num" data-k="users">–</div><div class="cap">{{ t("人数（去重 IP）") }}</div></div>
       <div class="card stat"><div class="num" data-k="parse">–</div><div class="cap">{{ t("解析次数 ·") }} <span data-k="parse_rate">–</span> {{ t("成功") }}</div></div>
       <div class="card stat"><div class="num" data-k="job">–</div><div class="cap">{{ t("转换 / 下载任务 ·") }} <span data-k="job_rate">–</span> {{ t("成功") }}</div></div>
-      <div class="card stat"><div class="num" data-k="download">–</div><div class="cap">{{ t("直链保存次数") }}</div></div>
+      <div class="card stat"><div class="num" data-k="download">–</div><div class="cap">{{ t("下载请求次数") }}</div></div>
     </div>
+
+    <div class="card dash-failures dash-acquisition" id="traffic">
+      <h3>{{ t("搜索与推广来源") }}</h3>
+      <p class="dash-note">{{ t("访问会话有效期为 30 分钟，浏览页面时续期，新的外部来源会开始新会话。下表按所选期间开始的会话统计，成功解析、下载行为和转换成功都按会话去重。") }}</p>
+      <p class="dash-note" id="traffic-coverage"></p>
+      <div class="tbl-wrap" role="region" tabindex="0" aria-label="{{ t("搜索与推广来源") }}"><table id="tbl-channels"><thead><tr><th>{{ t("来源 / 推广标记") }}</th><th>{{ t("访问会话") }}</th><th>{{ t("成功解析") }}</th><th>{{ t("下载行为") }}</th><th>{{ t("转换成功") }}</th><th>{{ t("下载占比") }}</th></tr></thead><tbody></tbody></table></div>
+      <p class="dash-note">{{ t("直接 / 未知表示没有可用来源，不一定是手动输入网址。下载行为包括直链下载和产物下载请求，不代表文件已保存完成；浏览器缓存和未携带会话的请求可能少计。") }}</p>
+      <details class="dash-table">
+        <summary>{{ t("查看落地页效果") }}</summary>
+        <div class="tbl-wrap" role="region" tabindex="0" aria-label="{{ t("落地页") }}"><table id="tbl-landings"><thead><tr><th>{{ t("落地页") }}</th><th>{{ t("访问会话") }}</th><th>{{ t("成功解析") }}</th><th>{{ t("下载行为") }}</th><th>{{ t("转换成功") }}</th></tr></thead><tbody></tbody></table></div>
+      </details>
+    </div>
+
+    <div class="card dash-failures dash-acquisition">
+      <h3>{{ t("搜索带来的访问") }}</h3>
+      <div class="tbl-wrap" role="region" tabindex="0" aria-label="{{ t("搜索带来的访问") }}"><table id="tbl-search"><thead><tr><th>{{ t("搜索引擎 / 落地页") }}</th><th>{{ t("访问会话") }}</th><th>{{ t("成功解析") }}</th><th>{{ t("下载行为") }}</th><th>{{ t("转换成功") }}</th></tr></thead><tbody></tbody></table></div>
+      <p class="dash-note">{{ t("这里统计搜索来源的到访。搜索展现、点击率、关键词和平均排名需要站长平台报表，尚未接入时不显示为零，也不与站内访问量混算。") }}</p>
+      <div class="traffic-links">
+        <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Google Search Console</a>
+        <a href="https://ziyuan.baidu.com/" target="_blank" rel="noopener noreferrer">{{ t("百度搜索资源平台") }}</a>
+        <a href="https://www.bing.com/webmasters/" target="_blank" rel="noopener noreferrer">Bing Webmaster Tools</a>
+      </div>
+    </div>
+
+    <details class="card dash-failures dash-table">
+      <summary>{{ t("生成推广链接") }}</summary>
+      <p class="dash-note">{{ t("不同渠道使用不同来源和推广标记，分享生成的链接即可。只填写简短英文、数字、点、横线或下划线，不要填写个人信息。") }}</p>
+      <form id="campaign-form" class="campaign-form">
+        <label>{{ t("落地页") }}<select id="campaign-path" name="path">{% for path in traffic_paths %}<option value="{{ path }}">{{ path }}</option>{% endfor %}</select></label>
+        <label>{{ t("来源") }}<input id="campaign-source" name="source" value="github" pattern="[a-z0-9][a-z0-9._\-]{0,63}" maxlength="64" required></label>
+        <label>{{ t("媒介") }}<select id="campaign-medium" name="medium"><option value="referral">referral</option><option value="social">social</option><option value="email">email</option><option value="cpc">cpc</option></select></label>
+        <label>{{ t("推广标记") }}<input id="campaign-name" name="campaign" value="hellogithub" pattern="[a-z0-9][a-z0-9._\-]{0,63}" maxlength="64" required></label>
+        <button type="submit" class="btn">{{ t("生成链接") }}</button>
+        <label class="campaign-result">{{ t("推广链接") }}<input id="campaign-result" readonly aria-describedby="campaign-status" data-base="{{ traffic_base }}"></label>
+        <span class="dash-note" id="campaign-status" role="status" aria-live="polite"></span>
+      </form>
+    </details>
 
     <div class="chart card">
       <div class="chart-head"><h3 id="c1-title">{{ t("每小时有多少人") }}</h3><span class="dash-note">{{ t("解析或转换过的去重 IP") }}</span></div>

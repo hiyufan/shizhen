@@ -17,7 +17,7 @@ import os
 import threading
 import time
 
-from . import db
+from . import attribution, db, traffic
 from .convert import config, net
 
 DB_PATH = config.DATA_DIR / "stats.db"
@@ -34,6 +34,17 @@ TEST_FLAG_COOKIE = "sz_t"  # 给页面上的「测试模式」小标记看的，
 
 # 这次请求不计入统计。中间件里设；请求里 create_task 出去的转换任务会继承，任务做完记 job 时也就跳过了
 _muted: contextvars.ContextVar[bool] = contextvars.ContextVar("stats_muted", default=False)
+_visit: contextvars.ContextVar[attribution.Visit | None] = contextvars.ContextVar("stats_visit", default=None)
+
+
+@contextlib.contextmanager
+def request_context(*, muted: bool, visit: attribution.Visit | None):
+    muted_token, visit_token = _muted.set(muted), _visit.set(visit)
+    try:
+        yield
+    finally:
+        _muted.reset(muted_token)
+        _visit.reset(visit_token)
 
 
 def mute() -> None:
@@ -59,6 +70,7 @@ def is_test_cookie(value: str | None) -> bool:
 
 
 _buf: list[tuple] = []
+_traffic_buf: list[tuple[tuple, attribution.Visit | None]] = []
 _lock = threading.Lock()
 
 
@@ -81,7 +93,7 @@ _SCHEMA = (
 
 
 def _db():
-    return db.transaction(DB_PATH, _SCHEMA)
+    return db.transaction(DB_PATH, _SCHEMA + traffic.SCHEMA)
 
 
 def counted(ip: str) -> bool:
@@ -93,9 +105,10 @@ def record(kind: str, ip: str, *, source: str = "", ok: bool = True, reason: str
     """先攒在内存里，flusher 每几秒批量落盘；请求路径上不碰磁盘。没配 token 就什么都不记。"""
     if not TOKEN or kind not in KINDS or not counted(ip):
         return
-    row = (time.time(), kind, hash_ip(ip), (source or "")[:32], int(bool(ok)), (reason or "")[:32], int(ms))
+    row = (time.time(), kind, hash_ip(ip), (source or "")[:256], int(bool(ok)), (reason or "")[:32], int(ms))
     with _lock:
         _buf.append(row)
+        _traffic_buf.append((row, _visit.get()))
 
 
 # 同一个人同一个文件，这么久之内只算一次下载
@@ -106,6 +119,8 @@ _recent_downloads: dict[tuple[str, str], float] = {}
 def record_download(ip: str, url: str, *, source: str = "") -> None:
     """下载器（IDM 之类）会把一个文件切成几十段并发拉，断了还重试，每段都记的话
     1 次下载能记成 30 次（2026-10-02 一个 1GB 的抖音视频就是这样）。这里按 IP + 地址去重。"""
+    if not TOKEN or not counted(ip):
+        return
     now = time.monotonic()
     with _lock:
         if now - _recent_downloads.get((ip, url), -DOWNLOAD_DEDUPE_SECONDS) < DOWNLOAD_DEDUPE_SECONDS:
@@ -120,10 +135,12 @@ def record_download(ip: str, url: str, *, source: str = "") -> None:
 def flush() -> int:
     with _lock:
         rows, _buf[:] = list(_buf), []
+        attributed, _traffic_buf[:] = list(_traffic_buf), []
     if not rows:
         return 0
     with _db() as conn:
         conn.executemany("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+        traffic.write(conn, attributed)
     return len(rows)
 
 
@@ -142,6 +159,7 @@ async def flusher(interval: float = 5.0) -> None:
 def prune() -> int:
     cutoff = time.time() - RETENTION_DAYS * 86400
     with _db() as conn:
+        traffic.prune(conn, cutoff)
         return conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
 
 
@@ -214,6 +232,7 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
             (since, until),
         ).fetchall()
         (first,) = conn.execute("SELECT MIN(ts) FROM events").fetchone()
+        acquisition = traffic.summary(conn, since, until)
 
     series = _series(rows, users, since, until, step, tz_offset)
     totals = {k: sum(c[k] for c in series) for k in _COUNTERS}
@@ -228,6 +247,7 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
         "sources": [{"source": s, "n": n, "ok": ok or 0, "users": u, "ms": ms or 0} for s, n, ok, u, ms in by_source],
         "reasons": [{"reason": r, "n": n} for r, n in reasons],
         "jobs": [{"type": s, "n": n, "ok": ok or 0, "ms": ms or 0} for s, n, ok, ms in jobs],
+        "traffic": acquisition,
     }
 
 

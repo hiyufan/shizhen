@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .. import stats
 from ..convert import animation_uploads, config, ffmpeg, jobs, net, store, tasks, vap, youtube_native
 from ..convert.net import is_safe_url_async
 from . import limits
@@ -347,12 +348,13 @@ async def api_job_cancel(job_id: str, request: Request):
 
 
 @router.get("/api/jobs/{job_id}/file")
-async def api_job_file(job_id: str, inline: int = 0):
+async def api_job_file(job_id: str, request: Request, inline: int = 0):
     job = _job_or_404(job_id)
     path = _existing_file(job.result_path if job.status == "done" else None, "结果还没准备好")
     media_type = _MEDIA_TYPES.get(Path(path).suffix.lower(), "application/octet-stream")
     if inline:
         return FileResponse(path, media_type=media_type)
+    stats.record_download(limits.client_ip(request), "job:" + job.id, source=job.type)
     return FileResponse(path, media_type=media_type, filename=job.filename or Path(path).name)
 
 

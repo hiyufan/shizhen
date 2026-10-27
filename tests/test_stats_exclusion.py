@@ -16,6 +16,7 @@ from qiuyuantu.web import parse as parse_api
 def rows(monkeypatch):
     monkeypatch.setattr(stats, "TOKEN", "tok")
     monkeypatch.setattr(stats, "_buf", [])
+    monkeypatch.setattr(stats, "_traffic_buf", [])
     for rl in (limits.parse_limit, limits.job_limit):
         monkeypatch.setattr(rl, "_buckets", {})
     parse_api.cache.clear()

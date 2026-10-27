@@ -3,6 +3,8 @@
 import { isEnglish, t as translate } from './i18n.js';
 
 import { $, el } from './dom.js';
+import { api } from './api.js';
+import { renderTraffic } from './stats-traffic.js';
 
 const TOKEN = $('[data-token]').dataset.token;
 const REFRESH_MS = 60000;
@@ -177,6 +179,7 @@ function render(d) {
   const series = d.series.map((s) => ({ ...s, fail: s.parse - s.parse_ok, partial: s.t + d.step > d.until }));
   $('#empty').hidden = d.first != null;
   fillTotals(d.totals);
+  renderTraffic(d.traffic, fillTable);
 
   const unit = d.step < 86400 ? translate('每小时') : translate('每天');
   $('#c1-title').textContent = unit + (isEnglish ? ' ' : '') + translate('有多少人');
@@ -214,14 +217,30 @@ function selectTab(active) {
   for (const b of tabs.children) b.setAttribute('aria-selected', String(b.dataset.range === active));
 }
 
+let controller = null;
+let generation = 0;
+
 async function load() {
-  const query = '?range=' + range + '&tz=' + new Date().getTimezoneOffset() + '&token=' + encodeURIComponent(TOKEN);
-  const res = await fetch('/api/stats' + query);
-  if (!res.ok) {
-    $('#updated').textContent = translate('加载失败 ') + res.status;
-    return;
+  const current = ++generation;
+  if (controller) controller.abort();
+  controller = new AbortController();
+  const query = '?range=' + range + '&tz=' + new Date().getTimezoneOffset();
+  document.querySelector('.dash').setAttribute('aria-busy', 'true');
+  $('#updated').textContent = translate('正在加载统计…');
+  try {
+    const data = await api('/api/stats' + query, {
+      signal: controller.signal, headers: { Authorization: 'Bearer ' + TOKEN },
+    });
+    if (current === generation) render(data);
+  } catch (error) {
+    if (current === generation && error.name !== 'AbortError') {
+      $('#updated').textContent = translate('统计加载失败：{message}', { message: error.message });
+    }
+  } finally {
+    if (current === generation) {
+      document.querySelector('.dash').setAttribute('aria-busy', 'false');
+    }
   }
-  render(await res.json());
 }
 
 tabs.addEventListener('click', (e) => {
@@ -229,9 +248,7 @@ tabs.addEventListener('click', (e) => {
   if (!b) return;
   range = b.dataset.range;
   selectTab(range);
-  const charts = document.querySelectorAll('.chart');
-  charts.forEach((c) => c.classList.add('loading'));
-  load().finally(() => charts.forEach((c) => c.classList.remove('loading')));
+  load();
 });
 
 let resizeTimer;
