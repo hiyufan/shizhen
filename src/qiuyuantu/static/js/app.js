@@ -7,6 +7,7 @@ import { cancelUpload, uploadFile } from './animation-upload.js';
 import { $, el, notice } from './dom.js';
 import { parseHints } from './parse-progress.js';
 import { renderResult } from './result.js';
+import { closeConverter } from './converter.js';
 import { askForStarAfterDownload, feedbackBox } from './ui.js';
 
 const REASON_TIPS = {
@@ -35,8 +36,8 @@ askForStarAfterDownload($('#result'), $('#converter'));
 
 function hideOutputs() {
   cancelUpload();
+  closeConverter();
   $('#result').hidden = true;
-  $('#converter').hidden = true;
 }
 
 // 从 GitHub issue 的「在线复现」点进来的，解析请求也带上来源，服务端不计入统计

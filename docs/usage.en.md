@@ -11,7 +11,7 @@
 - Original watermark-free video streams
 - Original Xiaohongshu images, commonly 1920×2560
 - Douyin HD H.265 video and separate background music
-- Server-side merging for YouTube / Bilibili HD formats, up to 4K where available
+- Server-side merging for the HD formats actually supplied by YouTube and Bilibili
 - Live Photo detection and packaging for an entire post
 - QQ Music / NetEase Cloud Music song, album and playlist cover extraction
 - Media proxy for browser playback when direct requests return 403
@@ -43,11 +43,11 @@
 | Douyin | ✅ | ✅ | ✅ | 720p–1080p, H.265 | Background music can be downloaded separately |
 | Xiaohongshu (RedNote) | ✅ | ✅ | ✅ | Highest available | Links need a valid `xsec_token`; copy a fresh share link before use |
 | Kuaishou | ✅ | ✅ | – | Platform default | |
-| YouTube | ✅ | – | – | Readable direct URLs; server-side merging at 720p–4K | Docker includes a native session / SABR fallback |
+| YouTube | ✅ | – | – | Readable direct URLs; merges the HD formats actually returned | Docker includes a native session / SABR fallback |
 | X (Twitter) | ✅ | ✅ | – | Highest bitrate | fxtwitter fallback for sensitive posts |
 | Bilibili | ✅ | ✅ | ✅ | 480p direct URLs; server-side merging at 720p / 1080p | Supports b23.tv short links, images and Live Photos in dynamic posts; anime series and movies are not supported |
 | Instagram | ✅ | ✅ | – | Platform default | Original images from carousel posts, including posts mixing images and videos |
-| QQ Music | – | Cover art | – | 800px for songs / albums, 1000px for playlists | Song, album and playlist share links; cover art only |
+| QQ Music | – | Cover art | – | Album source file when verified; 1000px for playlists | Falls back to verified HD variants; cover art only |
 | NetEase Cloud Music | – | Cover art | – | Original dimensions supplied by the platform | Song, album and playlist share links; download animated covers in their original format or convert to GIF / Live Photo / Motion Photo |
 | Steam Points Shop | ✅ | GIF / APNG assets | – | Original assets supplied by Steam | Individual item links; animated avatars, transparent frames, stickers and MP4 / WebM backgrounds; animations can be converted |
 | HoYoPlay | ✅ | Current launcher wallpapers | – | Original assets supplied by the platform | Choose one of four games for current China-launcher backgrounds; available videos can be converted; no historical archive |
@@ -62,7 +62,7 @@
 | Telegram stickers | – | TGS / WebP | – | Publicly cataloged files | [Tool](https://ynvan.com/telegram-stickers); no credentials; TGS converts to transparent GIF / Live Photo / Motion Photo; excludes private assets and complete live coverage |
 | WeChat Channels | Public videos | Public preview covers | – | Actual file quality; provider quality labels are not trusted | [Tool](https://ynvan.com/wechat-channels); official sph links; official preview identifies the post, public BugPk service supplies video; anonymous downloads and conversion; falls back to covers when unavailable |
 | Discord | – | Public catalog stickers | – | Actual APNG / Lottie JSON catalog format | [Tool](https://ynvan.com/discord-stickers); public pack store or ID links and matching sticker asset URLs; individual downloads, transparent GIF / Live Photo / Motion Photo conversion; no private server or chat access |
-| Apple Music | Animated artwork | Cover art | – | Images requested up to 3000px; video up to 1080p | Public song, album and playlist artwork; animations shown when available; no song audio |
+| Apple Music | Animated artwork | Cover art | – | Images at source-reported dimensions; highest available video variant | Public song, album and playlist artwork; animations shown when available; no song audio |
 | Pixiv | MP4 composed from Ugoira | Illustration / manga originals and frame ZIPs | – | Platform-provided images and playback frames | [Images and novels](https://ynvan.com/pixiv-download), [animation](https://ynvan.com/pixiv-ugoira); novel TXT, covers and inserted images are separate. Artist, series, tag, ranking and Collections directories are paged. Conversion ≤600 frames / 30 seconds, with size and pixel limits; no account credentials |
 | Pixiv Sketch | – | Public post originals | – | Returned original images | [Tool](https://ynvan.com/pixiv-sketch); post links and paged artist directories; no live streams, private or age-restricted content |
 | Weibo, Xigua, Pipixia, AcFun, TikTok, … | ✅ | Partial | – | | 30+ platforms, with yt-dlp as the fallback for others |
@@ -75,7 +75,7 @@ Paste a song, album or playlist share link to extract its artwork. **A playlist 
 
 | What you need | Tool and result |
 |---|---|
-| QQ Music song / album / playlist cover | [QQ Music cover downloader](https://ynvan.com/qq-music-cover): public sources may supply 800px song and album artwork or 1000px playlist covers |
+| QQ Music song / album / playlist cover | [QQ Music cover downloader](https://ynvan.com/qq-music-cover): verifies album source files first; a tested source was 2048px. Falls back to available HD variants; playlists currently request 1000px |
 | NetEase Cloud Music original cover | [NetEase cover downloader](https://ynvan.com/netease-music-cover): save the dimensions actually supplied by the platform |
 | Animated playlist cover | Keep the original animated WebP / GIF, identifying the actual format even when its URL ends in `.jpg` |
 | Animated artwork to GIF / Live Photo | Convert directly after extraction to GIF, an iPhone Live Photo bundle or Android Motion Photo; see the [guide](https://ynvan.com/guide/music-cover-download) |

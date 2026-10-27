@@ -19,6 +19,7 @@ from ..convert.net import is_safe_url_async
 from ..parser import detect_source, parse_video_share_url
 from ..parser.base import VideoInfo
 from ..parser.errors import ParseError, classify
+from ..parser.quality import best_video_format
 from ..utils import CN_SOURCES, extract_url, is_youtube_url
 from . import limits
 from .auth import SITE_AUTH
@@ -173,6 +174,8 @@ def _remember_headers(info: VideoInfo, data: dict, share_url: str) -> None:
 
 def _client_data(info: VideoInfo, share_url: str) -> dict:
     data = dataclasses.asdict(info)
+    best = best_video_format(info)
+    data["download_format"] = dataclasses.asdict(best) if best else None
     data["share_url"] = signal.public_url(share_url)
     _remember_headers(info, data, share_url)
     # cookie 只留在服务器上；页面拿这些头去 /api/prepare 时 cookie 本来也会被去掉

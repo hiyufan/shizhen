@@ -75,8 +75,8 @@ def test_image_note_uses_original_images_and_live_photos():
     info = _build(IMAGE_NOTE, key="url", nick="nickName")
     assert info.video_url == "" and info.formats == []
     assert [(i.url, i.live_photo_url) for i in info.images] == [
-        ("https://ci.xiaohongshu.com/notes_pre_post/tok1?imageView2/2/w/0/format/jpg/q/90", ""),
-        ("https://ci.xiaohongshu.com/fid2?imageView2/2/w/0/format/jpg/q/90", "live2"),
+        ("https://ci.xiaohongshu.com/notes_pre_post/tok1", ""),
+        ("https://ci.xiaohongshu.com/fid2", "live2"),
         ("http://a/b", ""),
     ]
     assert info.author.name == "昵称"

@@ -111,6 +111,24 @@ async def test_cache_and_public_metadata(worker, monkeypatch):
     assert native.source_for_asset(info.video_url + "?file=/etc/passwd") is None
 
 
+async def test_8k_download_is_not_rejected_by_a_fixed_resolution_ladder(worker, tmp_path):
+    result = await native.download(PAGE, "youtube-native:4320", tmp_path / "downloads", "8k")
+    assert result.is_file()
+    assert worker[0][1] == 4320
+
+
+async def test_download_refuses_silent_resolution_downgrade(worker, monkeypatch, tmp_path):
+    src, result = await native.ensure(PAGE, 720)
+
+    async def lower(*_args, **_kwargs):
+        return src, result
+
+    monkeypatch.setattr(native, "ensure", lower)
+    with pytest.raises(ValueError, match="所选清晰度"):
+        await native.download(PAGE, "youtube-native:2160", tmp_path / "downloads", "4k")
+    assert not (tmp_path / "downloads" / "4k.mp4").exists()
+
+
 @pytest.mark.asyncio
 async def test_cached_alias_bypasses_extractors_and_busy_browser(worker, monkeypatch):
     info = await native.parse(PAGE)

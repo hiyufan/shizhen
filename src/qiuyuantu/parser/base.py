@@ -96,9 +96,7 @@ class ImgInfo:
 
 @dataclasses.dataclass
 class FormatInfo:
-    """
-    需要服务端合并下载的清晰度选项（yt-dlp 站点用）
-    """
+    """同一视频的下载档位；url 为直链，format_spec 为服务端下载选择器。"""
 
     # 展示名, 如 1080p / 音频
     label: str = ""
@@ -120,6 +118,10 @@ class FormatInfo:
 
     # 编码说明, 如 "H.265"
     codec: str = ""
+
+    width: int = 0
+    fps: float = 0
+    bitrate: int = 0  # bit/s；不同编码的码率不代表相同的画质
 
 
 @dataclasses.dataclass
@@ -207,6 +209,11 @@ class VideoInfo:
     entry_total: int = 0
     animation_frames: list[dict] = dataclasses.field(default_factory=list)
     content_kind: str = "media"  # media / directory / document
+
+    video_fps: float = 0
+    video_bitrate: int = 0
+    video_codec: str = ""
+    video_ext: str = "mp4"
 
 
 def json_in_html(html: str, pattern: str, what: str) -> Any:

@@ -52,7 +52,7 @@ function assetPreview(asset, title) {
     return el('div', { class: 'asset-placeholder' },
       el('strong', {}, asset.ext === 'json' ? 'LOTTIE' : asset.ext.toUpperCase()), el('p', {}, t('转换后预览动画')));
   }
-  return proxyImg(asset.cover_url || asset.url, { alt: asset.label || title, loading: 'lazy' });
+  return proxyImg(asset.cover_url || asset.url, { alt: t(asset.label || title), loading: 'lazy' });
 }
 
 function assetDownloads(asset, name) {

@@ -2,6 +2,7 @@ import re
 
 from .base import BaseParser, VideoAuthor, VideoInfo
 from .errors import ParseError
+from .quality import apply_video_formats, direct_format
 
 _VIDEO_ID = re.compile(r"/(\d+)\.html")
 
@@ -23,9 +24,17 @@ class HuYa(BaseParser):
         video = body["data"]["moment"]["videoInfo"]
         if video["uid"] == 0:
             raise ParseError("deleted", "虎牙返回空视频")
-        return VideoInfo(
-            video_url=video["definitions"][0]["url"],
+        info = VideoInfo(
+            video_url="",
             cover_url=video["videoCover"],
             title=video["videoTitle"],
             author=VideoAuthor(uid=str(video["uid"]), name=video["actorNick"], avatar=video["actorAvatarUrl"]),
         )
+        formats = [
+            direct_format(row.get("url") or row["m3u8"], row, label=row.get("defName") or "")
+            for row in video.get("definitions") or []
+            if row.get("url") or row.get("m3u8")
+        ]
+        if not formats:
+            raise ParseError("empty", "虎牙没有返回可直接下载的视频")
+        return apply_video_formats(info, formats)

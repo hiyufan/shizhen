@@ -5,6 +5,7 @@ from urllib.parse import urljoin, urlparse
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
+from .quality import frame_rate, number
 
 _TITLE = re.compile(r"<title>(.*?)</title>", re.S)
 # 网页版 / 落地页链接里的作品 ID：www.kuaishou.com/short-video/<id>、live.kuaishou.com/u/<用户>/<id>、
@@ -58,16 +59,45 @@ def _ext_music(block) -> str:
 
 
 def _atlas_image(cdn: str, path: str) -> str:
-    """图集的一张：路径本身带前导 /。atlas.list 给的是 .webp，同一路径的 .jpg 也有、分辨率一样
-    （2026-10 实测 11 张图集张张都有），换成 jpg：存下来的图哪儿都能打开。"""
-    path = path.lstrip("/")
-    if path.endswith(".webp"):
-        path = path[: -len(".webp")] + ".jpg"
-    return f"https://{cdn}/{path}"
+    """保留 atlas.list 给的原格式；同路径 JPG 虽然尺寸一样，像素并不相同。"""
+    return f"https://{cdn}/{path.lstrip('/')}"
 
 
 def _short_side(width: int, height: int) -> int:
     return min(width, height) if width and height else max(width, height)
+
+
+def _representations(data: dict) -> list[dict]:
+    return [
+        rep
+        for group in (data.get("manifest") or {}).get("adaptationSet") or []
+        if group.get("contentType") != "audio"
+        for rep in group.get("representation") or []
+        if rep.get("url")
+    ]
+
+
+def _manifest_formats(representations: list[dict], primary_url: str) -> list[FormatInfo]:
+    formats = []
+    for rep in representations:
+        if rep["url"] == primary_url:
+            continue
+        short = _short_side(int(rep.get("width") or 0), int(rep.get("height") or 0))
+        codec = "H.265" if rep.get("videoCodec") == "hevc" else ""
+        label = (f"{short}p" if short else (rep.get("qualityLabel") or "其他")) + (f" {codec}" if codec else "")
+        formats.append(
+            FormatInfo(
+                label=label,
+                url=rep["url"],
+                height=int(rep.get("height") or 0),
+                width=int(rep.get("width") or 0),
+                filesize=int(rep.get("fileSize") or 0),
+                codec=codec,
+                fps=frame_rate(rep.get("frameRate")),
+                bitrate=int(number(rep.get("avgBitrate"))),
+            )
+        )
+    return formats
 
 
 class KuaiShou(BaseParser):
@@ -180,20 +210,10 @@ class KuaiShou(BaseParser):
             if cover:
                 images = [ImgInfo(url=cover.replace("http://", "https://", 1))]
 
-        # 有的作品在 manifest 里给了多档清晰度
-        formats = []
-        adaptation = ((data.get("manifest") or {}).get("adaptationSet") or [{}])[0] or {}
-        for rep in adaptation.get("representation") or []:
-            url = rep.get("url") or ""
-            if not url or url == video_url:
-                continue
-            short = _short_side(int(rep.get("width") or 0), int(rep.get("height") or 0))
-            # 同一清晰度常给 avc / hevc 两份，不标出来就是两个一模一样的"720p"
-            codec = "H.265" if rep.get("videoCodec") == "hevc" else ""
-            label = (f"{short}p" if short else (rep.get("qualityLabel") or "其他")) + (f" {codec}" if codec else "")
-            formats.append(
-                FormatInfo(label=label, url=url, height=short, filesize=int(rep.get("fileSize") or 0), codec=codec)
-            )
+        # AVC / HEVC 可能分在不同的 adaptationSet，不能只读第一组。
+        representations = _representations(data)
+        primary = next((rep for rep in representations if rep["url"] == video_url), {})
+        formats = [] if images else _manifest_formats(representations, video_url)
 
         return VideoInfo(
             # 图集作品的 mainMvUrls 是配乐的视频壳，不是作品本身
@@ -208,9 +228,12 @@ class KuaiShou(BaseParser):
             images=images,
             music_url=_ext_music(atlas) or _ext_music(ext.get("single")),
             duration=(data.get("duration") or 0) / 1000,
-            width=int(data.get("width") or 0),
-            height=int(data.get("height") or 0),
+            width=int(primary.get("width") or data.get("width") or 0),
+            height=int(primary.get("height") or data.get("height") or 0),
             formats=formats,
+            video_fps=frame_rate(primary.get("frameRate")),
+            video_bitrate=int(number(primary.get("avgBitrate"))),
+            video_codec=primary.get("videoCodec") or "",
             notice=LIVE_NOTICE if single and _LIVE_TAG.search(data.get("caption") or "") else "",
         )
 

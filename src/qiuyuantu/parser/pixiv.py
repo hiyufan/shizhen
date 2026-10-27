@@ -77,7 +77,12 @@ class Pixiv(PixivCatalog, BaseParser):
             page_url=page,
         )
         if body.get("illustType") == 2:
-            return await self._animation(info, ident, suffix + link.ident)
+            if not _image_identity(original, ident):
+                raise ParseError("parse", "动画首帧与作品不匹配")
+            await self._animation(info, ident, suffix + link.ident)
+            # 独立原图可能大于帧包中的帧；另列首帧，不把它冒充完整动画。
+            info.assets.append(MediaAsset(original, "首帧原图", "image", original))
+            return info
         count = body.get("pageCount")
         if type(count) is not int or not 1 <= count <= 500:
             raise ParseError("too_large", "图集超过 500 页或页数无效")

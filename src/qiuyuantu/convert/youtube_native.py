@@ -29,8 +29,7 @@ log = logging.getLogger("uvicorn.error")
 _HOST = "youtube-cache.invalid"
 _ASSET = re.compile(r"https://youtube-cache\.invalid/([0-9a-f]{16})\.mp4\Z")
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}\Z")
-_FORMAT = re.compile(r"youtube-native:(audio|144|240|360|480|720|1080|1440|2160)\Z")
-_HEIGHTS = (2160, 1440, 1080, 720, 480, 360, 240, 144)
+_FORMAT = re.compile(r"youtube-native:(audio|[1-9][0-9]{1,4})\Z")
 _results: dict[str, dict] = {}
 # 解析时等浏览器名额最多等几秒：解析总共只有 90 秒，排太久轮到了也下不完
 _PARSE_SLOT_WAIT = 10
@@ -567,7 +566,7 @@ async def ensure(
     解析时（job=False）要在 90 秒的解析时限里下完：估算超过大小预算自动降清晰度，浏览器名额最多等几秒。
     下载 / 转换任务（job=True）按用户选的清晰度、用任务的时限。"""
     vid = video_id(url)
-    if not vid or height not in _HEIGHTS or not enabled():
+    if not vid or not 16 <= height <= 16384 or not enabled():
         raise RuntimeError("YouTube 原生会话兜底未配置或链接不受支持")
     key = key or str(height)
     if hit := cached(url, key):
@@ -653,8 +652,8 @@ async def parse(url: str):
     heights = set(result.get("heights") or [])
     formats = [
         FormatInfo(label=f"{h}p", height=h, ext="mp4", format_spec=f"youtube-native:{h}")
-        for h in _HEIGHTS
-        if h > src.height and h in heights
+        for h in sorted(heights, reverse=True)
+        if src.height < h <= 16384
     ]
     formats.append(FormatInfo(label="仅音频", ext="m4a", height=0, format_spec="youtube-native:audio"))
     return VideoInfo(
@@ -698,6 +697,8 @@ async def download(
     from . import ffmpeg
 
     match = _FORMAT.fullmatch(format_spec)
+    if not match:
+        raise ValueError("YouTube 清晰度选项无效")
     audio = bool(match and match[1] == "audio")
     height = int(match[1]) if match and not audio else 720
     hit = cached(url)
@@ -708,6 +709,8 @@ async def download(
         src, _ = await ensure(url, 360, key="audio", job=True, on_event=_job_progress(report))
     else:
         src, _ = await ensure(url, height, job=True, on_event=_job_progress(report))
+    if not audio and src.height != height:
+        raise ValueError("来源当前未提供所选清晰度，请重新解析后选择")
     out_dir.mkdir(parents=True, exist_ok=True)
     if audio:
         dest = out_dir / f"{stem}.m4a"

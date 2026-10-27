@@ -217,7 +217,6 @@
   "做成实况照片": "Make a Live Photo",
   "存到相册": "Save to Photos",
   "下载视频": "Download video",
-  "H.265 体积更小、更清晰，手机都能播；老电脑可能需要装解码器。": "H.265 gives sharper video in smaller files. Phones can play it; older computers may need a codec.",
   "其他清晰度 ▾": "More resolutions ▾",
   "下载视频 ▾": "Download video ▾",
   "下载 ": "Download ",
@@ -446,7 +445,7 @@
   "源站没有返回有效的图片": "The source did not return a supported image.",
   "QQ 音乐、网易云音乐的歌曲、专辑和歌单封面也能取，贴链接就好。": "Get song, album and playlist covers from QQ Music and NetEase Cloud Music. Just paste a link.",
   "动态封面继续做": "Convert an animated cover",
-  "仅动态封面支持转换；静态封面可直接下载原图。": "Conversion requires an animated cover. Download still covers in their original format.",
+  "仅动态封面支持转换；静态封面可直接下载原图。": "Convert animated covers or download the full-size still image.",
   " 正在准备动态封面，保留每一帧的播放时长…": " Preparing the animated cover, preserving frame timing…",
   "正在读取动态封面的每一帧": "Reading the animated cover frames",
   "下载到的文件不是可用的动态图片": "The downloaded file is not a supported animated image.",
@@ -637,5 +636,11 @@
   "7TV、BTTV 与 FFZ，保留公开原文件，动态表情可继续转 GIF。": "Keep public 7TV, BTTV and FFZ originals, or convert animated emotes to GIF.",
   "公开贴纸与 Emoji": "Public stickers and emoji",
   "LINE、Signal 与 Noto，保留公开原文件，或选择动态素材转换。": "Save public LINE, Signal and Noto originals, or choose an animation to convert.",
-  "SVGA、PAG、VAP 与 Spine 区域附件动画，上传文件后预览和转换。": "Upload SVGA, PAG, VAP or Spine region animations, then preview and convert."
+  "SVGA、PAG、VAP 与 Spine 区域附件动画，上传文件后预览和转换。": "Upload SVGA, PAG, VAP or Spine region animations, then preview and convert.",
+  "原画": "Source quality",
+  "超清": "Super HD",
+  "高清": "HD",
+  "标清": "SD",
+  "H.265 通常体积更小，播放兼容性因设备而异；画质取决于来源。": "H.265 usually produces smaller files. Playback support varies by device; quality depends on the source.",
+  "首帧原图": "Original first frame"
 }

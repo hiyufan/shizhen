@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..utils import gather_or_cancel, run_ytdlp
-from . import animated, artwork, bilibili, config, ffmpeg, livephoto, store, ugoira
+from . import animated, artwork, bilibili, cctv, config, ffmpeg, livephoto, store, ugoira, xinpianchang
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
 from .net import safe_filename
@@ -40,6 +40,12 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
     if bilibili.handles(page_url):
         # B 站网页可能被出口风控拦截，高清合并复用解析 API（见 bilibili.py）。
         return await bilibili.download(page_url, format_spec, out_dir, stem, report, fit=fit)
+    if cctv.handles(page_url):
+        return await cctv.download(page_url, format_spec, out_dir, stem, report, fit=fit, cancelled=lambda: job.abort)
+    if xinpianchang.handles_format(page_url, format_spec):
+        return await xinpianchang.download(
+            page_url, format_spec, out_dir, stem, report, fit=fit, cancelled=lambda: job.abort
+        )
     try:
         return await run_ytdlp(
             ytdlp_download,
@@ -54,7 +60,7 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
     except Exception as err:
         if not youtube_native.should_try(err, page_url):
             raise
-        height = re.search(r"height\s*<=\s*(\d+)", format_spec)
+        height = re.search(r"height\s*(?:<=|=)\s*(\d+)", format_spec)
         native_format = (
             "youtube-native:audio"
             if format_spec.startswith("ba")
@@ -66,7 +72,7 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
 
 
 def _source_format(format_spec: str) -> str:
-    """转换用的原视频不必太清晰：默认限制在 SOURCE_MAX_HEIGHT 以内，省下载时间；长视频放不下还会再往下降。"""
+    """明确档位原样保留；未选档的兼容请求默认限制在 SOURCE_MAX_HEIGHT 以内。"""
     if format_spec:
         return format_spec
     height = config.SOURCE_MAX_HEIGHT
@@ -86,7 +92,9 @@ async def _download_source_file(
         await asyncio.to_thread(youtube_native.link_or_copy, src.path, path)
         return path
     if page_url:
-        return await _ytdlp(job, page_url, _source_format(format_spec), config.SOURCES_DIR, source_id, fit=True)
+        return await _ytdlp(
+            job, page_url, _source_format(format_spec), config.SOURCES_DIR, source_id, fit=not bool(format_spec)
+        )
     if not url:
         raise ValueError("缺少视频地址")
 

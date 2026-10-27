@@ -7,9 +7,14 @@ import re
 import time
 from urllib.parse import parse_qs, urlparse
 
-from ..utils import create_async_client
+import httpx
+
+from .. import progress
+from ..utils import create_async_client, gather_or_cancel
+from . import mp4_probe
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, _random_ua
 from .errors import ParseError
+from .quality import number, rank, short_side
 
 log = logging.getLogger("uvicorn.error")
 
@@ -502,34 +507,47 @@ def _video_music(aweme: dict) -> str:
     return _first(music.get("url_list")) or music.get("uri", "")
 
 
+def _primary_variant(video: dict, primary: dict) -> dict:
+    key = primary.get("url_key")
+    return next(
+        (br for br in video.get("bit_rate") or [] if key and (br.get("play_addr") or {}).get("url_key") == key),
+        {},
+    )
+
+
 def _collect_formats(video_data: dict, primary: dict) -> list[FormatInfo]:
     """从 bit_rate 档位里挑出和默认直链不同的清晰度 / 编码，每个 (高度, 编码) 只留码率最高的一档"""
     best: dict = {}
     for br in video_data.get("bit_rate") or []:
         pa = br.get("play_addr") or {}
         urls = pa.get("url_list") or []
-        if not urls or pa.get("url_key") == primary.get("url_key"):
+        if not urls or (pa.get("url_key") and pa.get("url_key") == primary.get("url_key")):
             continue
         h = pa.get("height") or 0
         w = pa.get("width") or 0
         # 竖屏视频 height 才是长边，统一用短边当「清晰度」
         short = min(w, h) if w and h else h
         codec = "H.265" if br.get("is_h265") else ""
-        key = (short, codec)
-        if key in best and best[key].filesize >= (pa.get("data_size") or 0):
+        fps = number(br.get("FPS") or br.get("fps"))
+        bitrate = int(number(br.get("bit_rate")))
+        key = (short, codec, fps)
+        if key in best and (best[key].bitrate, best[key].filesize) >= (bitrate, pa.get("data_size") or 0):
             continue
         best[key] = FormatInfo(
-            label=f"{short}p" + (f" {codec}" if codec else ""),
+            label=f"{short}p" + (str(round(fps)) if fps > 45 else "") + (f" {codec}" if codec else ""),
             url=urls[0].replace("playwm", "play"),
             ext="mp4",
             height=short,
             filesize=int(pa.get("data_size") or 0),
             codec=codec,
+            width=w,
+            fps=fps,
+            bitrate=bitrate,
         )
     primary_short = min(primary.get("width") or 0, primary.get("height") or 0)
-    # 只保留比默认直链更清晰的，或者同清晰度但体积更小的 H.265
-    keep = [f for f in best.values() if f.height > primary_short or (f.codec and f.height == primary_short)]
-    return sorted(keep, key=lambda f: (-f.height, f.codec))
+    # 同分辨率也可能有更高帧率或码率，不能只保留更大的分辨率。
+    keep = [f for f in best.values() if f.height >= primary_short]
+    return sorted(keep, key=lambda f: (-f.height, -f.fps, f.codec, -f.bitrate))
 
 
 def _aweme_from_router_data(router: dict) -> dict:
@@ -664,8 +682,9 @@ class DouYin(BaseParser):
 
     async def _build(self, aweme: dict) -> VideoInfo:
         video = aweme.get("video") or {}
-        # 浏览器预览 / 默认下载用 H.264 (play_addr_h264)，其余清晰度档位放进 formats
+        # H.264 保留为兼容预览，网页档位之外再验证官方播放入口的真实最高文件。
         primary = video.get("play_addr_h264") or video.get("play_addr") or {}
+        primary_variant = _primary_variant(video, primary)
         has_primary = bool(primary.get("url_list"))
         images = _aweme_images(aweme)
         if images:
@@ -675,6 +694,8 @@ class DouYin(BaseParser):
         else:
             video_url = await self._playable_url(_first(primary.get("url_list")).replace("playwm", "play"))
             formats = _collect_formats(video, primary)
+            formats.extend(await self._original_formats(video))
+            formats = sorted({f.url: f for f in formats if f.url != video_url}.values(), key=rank, reverse=True)
             music_url = _video_music(aweme)
         return VideoInfo(
             video_url=video_url,
@@ -686,8 +707,43 @@ class DouYin(BaseParser):
             width=(primary.get("width") or 0) if has_primary else 0,
             height=(primary.get("height") or 0) if has_primary else 0,
             formats=formats,
+            video_fps=number(primary_variant.get("FPS") or primary_variant.get("fps")),
+            video_bitrate=int(number(primary_variant.get("bit_rate"))),
+            video_codec="H.265" if primary_variant.get("is_h265") else "H.264",
             author=_aweme_author(aweme),
         )
+
+    async def _original_formats(self, video: dict) -> list[FormatInfo]:
+        uri = (video.get("play_addr") or {}).get("uri") or ""
+        if not re.fullmatch(r"v[A-Za-z0-9]{10,127}", uri):
+            return []
+        progress.emit("checking")
+        short = short_side(int(number(video.get("width"))), int(number(video.get("height"))))
+        highest = "2160p" if short > 1080 else "1080p"
+        candidates = await gather_or_cancel(
+            self._original_candidate(uri, highest), self._original_candidate(uri, "origin")
+        )
+        return [candidate for candidate in candidates if candidate]
+
+    async def _original_candidate(self, uri: str, ratio: str) -> FormatInfo | None:
+        headers = {"User-Agent": self.ua("android"), "Referer": "https://www.douyin.com/"}
+        try:
+            async with (
+                create_async_client(follow_redirects=False, timeout=5) as client,
+                client.stream(
+                    "HEAD",
+                    "https://aweme.snssdk.com/aweme/v1/play/",
+                    params={"video_id": uri, "ratio": ratio, "line": "0"},
+                    headers=headers,
+                ) as response,
+            ):
+                url = response.headers.get("location", "") if response.has_redirect_location else ""
+            if not url:
+                return None
+            # ratio=2160p 实际也可能返回 1080p；不能用请求参数给文件标画质。
+            return await mp4_probe.probe(url, headers)
+        except (httpx.HTTPError, asyncio.TimeoutError):
+            return None
 
     async def _playable_url(self, video_url: str) -> str:
         """老的 HTML 路径给的是 aweme.snssdk.com/aweme/v1/play/ 跳转地址，要跟一次 302；

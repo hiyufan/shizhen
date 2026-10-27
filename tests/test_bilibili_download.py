@@ -38,6 +38,17 @@ def test_caps_height():
     assert video["height"] == 720
 
 
+def test_same_resolution_prefers_available_higher_framerate():
+    dash = {"video": [_v(1080, 7, 3000000), _v(1080, 7, 2500000) | {"frame_rate": "60000/1001"}]}
+    video, _ = bilibili.pick(dash, SPEC_1080, 30, BIG)
+    assert video["frame_rate"] == "60000/1001"
+
+
+def test_selected_resolution_disappearing_does_not_silently_download_a_lower_tier():
+    with pytest.raises(RuntimeError, match="所选清晰度"):
+        bilibili.pick(DASH, "bv[height=2160]+ba/b[height=2160]", 30, BIG)
+
+
 def test_falls_back_to_h265_when_h264_is_over_the_limit():
     seconds = 600  # H.264 约 231 MB，H.265 约 111 MB
     video, _ = bilibili.pick(DASH, SPEC_1080, seconds, 150 * 10**6)

@@ -1,5 +1,7 @@
 from ..utils import get_val_from_url_by_query_key
+from .baidu import video_formats
 from .base import BaseParser, VideoAuthor, VideoInfo
+from .quality import apply_video_formats
 
 
 class QuanMin(BaseParser):
@@ -20,9 +22,10 @@ class QuanMin(BaseParser):
         if meta["statusText"]:
             raise ValueError(meta["statusText"])  # 作品状态（删了 / 审核中）
         author = data["author"]
-        return VideoInfo(
-            video_url=meta["video_info"]["clarityUrl"][1]["url"],
+        info = VideoInfo(
+            video_url="",
             cover_url=meta["image"],
             title=meta["title"] or data["shareInfo"]["title"],
             author=VideoAuthor(uid=author["id"], name=author["name"], avatar=author["icon"]),
         )
+        return apply_video_formats(info, await video_formats(meta["video_info"], "https://quanmin.baidu.com/"))

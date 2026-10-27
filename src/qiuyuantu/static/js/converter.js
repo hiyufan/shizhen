@@ -16,11 +16,20 @@ const FORMAT_NAMES = { gif: 'GIF', livephoto: translate('实况照片'), motionp
 const SWITCH_LABELS = { gif: translate('改做 GIF'), livephoto: translate('改做实况照片（iPhone）'), motionphoto: translate('改做动态照片（安卓）') };
 
 let teardown = () => {};
+let opening = 0;
 
-/** 打开转换器。req 是 /api/prepare 的参数；本地上传的视频已经在服务器上了，给 { ready: source } */
-export async function openConverter(req, format) {
+export function closeConverter() {
+  opening += 1;
   teardown();
   teardown = () => {};
+  $('#converter').hidden = true;
+}
+
+/** req 含准备参数与本地 preview_url；预览地址不发给服务端。本地上传可直接给 { ready: source }。 */
+export async function openConverter(req, format) {
+  closeConverter();
+  const current = opening;
+  const { preview_url: previewUrl, ...request } = req;
   const box = $('#converter');
   const jobsBox = el('div', { class: 'jobs', style: 'margin-top:10px;max-width:420px' });
   const status = el('div', {},
@@ -33,13 +42,15 @@ export async function openConverter(req, format) {
 
   let source;
   try {
-    source = req.ready || (await prepareSource(req, jobCard(jobsBox, translate('准备原视频'))));
+    source = request.ready || (await prepareSource(request, jobCard(jobsBox, translate('准备原视频'))));
   } catch (e) {
+    if (current !== opening) return;
     status.replaceChildren(el('div', { class: 'notice' }, translate('准备失败：') + e.message));
     return;
   }
+  if (current !== opening) return;
   conv.replaceChildren();
-  teardown = buildConverter(conv, source, format);
+  teardown = buildConverter(conv, source, format, previewUrl);
 }
 
 async function prepareSource(req, card) {
@@ -136,7 +147,18 @@ function sourceDownloads(src) {
   return [el('a', { class: 'btn sm quiet', href: '/api/source/' + src.id + '?download=1', download: '' }, translate('下载渲染后的 MP4'))];
 }
 
-function buildConverter(conv, src, format) {
+function conversionPreview(src, previewUrl) {
+  const local = '/api/source/' + src.id;
+  const video = el('video', { src: previewUrl || local, playsinline: true, muted: true, preload: 'auto', controls: true });
+  if (previewUrl) {
+    video.addEventListener('error', () => {
+      if (video.hasAttribute('src')) video.src = local;
+    }, { once: true });
+  }
+  return video;
+}
+
+function buildConverter(conv, src, format, previewUrl) {
   // fit：压到 GIF_TARGET 以内，帧率和宽度变成上限，超了服务端自动往下降
   const state = {
     format, start: 0, end: Math.min(src.duration, LIMITS[format]),
@@ -148,7 +170,7 @@ function buildConverter(conv, src, format) {
   const heading = el('h2', {}, '');
   const switcher = el('div', { class: 'conv-switch' });
 
-  const video = el('video', { src: '/api/source/' + src.id, playsinline: true, muted: true, preload: 'auto', controls: true });
+  const video = conversionPreview(src, previewUrl);
   const keyFrame = keyFrameOptions(state, video);
   const trimmer = new Trimmer(src, video, state, keyFrame.keepInRange);
   const gifPanel = gifOptions(state);
@@ -214,7 +236,14 @@ function buildConverter(conv, src, format) {
 
   setFormat(format);
   trimmer.layout();
-  return trimmer.destroy;
+  return () => { seq += 1; releasePreview(trimmer, video); };
+}
+
+function releasePreview(trimmer, video) {
+  trimmer.destroy();
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
 }
 
 // ---------- 结果

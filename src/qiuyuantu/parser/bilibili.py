@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError, classify
+from .quality import frame_rate
 
 _REFERER = "https://www.bilibili.com/"
 
@@ -379,23 +380,25 @@ def dash_formats(play_data: dict, duration: float, above: int) -> list[FormatInf
 
     # 短边 -> (真实高度, 最大码率)。竖屏视频的"1080p"是宽 1080、高 1920：
     # 档位名按短边叫，交给 yt-dlp 的筛选条件得用真实高度
-    tiers: dict[int, tuple[int, int]] = {}
+    tiers: dict[int, tuple[int, int, float]] = {}
     for v in dash.get("video") or []:
         w, h = v.get("width") or 0, v.get("height") or 0
         short = min(w, h) if w and h else h
         if short > above:
-            _, bw = tiers.get(short, (h, 0))
-            tiers[short] = (h, max(bw, v.get("bandwidth") or 0))
+            _, bw, fps = tiers.get(short, (h, 0, 0))
+            tiers[short] = (h, max(bw, v.get("bandwidth") or 0), max(fps, frame_rate(v.get("frame_rate"))))
 
     formats = [
         FormatInfo(
-            label=f"{short}p",
+            label=f"{short}p" + (str(round(fps)) if fps > 45 else ""),
             format_spec=f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]",
             ext="mp4",
             height=short,
             filesize=int((bw + audio_bw) * duration / 8),
+            fps=fps,
+            bitrate=bw,
         )
-        for short, (h, bw) in sorted(tiers.items(), reverse=True)
+        for short, (h, bw, fps) in sorted(tiers.items(), reverse=True)
     ]
     if audios:
         formats.append(

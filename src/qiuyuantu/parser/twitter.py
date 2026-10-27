@@ -5,6 +5,7 @@
 
 import math
 import re
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from ..utils import create_async_client
 from .base import BaseParser, ImgInfo, VideoAuthor, VideoInfo
@@ -12,6 +13,16 @@ from .base import BaseParser, ImgInfo, VideoAuthor, VideoInfo
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 _TWEET_ID = re.compile(r"(?:twitter\.com|x\.com)/[^/]+/status(?:es)?/(\d+)")
 _CLIP_TYPES = ("video", "animated_gif")
+
+
+def _original_image(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.hostname != "pbs.twimg.com" or not parsed.path.startswith("/media/"):
+        return url
+    path = re.sub(r":(?:small|medium|large|orig)$", "", parsed.path)
+    query = dict(parse_qsl(parsed.query))
+    query["name"] = "orig"
+    return urlunparse(parsed._replace(path=path, query=urlencode(query)))
 
 
 def _best_mp4(variants: list | None) -> str:
@@ -37,7 +48,9 @@ def _from_syndication(tweet: dict) -> VideoInfo:
     images = []
     if not video_url:
         images = [
-            ImgInfo(url=m["media_url_https"]) for m in media if m.get("type") == "photo" and m.get("media_url_https")
+            ImgInfo(url=_original_image(m["media_url_https"]))
+            for m in media
+            if m.get("type") == "photo" and m.get("media_url_https")
         ]
     if images:
         cover_url = images[0].url
@@ -69,7 +82,7 @@ def _from_fxtwitter(tweet: dict) -> VideoInfo | None:
     if video_url:
         images, cover_url = [], clip.get("thumbnail_url", "")
     else:
-        images = [ImgInfo(url=m["url"]) for m in media if m.get("type") == "photo" and m.get("url")]
+        images = [ImgInfo(url=_original_image(m["url"])) for m in media if m.get("type") == "photo" and m.get("url")]
         cover_url = images[0].url if images else ""
     if not video_url and not images:
         return None

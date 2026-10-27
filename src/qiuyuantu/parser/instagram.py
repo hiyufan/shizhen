@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from ..utils import create_async_client
 from .base import ImgInfo, VideoAuthor, VideoInfo
+from .quality import number
 
 _POST_PATH = re.compile(r"^/(?:[\w.]+/)?p/([\w-]+)")
 _JSON_SCRIPT = re.compile(r'<script type="application/json"[^>]*>(.*?)</script>', re.S)
@@ -83,7 +84,8 @@ def to_video_info(post: dict, code: str) -> VideoInfo | None:
     items = post.get("carousel_media") or [post]
     images = [ImgInfo(url=url) for item in items if item.get("media_type") == 1 and (url := _original(item))]
     # 图和视频混着的多图帖：结果里只放得下一个视频，取第一个
-    videos = [v[0]["url"] for item in items if item.get("media_type") == 2 and (v := item.get("video_versions"))]
+    videos = [_largest(item.get("video_versions") or []) for item in items if item.get("media_type") == 2]
+    videos = [video for video in videos if video]
     if not images and not videos:
         return None
     user = post.get("user") or {}
@@ -99,6 +101,15 @@ def to_video_info(post: dict, code: str) -> VideoInfo | None:
 
 
 def _original(item: dict) -> str:
-    """candidates 第一个是原图，后面是各种缩小 / 裁成方形的版本。"""
+    """从实际尺寸选择图片；平台的 candidates 不保证一直按尺寸排序。"""
     candidates = (item.get("image_versions2") or {}).get("candidates") or []
-    return candidates[0].get("url", "") if candidates else ""
+    return _largest(candidates)
+
+
+def _largest(candidates: list[dict]) -> str:
+    best = max(
+        (c for c in candidates if c.get("url")),
+        key=lambda c: (number(c.get("width")) * number(c.get("height")), number(c.get("bit_rate"))),
+        default={},
+    )
+    return best.get("url", "")

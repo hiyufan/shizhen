@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from qiuyuantu import parser
-from qiuyuantu.parser import base
+from qiuyuantu.parser import base, image_probe
 from qiuyuantu.parser.applemusic import AppleMusic, page_url
 from qiuyuantu.parser.base import VideoSource
 from qiuyuantu.parser.errors import ParseError
@@ -35,6 +35,11 @@ def public_http(monkeypatch):
         return httpx.AsyncClient(transport=httpx.MockTransport(handle), **kwargs)
 
     monkeypatch.setattr(base, "create_async_client", client)
+
+    async def unverified(*_args):
+        return None
+
+    monkeypatch.setattr(image_probe, "probe", unverified)
     return routes, calls
 
 
@@ -162,12 +167,13 @@ async def test_hoyoplay_rejects_non_official_assets(public_http):
         await HoYoPlay().parse_video_id("star-rail")
 
 
-def apple_html(*, animated=True, kind="containerDetailHeaderLockup", image=APPLE_IMAGE):
+def apple_html(*, animated=True, tall=False, kind="containerDetailHeaderLockup", image=APPLE_IMAGE):
     item = {
         "title": "Selected work",
         "artwork": {"dictionary": {"url": image, "width": 3000, "height": 3000}},
         "subtitleLinks": [{"title": "Artist"}],
         "videoArtwork": {"dictionary": {"motionDetailSquare": {"video": APPLE_VIDEO}} if animated else {}},
+        "tallVideoArtwork": {"dictionary": {"motionDetailTall": {"video": APPLE_VIDEO + "?tall=1"}} if tall else {}},
     }
     sections = [
         {"itemKind": "trackLockup", "items": [{"title": "Wrong track", "artwork": {"url": image}}]},
@@ -215,6 +221,68 @@ async def test_apple_rejects_untrusted_artwork(public_http):
     routes[APPLE_PAGE] = apple_html(image="https://127.0.0.1/private")
     with pytest.raises(ParseError, match="封面地址"):
         await AppleMusic().parse_share_url(APPLE_PAGE)
+
+
+@pytest.mark.parametrize("square", [True, False])
+async def test_apple_keeps_tall_artwork_from_its_separate_header_field(public_http, square):
+    routes, _ = public_http
+    routes[APPLE_PAGE] = apple_html(animated=square, tall=True)
+    info = await AppleMusic().parse_share_url(APPLE_PAGE)
+    assert [f.format_spec for f in info.formats] == (
+        (["apple-artwork:motionDetailSquare"] if square else []) + ["apple-artwork:motionDetailTall"]
+    )
+
+
+async def test_apple_prefers_verified_lossless_pixels_and_uses_measured_size(public_http, monkeypatch):
+    routes, _ = public_http
+    routes[APPLE_PAGE] = apple_html()
+
+    async def dimensions(url, headers):
+        assert headers == {"Referer": "https://music.apple.com/"}
+        return (2500, 2500)
+
+    monkeypatch.setattr(image_probe, "probe", dimensions)
+    info = await AppleMusic().parse_share_url(APPLE_PAGE)
+    assert info.images[0].url.endswith("/3000x3000.png") and info.cover_url == info.images[0].url
+    assert (info.width, info.height) == (2500, 2500)
+
+
+@pytest.mark.parametrize("png_size", [None, (120, 120)])
+async def test_apple_does_not_replace_a_large_jpeg_with_a_missing_or_placeholder_png(
+    public_http, monkeypatch, png_size
+):
+    routes, _ = public_http
+    routes[APPLE_PAGE] = apple_html()
+
+    async def dimensions(url, _headers):
+        return png_size if url.endswith(".png") else (3000, 3000)
+
+    monkeypatch.setattr(image_probe, "probe", dimensions)
+    info = await AppleMusic().parse_share_url(APPLE_PAGE)
+    assert info.images[0].url.endswith("/3000x3000.jpg") and (info.width, info.height) == (3000, 3000)
+
+
+async def test_apple_size_template_with_literal_jpeg_can_use_verified_png(public_http, monkeypatch):
+    routes, _ = public_http
+    routes[APPLE_PAGE] = apple_html(image=APPLE_IMAGE.replace("{f}", "jpg"))
+
+    async def dimensions(_url, _headers):
+        return (3000, 3000)
+
+    monkeypatch.setattr(image_probe, "probe", dimensions)
+    assert (await AppleMusic().parse_share_url(APPLE_PAGE)).cover_url.endswith("/3000x3000.png")
+
+
+async def test_apple_independent_file_is_not_replaced_with_a_different_filename(public_http, monkeypatch):
+    routes, _ = public_http
+    image = "https://is1-ssl.mzstatic.com/image/source.jpg"
+    routes[APPLE_PAGE] = apple_html(image=image)
+
+    async def unexpected(*_args):
+        raise AssertionError("独立文件不改写格式")
+
+    monkeypatch.setattr(image_probe, "probe", unexpected)
+    assert (await AppleMusic().parse_share_url(APPLE_PAGE)).cover_url == image
 
 
 @pytest.mark.parametrize(

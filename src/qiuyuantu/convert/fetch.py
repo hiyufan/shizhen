@@ -274,6 +274,7 @@ def ytdlp_download(
     report: StepProgress,
     cancelled: Callable[[], bool],
     fit: bool = False,
+    http_headers: dict[str, str] | None = None,
 ) -> Path:
     """阻塞式 yt-dlp 下载，放到线程里跑。返回最终文件路径。fit 见 _sized_format。
 
@@ -282,6 +283,8 @@ def ytdlp_download(
     """
     hooks = _YtdlpHooks(report, cancelled)
     opts = _ytdlp_opts(page_url, format_spec, out_dir, stem, fit=fit)
+    if http_headers:
+        opts["http_headers"] = headers_for(page_url, http_headers)
     opts.update(progress_hooks=[hooks.progress], postprocessor_hooks=[hooks.postprocessor])
     try:
         info = _ytdlp_run(opts, page_url, out_dir, stem)

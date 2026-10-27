@@ -555,7 +555,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("video_id")
     parser.add_argument("--output", type=Path, default=Path("/output"))
-    parser.add_argument("--height", type=int, choices=(144, 240, 360, 480, 720, 1080, 1440, 2160), default=720)
+    parser.add_argument("--height", type=int, default=720)
     parser.add_argument("--max-bytes", type=int, default=300 << 20)
     parser.add_argument("--report-resources", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--transport", choices=("python", "browser"), default="python")
@@ -569,6 +569,8 @@ def main() -> int:
         parser.error("必须提供 11 位 YouTube 视频 ID")
     if args.max_bytes < 1 << 20:
         parser.error("大小上限必须至少为 1 MB")
+    if not 16 <= args.height <= 16384:
+        parser.error("视频高度必须在 16 到 16384 像素之间")
     if args.proxy:
         parsed = urlparse(args.proxy)
         if parsed.scheme != "http" or not parsed.hostname or parsed.username or parsed.password:

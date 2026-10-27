@@ -8,7 +8,7 @@ import {
 import { openConverter } from './converter.js';
 import { assetImages, independentAssets } from './assets.js';
 import { contentSections } from './content.js';
-import { $, el, fmtClock, fmtSize, safeName, sleep } from './dom.js';
+import { $, el, fmtClock, fmtSize, notice, safeName, sleep } from './dom.js';
 import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, imageButton, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
 import { jobCard } from './ui.js';
 
@@ -54,8 +54,8 @@ async function saveDirect(e, url, filename) {
 export function renderResult(d) {
   const title = d.title || t('未命名');
   // notice：平台不给的那部分是什么（比如快手实况只有照片），说在前面免得用户以为是网站漏了
-  const notice = d.notice ? el('p', { class: 'fine' }, serverMessage(d.notice, '平台仅提供部分媒体，请检查结果后下载。')) : null;
-  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), notice, ...resultContent(d, safeName(title) || 'video'));
+  const sourceNotice = d.notice ? el('p', { class: 'fine' }, serverMessage(d.notice, '平台仅提供部分媒体，请检查结果后下载。')) : null;
+  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), sourceNotice, ...resultContent(d, safeName(title) || 'video'));
   const box = $('#result');
   box.replaceChildren(res);
   box.hidden = false;
@@ -154,43 +154,72 @@ function videoSection(d, baseName, jobsBox) {
 
 const isPortrait = (d) => (d.width && d.height ? d.height > d.width : !['steam', 'hoyoplay', 'wutheringwaves'].includes(d.source));
 
-const videoExtension = (data) => ['steam', 'hoyoplay'].includes(data.source) && /\.webm(?:[?#]|$)/.test(data.video_url) ? 'webm' : 'mp4';
+const videoExtension = (data) => /\.webm(?:[?#]|$)/.test(data.video_url) ? 'webm' : (data.video_ext || 'mp4');
+
+const defaultDownload = (data) => data.download_format || previewDownload(data);
+
+function previewDownload(data) {
+  if (!data.video_url || videoExtension(data) === 'm3u8') return null;
+  const resolution = data.width && data.height ? Math.min(data.width, data.height) : data.height;
+  return { url: data.video_url, ext: videoExtension(data), label: resolution ? resolution + 'p' : '' };
+}
 
 /** 下载视频 / 其他清晰度 / 音频。iPhone 上「存到相册」是主按钮，其余收成下面一行小字，免得三个大按钮竖着排 */
 function saveActions(d, baseName, jobsBox) {
-  if (PHOTOS && d.video_url && videoExtension(d) === 'mp4') {
+  const best = defaultDownload(d);
+  if (PHOTOS && best?.url && best.ext === 'mp4') {
     const more = el('div', { class: 'more-acts' }, ...secondaryDownloads(d, baseName, jobsBox, true));
-    return el('div', { class: 'group' }, photosButton(t('存到相册'), oneFile(() => sourcesOf(d.video_url), baseName, 'video/mp4')), more);
+    return el('div', { class: 'group' }, photosButton(t('存到相册'), oneFile(() => sourcesOf(best.url), baseName, 'video/mp4')), more);
   }
   return el('div', { class: 'group' }, ...secondaryDownloads(d, baseName, jobsBox, false));
 }
 
 function secondaryDownloads(d, baseName, jobsBox, compact) {
   const links = [];
-  if (d.video_url) {
-    const label = t('下载视频') + (d.height ? ' ' + d.height + 'p' : '');
-    links.push(download(d.video_url, baseName + '.' + videoExtension(d), label, compact ? 'btn sm quiet' : 'btn dark'));
-  }
+  const best = defaultDownload(d);
+  if (best) links.push(primaryDownload(best, d, baseName, jobsBox, compact));
   if (d.formats && d.formats.length) links.push(formatMenu(d, baseName, jobsBox, compact));
   // 音频用得少，不和下载视频抢位置
   if (d.music_url) links.push(download(d.music_url, baseName + '.mp3', t('下载音频'), compact ? 'btn sm quiet' : 'btn quiet'));
   return links;
 }
 
+function primaryDownload(format, data, baseName, jobsBox, compact) {
+  const label = t('下载视频') + (format.label ? ' ' + t(format.label) : '');
+  const cls = compact ? 'btn sm quiet' : 'btn dark';
+  if (format.url) return download(format.url, baseName + '.' + (format.ext || 'mp4'), label, cls);
+  return el('button', { class: cls, type: 'button', onclick: async (event) => {
+    const button = event.currentTarget;
+    if (button.disabled) return;
+    button.disabled = true;
+    try { await startDownload(format, data, baseName, jobsBox); }
+    finally { button.disabled = false; }
+  } }, label);
+}
+
+function downloadFormats(data) {
+  const formats = [...data.formats];
+  const preview = previewDownload(data);
+  if (preview && data.download_format?.url !== preview.url && !formats.some((f) => f.url === preview.url)) {
+    formats.push(preview);
+  }
+  return formats;
+}
+
 /** 「其他清晰度 ▾」：有直链的直接下载，要服务端合并的起一个下载任务 */
 function formatMenu(d, baseName, jobsBox, compact) {
   const list = el('div', { class: 'menu-list', hidden: true });
   const close = () => { list.hidden = true; };
-  for (const f of d.formats) {
+  for (const f of downloadFormats(d)) {
     const meta = [el('span', {}, t(f.label)), el('small', {}, f.filesize ? fmtSize(f.filesize) : f.ext)];
     const filename = baseName + '_' + f.label.replace(/\s+/g, '') + '.' + (f.ext || 'mp4');
     list.append(f.url
       ? el('a', { href: mediaDownload(f.url, filename), download: '', onclick: (e) => { close(); saveDirect(e, f.url, filename); } }, ...meta)
       : el('button', { type: 'button', onclick: () => { close(); startDownload(f, d, baseName, jobsBox); } }, ...meta));
   }
-  if (d.formats.some((f) => f.codec)) {
+  if (d.formats.some((f) => /H\.265|hevc|hvc1|hev1/i.test(f.codec || ''))) {
     list.append(el('p', { class: 'hint', style: 'padding:6px 10px 4px' },
-      t('H.265 体积更小、更清晰，手机都能播；老电脑可能需要装解码器。')));
+      t('H.265 通常体积更小，播放兼容性因设备而异；画质取决于来源。')));
   }
   const toggleClass = compact ? 'btn sm quiet' : 'btn' + (d.video_url ? '' : ' dark');
   const toggle = el('button', { class: toggleClass, type: 'button', onclick: () => { list.hidden = !list.hidden; } },
@@ -205,15 +234,36 @@ document.addEventListener('click', (e) => {
   }
 });
 
-/** 转换要用的原视频：直链优先；没有直链（YouTube 之类）就让服务端用 yt-dlp 拉 */
-function sourceRequest(d, title) {
-  if (d.source === 'hoyoplay') return { page_url: d.page_url, title, sig: sigOf(d.page_url) };
+const directConversionSource = (d, title, url) => ({ url, headers: d.video_headers || {}, title, sig: sigOf(url) });
+
+function pageConversionSource(d, title, formatSpec = '') {
+  const page = d.page_url || d.share_url;
+  return { page_url: page, format_spec: formatSpec, title, sig: sigOf(page) };
+}
+
+function legacyConversionSource(d, title) {
+  // 旧响应没有 download_format；保留原有兼容选择，动态封面则指定其独立构图。
   const needsServer = d.formats.some((f) => !f.url);
   if (d.video_url && (!needsServer || d.height >= 720 || !d.page_url)) {
-    return { url: d.video_url, headers: d.video_headers || {}, title, sig: sigOf(d.video_url) };
+    return directConversionSource(d, title, d.video_url);
   }
-  const page = d.page_url || d.share_url;
-  return { page_url: page, title, sig: sigOf(page) };
+  const format = d.formats.find((f) => f.format_spec);
+  return pageConversionSource(d, title, format?.format_spec || '');
+}
+
+function conversionSource(d, title) {
+  if (d.source === 'hoyoplay') return pageConversionSource(d, title);
+  const best = d.download_format;
+  if (best?.url) return directConversionSource(d, title, best.url);
+  if (best?.format_spec) return pageConversionSource(d, title, best.format_spec);
+  return legacyConversionSource(d, title);
+}
+
+/** 转换使用与主下载相同的高清源；兼容预览只在浏览器裁剪时播放，不作为转换输入。 */
+function sourceRequest(d, title) {
+  const request = conversionSource(d, title);
+  if (d.video_url && videoExtension(d) !== 'm3u8') request.preview_url = proxy(d.video_url);
+  return request;
 }
 
 async function startDownload(f, d, baseName, jobsBox) {
@@ -260,7 +310,7 @@ function headActions(d, images, baseName, hasVideo, hasLives) {
 /** 只存静态图：iPhone 走分享面板一次存进相册，其它设备逐张下载（只有一张就不用这个按钮） */
 function stillsButton(images, baseName, label, cls) {
   if (PHOTOS) {
-    const items = images.map((im, i) => ({ url: sourcesOf(im.url), name: baseName + '_' + (i + 1) }));
+    const items = images.map((im, i) => ({ url: sourcesOf(im.url), name: baseName + '_' + (i + 1), type: 'image/*' }));
     return photosButton(label, (onBytes) => fetchFiles(items, onBytes), cls);
   }
   if (images.length < 2) return null;
@@ -268,17 +318,28 @@ function stillsButton(images, baseName, label, cls) {
 }
 
 async function downloadAll(images, baseName, btn) {
+  const label = btn.textContent;
+  const active = () => btn.isConnected && !$('#result').hidden;
   btn.disabled = true;
-  for (let i = 0; i < images.length; i++) {
-    const a = el('a', { href: proxy(images[i].url, baseName + '_' + (i + 1) + '.jpg', true), download: '' });
-    document.body.append(a);
-    a.click();
-    a.remove();
-    btn.textContent = t('下载中 ') + (i + 1) + '/' + images.length;
-    await sleep(900);
+  try {
+    for (let i = 0; i < images.length; i++) {
+      if (!active()) return;
+      const name = baseName + '_' + (i + 1);
+      const [file] = await oneFile(proxy(images[i].url, name, true), name, 'image/*')();
+      if (!active()) return;
+      saveFile(file);
+      btn.textContent = t('下载中 ') + (i + 1) + '/' + images.length;
+      await sleep(900);
+    }
+    btn.textContent = t('已全部触发下载');
+  } catch (error) {
+    if (active()) {
+      btn.textContent = label;
+      notice(error.message);
+    }
+  } finally {
+    btn.disabled = false;
   }
-  btn.textContent = t('已全部触发下载');
-  btn.disabled = false;
 }
 
 // 平台自带的实况：原图 + 短视频，直接配对打包，不用裁剪。
@@ -346,17 +407,13 @@ async function startLive(lives, fmt, baseName, jobsBox, btn) {
 function imageTile(img, n, baseName) {
   const name = baseName + '_' + n;
   const live = img.live_photo_url;
-  // 图片下载留在服务器转发（同源的 <a download> 才认文件名）；视频走边缘的下载头
-  const link = (url, file, label) => (/\.mp4$/.test(file)
-    ? download(url, file, label, 'btn sm quiet')
-    : el('a', { class: 'btn sm quiet', href: proxy(url, file, true), download: file }, label));
-  const save = (url, file, ext, label, type) => (PHOTOS
-    ? photosButton(label, oneFile(sourcesOf(url), file, type), 'btn sm quiet')
-    : link(url, file + '.' + ext, label));
-  const actions = [save(img.url, name, 'jpg', live ? t('原图') : PHOTOS ? t('存相册') : t('下载'))];
+  // 原始文件可能是 WebP / GIF，甚至响应头也不可靠；复用封面下载的文件头识别。
+  const still = imageButton(live ? t('原图') : PHOTOS ? t('存相册') : t('下载'), proxy(img.url, name, true), name);
+  still.className = 'btn sm quiet';
+  const actions = [still];
   if (live) {
     actions.push(
-      save(live, name + '_live', 'mp4', t('视频'), 'video/mp4'),
+      liveVideoButton(live, name + '_live'),
       el('button', {
         class: 'btn sm quiet', type: 'button', title: t('用这段实况视频做 GIF'),
         onclick: () => openConverter({ url: live, title: name, sig: sigOf(live) }, 'gif'),
@@ -366,4 +423,10 @@ function imageTile(img, n, baseName) {
     proxyImg(img.url, { alt: '', loading: 'lazy' }),
     live ? el('span', { class: 'live' }, t('实况')) : null,
     el('div', { class: 'bar' }, el('span', {}, n), el('div', {}, ...actions)));
+}
+
+function liveVideoButton(url, name) {
+  return PHOTOS
+    ? photosButton(t('视频'), oneFile(() => sourcesOf(url), name, 'video/mp4'), 'btn sm quiet')
+    : download(url, name + '.mp4', t('视频'), 'btn sm quiet');
 }

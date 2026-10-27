@@ -33,7 +33,18 @@ _PASSTHROUGH_HEADERS = (
     "last-modified",
     "etag",
 )
-_EXT_BY_TYPE = (("video", "mp4"), ("jpeg", "jpg"), ("png", "png"), ("webp", "webp"))
+_EXT_BY_TYPE = (
+    ("video/webm", "webm"),
+    ("video/quicktime", "mov"),
+    ("video", "mp4"),
+    ("jpeg", "jpg"),
+    ("png", "png"),
+    ("webp", "webp"),
+    ("gif", "gif"),
+    ("avif", "avif"),
+    ("heic", "heic"),
+)
+_IMAGE_SUFFIXES = {"jpg", "jpeg", "png", "webp", "gif", "avif", "heic"}
 _TIMEOUT = httpx.Timeout(30, read=120)
 
 
@@ -109,9 +120,13 @@ def _response_headers(resp: httpx.Response) -> dict[str, str]:
 
 def _attachment(filename: str, content_type: str) -> str:
     """下载头：没给文件名就叫 media，没扩展名的按内容类型补上。"""
+    content_type = content_type.lower()
     ext = next((ext for key, ext in _EXT_BY_TYPE if key in content_type), "")
     name = filename or safe_filename("media", ext)
-    if ext and not name.lower().endswith("." + ext) and "." not in name[-5:]:
+    stem, dot, suffix = name.rpartition(".")
+    if content_type.startswith("image/") and ext:
+        name = f"{stem}.{ext}" if dot and suffix.lower() in _IMAGE_SUFFIXES else f"{name}.{ext}"
+    elif ext and not name.lower().endswith("." + ext) and "." not in name[-5:]:
         name += "." + ext
     return f"attachment; filename*=UTF-8''{quote(name)}"
 

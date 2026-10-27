@@ -1,8 +1,9 @@
 import base64
 import re
 
-from .base import BaseParser, VideoAuthor, VideoInfo
+from .base import BaseParser, FormatInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
+from .quality import number
 
 # tv.sohu.com/v/<base64>.html，base64 解出来是 us/<uid>/<vid>.shtml
 _BASE64_PATH = re.compile(r"/v/([A-Za-z0-9+/=]+)\.html")
@@ -26,13 +27,17 @@ class Sohu(BaseParser):
         data = body.get("data")
         if not data:
             raise ParseError("deleted", "搜狐视频没有返回这条视频")
-        # 优先高清，没有就用下载地址
-        video_url = data.get("url_high_mp4") or data.get("download_url") or ""
-        if not video_url:
+        formats = _formats(data)
+        if not formats:
             raise ParseError("empty", "搜狐视频没有给播放地址")
+        best = formats[0]
         user = data.get("user") or {}
         return VideoInfo(
-            video_url=video_url,
+            video_url=best.url,
+            width=best.width,
+            height=best.height,
+            duration=number(data.get("total_duration")),
+            formats=formats[1:],
             cover_url=data.get("originalCutCover", ""),
             title=data.get("video_name", ""),
             author=VideoAuthor(
@@ -54,3 +59,23 @@ class Sohu(BaseParser):
         if not match:
             raise ParseError("unsupported", "链接里没有搜狐视频的视频 ID")
         return match.group(1) or match.group(2)
+
+
+def _formats(data: dict) -> list[FormatInfo]:
+    """公开接口明确分为 original / super / high / nor；不把高清字段当作最高档。"""
+    tiers = (("original", "原画"), ("super", "超清"), ("high", "高清"), ("nor", "标清"))
+    formats = []
+    for tier, label in tiers:
+        if url := data.get(f"url_{tier}_mp4"):
+            formats.append(
+                FormatInfo(
+                    url=url,
+                    label=label,
+                    width=int(number(data.get("vWidth"))) if tier == "original" else 0,
+                    height=int(number(data.get("vHeight"))) if tier == "original" else 0,
+                    filesize=int(number(data.get(f"file_size_{tier}"))),
+                )
+            )
+    if not formats and data.get("download_url"):
+        formats.append(FormatInfo(url=data["download_url"], label="下载视频"))
+    return formats

@@ -88,7 +88,7 @@ def test_atlas_keeps_images_and_picks_up_music():
     )
     assert len(info.images) == 2 and info.video_url == ""  # 图集的 mainMvUrls 是配乐视频壳
     assert [i.url for i in info.images] == [
-        "https://p2.a.yximgs.com/ufile/atlas/1.jpg",
+        "https://p2.a.yximgs.com/ufile/atlas/1.webp",
         "https://p2.a.yximgs.com/ufile/atlas/2.jpg",
     ]
     assert info.music_url.endswith("/ufile/atlas/bgm.m4a")
@@ -106,6 +106,60 @@ def test_plain_video_is_unchanged():
         )
     )
     assert info.video_url == "https://v.kwaicdn.com/1.mp4" and info.images == [] and info.music_url == ""
+
+
+def test_highest_hevc_track_in_a_second_adaptation_set_is_not_lost():
+    from qiuyuantu.parser.quality import best_video_format
+
+    photo = {
+        "mainMvUrls": [{"url": "https://cdn.test/720.mp4"}],
+        "width": 1280,
+        "height": 720,
+        "manifest": {
+            "adaptationSet": [
+                {"representation": [{"url": "https://cdn.test/720.mp4", "width": 1280, "height": 720}]},
+                {
+                    "representation": [
+                        {
+                            "url": "https://cdn.test/4k.mp4",
+                            "width": 3840,
+                            "height": 2160,
+                            "videoCodec": "hevc",
+                            "frameRate": "60/1",
+                        }
+                    ]
+                },
+            ]
+        },
+    }
+    info = KuaiShou._build(_state(photo))
+    assert info.video_url == "https://cdn.test/720.mp4"
+    assert best_video_format(info).url == "https://cdn.test/4k.mp4"
+    assert info.formats[0].fps == 60
+
+
+def test_portrait_track_preserves_actual_dimensions_and_ranks_by_short_side():
+    from qiuyuantu.parser.quality import best_video_format
+
+    photo = {
+        "mainMvUrls": [{"url": "https://cdn.test/portrait-720.mp4"}],
+        "width": 1080,
+        "height": 1920,
+        "manifest": {
+            "adaptationSet": [
+                {
+                    "representation": [
+                        {"url": "https://cdn.test/portrait-720.mp4", "width": 720, "height": 1280},
+                        {"url": "https://cdn.test/portrait-1080.mp4", "width": 1080, "height": 1920},
+                    ]
+                }
+            ]
+        },
+    }
+    info = KuaiShou._build(_state(photo))
+    assert (info.width, info.height) == (720, 1280)
+    best = best_video_format(info)
+    assert (best.width, best.height, best.label) == (1080, 1920, "1080p")
 
 
 def test_web_and_landing_links_are_routed_to_kuaishou_by_photo_id():

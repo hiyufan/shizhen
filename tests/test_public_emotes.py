@@ -97,6 +97,28 @@ async def test_seven_set_is_bounded_and_cdn_cannot_point_elsewhere(public_http):
         await parser.parse_video_share_url("https://7tv.app/emotes/" + SEVEN)
 
 
+async def test_static_seven_prefers_lossless_png_at_the_highest_actual_dimensions(public_http):
+    data = copy.deepcopy(SEVEN_DATA)
+    data["animated"] = False
+    data["host"]["files"] = [
+        {"name": "4x.webp", "format": "WEBP", "width": 128, "height": 128},
+        {"name": "4x.png", "format": "PNG", "width": 128, "height": 128},
+        {"name": "2x.png", "format": "PNG", "width": 64, "height": 64},
+    ]
+    public_http["routes"]["https://7tv.io/v3/emotes/" + SEVEN] = data
+    info = await parser.parse_video_share_url("https://7tv.app/emotes/" + SEVEN)
+    assert info.assets[0].url.endswith("/4x.png") and info.assets[0].ext == "png"
+    assert info.assets[0].kind == "image"
+
+
+async def test_animated_seven_does_not_choose_a_static_png_preview(public_http):
+    data = copy.deepcopy(SEVEN_DATA)
+    data["host"]["files"].append({"name": "4x.png", "format": "PNG", "width": 128})
+    public_http["routes"]["https://7tv.io/v3/emotes/" + SEVEN] = data
+    info = await parser.parse_video_share_url("https://7tv.app/emotes/" + SEVEN)
+    assert info.assets[0].url.endswith("/4x.webp") and info.assets[0].kind == "animation"
+
+
 async def test_line_uses_only_listed_previews_and_skips_cover(public_http):
     import html
     import json

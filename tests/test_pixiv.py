@@ -114,8 +114,16 @@ async def test_ugoira_is_server_composed_format_and_independent_zip(public_http)
     info = await parse_video_share_url(ROOT + "/artworks/42")
     assert info.video_url == "" and not info.images
     assert info.assets[0].url == ZIP and info.assets[0].ext == "zip"
+    assert info.assets[-1].url == IMAGE and info.assets[-1].label == "首帧原图" and info.assets[-1].kind == "image"
     assert info.formats[0].format_spec == "pixiv-ugoira" and not info.formats[0].url
     assert info.animation_frames == FRAMES and info.duration == 0.25
+
+
+async def test_ugoira_never_uses_a_different_works_original_first_frame(public_http):
+    routes, _ = public_http
+    routes["/ajax/illust/42"] = artwork(illustType=2, urls={"original": IMAGE.replace("42_p0", "43_ugoira0")})
+    with pytest.raises(ParseError, match="动画首帧"):
+        await parse_video_share_url(ROOT + "/artworks/42")
 
 
 async def test_author_pages_do_not_recursively_fetch_works(public_http):

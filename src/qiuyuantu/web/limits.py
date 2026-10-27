@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -145,6 +146,7 @@ class DailyBytes:
 _IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp", ".avif")
 # 各家图片 CDN 的处理参数, 带上就肯定是图片而不是视频
 _IMAGE_HINT = ("imageview2", "image_process", "x-oss-process", "format/jpg", "format/webp", "/format/png")
+_IPPZONE_IMAGE = re.compile(r"https?://(?:[a-z0-9-]+\.)?ippzone\.com/img/(?:view|webp|miniprogram)/")
 
 
 def looks_like_image(url: str) -> bool:
@@ -154,7 +156,12 @@ def looks_like_image(url: str) -> bool:
     当成视频最多是并发额度紧一点。
     """
     path, _, query = url.lower().partition("?")
-    return path.endswith(_IMAGE_EXT) or any(h in query for h in _IMAGE_HINT)
+    return (
+        path.startswith(("https://ci.xiaohongshu.com/", "http://ci.xiaohongshu.com/"))
+        or bool(_IPPZONE_IMAGE.match(path))
+        or path.endswith(_IMAGE_EXT)
+        or any(h in query for h in _IMAGE_HINT)
+    )
 
 
 def _env_int(name: str, default: int) -> int:

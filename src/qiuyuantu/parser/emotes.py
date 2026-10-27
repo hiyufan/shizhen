@@ -47,12 +47,15 @@ def _seven_asset(row: dict) -> MediaAsset:
     if not re.fullmatch(_SEVEN_ID, str(data.get("id", ""))):
         raise ParseError("parse", "7TV 返回的表情编号无效")
     host = data.get("host") or {}
-    files = [f for f in host.get("files", []) if f.get("format") == "WEBP"]
+    # 静态 WebP 是有损转码；同尺寸的 PNG 保留更多像素信息。动态素材仍需保留完整帧序列。
+    allowed = {"WEBP"} if data.get("animated") else {"PNG", "WEBP"}
+    files = [f for f in host.get("files", []) if f.get("format") in allowed]
     if not files:
         raise ParseError("empty", "7TV 没有返回可用的 WebP 文件")
-    chosen = max(files, key=lambda f: int(f.get("width", 0)))
+    chosen = max(files, key=lambda f: (int(f.get("width", 0)), int(f.get("height", 0)), f.get("format") == "PNG"))
     name = chosen.get("name", "")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.webp", name):
+    extension = chosen["format"].lower()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\." + extension, name):
         raise ParseError("parse", "7TV 返回的文件名无效")
     url = _cdn(str(host.get("url", "")) + "/" + name, {"cdn.7tv.app"})
     return MediaAsset(
@@ -60,7 +63,7 @@ def _seven_asset(row: dict) -> MediaAsset:
         label=str(row.get("name") or data.get("name") or data["id"]),
         kind="animation" if data.get("animated") else "image",
         cover_url=url,
-        ext="webp",
+        ext=extension,
     )
 
 

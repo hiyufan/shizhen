@@ -87,7 +87,7 @@ export function imageButton(label, url, name, share = PHOTOS) {
       });
       saveFile(files[0]);
     } catch (error) {
-      if (btn.isConnected) notice(error.message);
+      if (btn.isConnected && !btn.closest('[hidden]')) notice(error.message);
     } finally {
       btn.textContent = label;
       btn.disabled = false;

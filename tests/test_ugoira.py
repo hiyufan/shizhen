@@ -4,10 +4,12 @@ import io
 import threading
 import zipfile
 
+import imageio_ffmpeg
 import pytest
 from PIL import Image
 
-from qiuyuantu.convert import ugoira
+from qiuyuantu.convert import ffmpeg, ugoira
+from qiuyuantu.parser.base import MediaAsset, VideoInfo
 
 
 def jpeg():
@@ -70,3 +72,38 @@ async def test_cancellation_waits_for_decoder_before_directory_cleanup(monkeypat
     with pytest.raises(asyncio.CancelledError):
         await task
     assert finished.is_set() and (tmp_path / "last-write").exists()
+
+
+async def test_mp4_preparation_pads_odd_frames_without_resampling(monkeypatch, tmp_path):
+    image = io.BytesIO()
+    Image.new("RGB", (17, 19), "white").save(image, "PNG")
+    frames = [{"file": "000000.png", "delay": 100}, {"file": "000001.png", "delay": 100}]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for frame in frames:
+            archive.writestr(frame["file"], image.getvalue())
+
+    async def metadata(_parser, _url):
+        return VideoInfo(
+            "",
+            "",
+            assets=[MediaAsset("https://i.pximg.net/frames.zip", kind="archive", ext="zip")],
+            animation_frames=frames,
+        )
+
+    async def fetch(_url, path, *, limit):
+        assert len(buffer.getvalue()) < limit
+        path.write_bytes(buffer.getvalue())
+
+    monkeypatch.setattr(ugoira.Pixiv, "parse_share_url", metadata)
+    monkeypatch.setattr(ugoira, "fetch_bytes", fetch)
+    monkeypatch.setattr(ffmpeg, "ffmpeg_path", imageio_ffmpeg.get_ffmpeg_exe)
+    output = await ugoira.download("https://www.pixiv.net/artworks/42", tmp_path, "out", lambda *_: None)
+    probe = await ffmpeg.probe(output)
+    assert (probe.width, probe.height) == (18, 20)
+    decoded = tmp_path / "frame.png"
+    await ffmpeg.run(["-i", str(output), "-frames:v", "1", "-pix_fmt", "rgb24", str(decoded)])
+    with Image.open(decoded) as result:
+        assert min(result.getpixel((8, 9))) > 230
+        assert min(result.getpixel((16, 9))) > 230 and min(result.getpixel((8, 18))) > 230
+        assert max(result.getpixel((17, 9))) < 32 and max(result.getpixel((8, 19))) < 32

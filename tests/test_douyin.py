@@ -1,12 +1,14 @@
 """抖音解析：作品数据、接口重试与浏览器兜底。接口换成假的，不碰网络。"""
 
 import asyncio
+import copy
 import json
 
+import httpx
 import pytest
 
 from qiuyuantu.parser import douyin
-from qiuyuantu.parser.base import ImgInfo, VideoInfo
+from qiuyuantu.parser.base import FormatInfo, ImgInfo, VideoInfo
 from qiuyuantu.parser.douyin import DouYin
 from qiuyuantu.parser.errors import ParseError
 
@@ -98,6 +100,42 @@ def test_video(monkeypatch):
         "https://p3.douyinpic.com/a.jpeg",
     )
     assert info.title == "一条视频"
+
+
+def test_primary_track_keeps_its_actual_framerate_and_bitrate(monkeypatch):
+    aweme = copy.deepcopy(VIDEO_AWEME)
+    aweme["video"]["bit_rate"][0].update({"FPS": 60, "bit_rate": 8000000})
+    info = _parse(monkeypatch, aweme)
+    assert info.video_fps == 60 and info.video_bitrate == 8000000 and info.video_codec == "H.264"
+
+
+def test_official_playback_can_recover_higher_quality_than_web_list(monkeypatch):
+    from qiuyuantu.parser.quality import best_video_format
+
+    aweme = copy.deepcopy(VIDEO_AWEME)
+    aweme["video"].update({"width": 2160, "height": 3840, "play_addr": {"uri": "v" + "1" * 20}, "bit_rate": []})
+    requested = []
+
+    def response(request):
+        assert request.method == "HEAD" and "cookie" not in request.headers
+        ratio = request.url.params["ratio"]
+        requested.append(ratio)
+        return httpx.Response(302, headers={"Location": "https://cdn.test/" + ratio + ".mp4"})
+
+    def client(**kwargs):
+        return httpx.AsyncClient(transport=httpx.MockTransport(response), **kwargs)
+
+    async def probe(url, headers):
+        assert "Cookie" not in headers
+        width, height = (720, 1280) if "origin" in url else (1080, 1920)
+        return FormatInfo(url=url, width=width, height=height, fps=30, label=f"{width}p")
+
+    monkeypatch.setattr(douyin, "create_async_client", client)
+    monkeypatch.setattr(douyin.mp4_probe, "probe", probe)
+    info = _parse(monkeypatch, aweme)
+    highest = best_video_format(info)
+    assert set(requested) == {"2160p", "origin"}
+    assert highest.label == "1080p" and highest.url.endswith("2160p.mp4")
 
 
 def test_image_note_with_live_photo(monkeypatch):

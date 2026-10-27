@@ -138,7 +138,7 @@ video_source_info_mapping = {
         "parser": MeiPai,
     },
     VideoSource.PiPiGaoXiao: {
-        "domain_list": ["h5.pipigx.com"],
+        "domain_list": ["h5.pipigx.com", "h5.ippzone.com"],
         "parser": PiPiGaoXiao,
     },
     VideoSource.PiPiXia: {
@@ -170,7 +170,7 @@ video_source_info_mapping = {
         "parser": WeiBo,
     },
     VideoSource.WeiShi: {
-        "domain_list": ["isee.weishi.qq.com"],
+        "domain_list": ["isee.weishi.qq.com", "video.weishi.qq.com", "h5.weishi.qq.com"],
         "parser": WeiShi,
     },
     VideoSource.XiGua: {

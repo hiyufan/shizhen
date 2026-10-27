@@ -93,6 +93,7 @@ def test_cover_variants_keep_real_high_resolution_urls():
     assert netease_cover(NET_COVER.replace("https:", "http:") + "?param=200y200") == NET_COVER
     assert qq_cover(QQ_COVER) == "https://y.gtimg.cn/music/photo_new/T002R800x800M000albumMID_1.jpg"
     assert qq_cover("http://qpic.y.qq.com/music_cover/hash/300?n=1") == "https://qpic.y.qq.com/music_cover/hash/1000"
+    assert qq_cover("https://qpic.y.qq.com/music_cover/hash/2000") == "https://qpic.y.qq.com/music_cover/hash/2000"
 
 
 @pytest.mark.parametrize("normalizer", [netease_cover, qq_cover])
@@ -148,12 +149,15 @@ async def test_qq_uses_public_page_metadata(music_http, kind):
     routes[canonical] = f'''<meta property="og:image" content="{QQ_COVER}">
       <meta property="og:title" content="歌单 &amp; 封面 - QQ音乐-品牌介绍">
       <meta property="og:music:artist" content="歌手">'''
+    original = "https://y.gtimg.cn/music/photo_new/T002M000albumMID_1.jpg"
+    routes[original] = (200, {"Content-Type": "image/jpeg"})
     info = await parser.parse_video_share_url(f"https://y.qq.com/n/ryqq/{kind}/42")
     assert info.title == "歌单 & 封面" and info.author.name == "歌手"
-    assert info.images[0].url == "https://y.gtimg.cn/music/photo_new/T002R800x800M000albumMID_1.jpg"
+    assert info.images[0].url == original
     assert info.cover_url == info.images[0].url and info.source == "qqmusic"
     assert not info.video_url and not info.music_url and not info.formats
-    assert len(calls) == 1 and calls[0].headers["referer"] == "https://y.qq.com/"
+    assert len(calls) == 2 and calls[0].headers["referer"] == "https://y.qq.com/"
+    assert calls[1].method == "HEAD"
 
 
 async def test_qq_page_without_cover_does_not_return_site_logo(music_http):
@@ -162,6 +166,33 @@ async def test_qq_page_without_cover_does_not_return_site_logo(music_http):
     with pytest.raises(ParseError) as exc:
         await QQMusic().parse_video_id("playlist:42")
     assert exc.value.reason == "empty"
+
+
+async def test_qq_original_falls_back_only_to_verified_larger_cover(music_http):
+    routes, calls = music_http
+    stem = "https://y.gtimg.cn/music/photo_new/T002"
+    routes[stem + "M000albumMID_1.jpg"] = (404, {})
+    routes[stem + "R1500x1500M000albumMID_1.jpg"] = (200, {"Content-Type": "image/jpeg"})
+    assert await QQMusic()._best_cover(QQ_COVER) == stem + "R1500x1500M000albumMID_1.jpg"
+    assert all(call.method == "HEAD" for call in calls)
+
+
+async def test_qq_missing_original_and_variants_keep_existing_cover(music_http):
+    routes, _ = music_http
+    stem = "https://y.gtimg.cn/music/photo_new/T002"
+    routes[stem + "M000albumMID_1.jpg"] = (404, {})
+    routes[stem + "R1500x1500M000albumMID_1.jpg"] = (200, {"Content-Type": "text/html"})
+    routes[stem + "R1200x1200M000albumMID_1.jpg"] = (404, {})
+    assert await QQMusic()._best_cover(QQ_COVER) == stem + "R800x800M000albumMID_1.jpg"
+
+
+async def test_qq_already_larger_cover_is_never_replaced_by_800px(music_http):
+    routes, calls = music_http
+    stem = "https://y.gtimg.cn/music/photo_new/T002"
+    routes[stem + "M000albumMID_1.jpg"] = (404, {})
+    cover = stem + "R2000x2000M000albumMID_1.jpg"
+    assert await QQMusic()._best_cover(cover) == cover
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize("source", ["netease", "qqmusic"])

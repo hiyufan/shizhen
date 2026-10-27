@@ -1,5 +1,8 @@
 from ..utils import get_val_from_url_by_query_key
 from .base import BaseParser, VideoAuthor, VideoInfo
+from .errors import ParseError
+from .ippzone import first_video, post_images, video_formats
+from .quality import apply_video_formats, number
 
 
 class ZuiYou(BaseParser):
@@ -15,12 +18,19 @@ class ZuiYou(BaseParser):
             follow_redirects=True,
         )
         post = body["data"]["post"]
+        if post.get("id") and str(post["id"]) != video_id:
+            raise ParseError("parse", "最右返回的作品编号与链接不一致")
         member = post["member"]
-        return VideoInfo(
-            video_url=post["videos"][str(post["imgs"][0]["id"])]["url"],
-            cover_url="",
+        video = first_video(post)
+        images = post_images(post)
+        info = VideoInfo(
+            video_url="",
+            cover_url=images[0].url if images else "",
+            images=images,
             title=post["content"],
             author=VideoAuthor(
                 uid=str(member["id"]), name=member["name"], avatar=member["avatar_urls"]["origin"]["urls"][0]
             ),
+            duration=number(video.get("dur")),
         )
+        return apply_video_formats(info, await video_formats(video, "https://share.xiaochuankeji.cn/"))

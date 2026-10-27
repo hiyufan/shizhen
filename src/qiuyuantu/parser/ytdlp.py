@@ -17,8 +17,7 @@ from ..convert.ffmpeg import ffmpeg_dir
 from ..utils import fallback_proxy, proxy_for, run_ytdlp, wants_fallback, youtube_proxy
 from . import instagram
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
-
-_HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360)
+from .quality import number, short_side
 
 
 class YtDlp(BaseParser):
@@ -141,8 +140,9 @@ class YtDlp(BaseParser):
 
     @staticmethod
     def _to_video_info(info: dict[str, Any], share_url: str) -> VideoInfo:
-        formats = [f for f in (info.get("formats") or []) if f.get("url")]
+        formats = [f for f in (info.get("formats") or []) if f.get("url") and not f.get("has_drm")]
         video_url, headers, width, height = _direct_stream(info, formats)
+        primary = next((f for f in formats if f["url"] == video_url), info)
         return VideoInfo(
             video_url=video_url,
             cover_url=_cover(info),
@@ -158,8 +158,12 @@ class YtDlp(BaseParser):
             duration=float(info.get("duration") or 0),
             width=width,
             height=height,
-            formats=_merge_options(formats, height),
+            formats=_merge_options(formats, primary),
             video_headers=headers,
+            video_fps=number(primary.get("fps")),
+            video_bitrate=int(number(primary.get("tbr")) * 1000),
+            video_codec=str(primary.get("vcodec") or ""),
+            video_ext=str(primary.get("ext") or "mp4"),
         )
 
 
@@ -180,7 +184,7 @@ _KNOWN_SITES = ("youtube", "tiktok", "instagram", "vimeo", "facebook", "twitch",
 
 
 def _is_video(f: dict[str, Any]) -> bool:
-    return f.get("vcodec") not in (None, "none")
+    return f.get("vcodec") not in (None, "none", "images") and f.get("ext") not in _IMAGE_EXTS
 
 
 def _is_audio(f: dict[str, Any]) -> bool:
@@ -192,19 +196,19 @@ def _is_http(f: dict[str, Any]) -> bool:
 
 
 def _direct_stream(info: dict[str, Any], formats: list[dict[str, Any]]) -> tuple[str, dict[str, str], int, int]:
-    """浏览器能直接播的那一路：音视频合一的 http 直链，mp4 优先、越清晰越好。
+    """浏览器能直接播的那一路：音视频合一的 http 直链，先按实际清晰度、帧率选择。
     返回 (地址, 要带的请求头, 宽, 高)；没有就是空地址。"""
     progressive = [f for f in formats if _is_video(f) and _is_audio(f) and _is_http(f)]
     best = max(
         reversed(progressive),  # 一样好的取后面那个（yt-dlp 按从差到好排）
-        key=lambda f: (f.get("ext") == "mp4", f.get("height") or 0, f.get("tbr") or 0),
+        key=lambda f: (*_video_rank(f), f.get("ext") == "mp4"),
         default=None,
     )
     if best is None and info.get("url") and info.get("ext") in ("mp4", "mov", "webm"):
         best = info
     if best is None:
         return "", {}, 0, 0
-    return best["url"], _stream_headers(best), best.get("width") or 0, best.get("height") or 0
+    return best["url"], _stream_headers(best), int(number(best.get("width"))), int(number(best.get("height")))
 
 
 _KEEP_HEADERS = ("user-agent", "referer", "origin")
@@ -224,28 +228,39 @@ def _stream_headers(fmt: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
-def _merge_options(formats: list[dict[str, Any]], direct_height: int) -> list[FormatInfo]:
-    """比直链更清晰的档位（要服务端合并音视频），以及「仅音频」。"""
+def _merge_options(formats: list[dict[str, Any]], primary: dict[str, Any]) -> list[FormatInfo]:
+    """列出来源真实存在的全部高清档位，不封顶 4K，也不虚构中间分辨率。"""
     videos = [f for f in formats if _is_video(f)]
-    top = max((f.get("height") or 0 for f in videos), default=0)
     options = []
-    for h in _HEIGHT_LADDER:
-        if not (direct_height < h <= top):
+    heights = sorted({int(number(f.get("height"))) for f in videos}, reverse=True)
+    for h in heights:
+        same_height = [f for f in videos if number(f.get("height")) == h]
+        best = max(same_height, key=lambda f: (number(f.get("fps")), number(f.get("tbr"))))
+        if not h or _video_rank(best) <= _video_rank(primary):
             continue
-        same_height = [f for f in videos if (f.get("height") or 0) == h]
+        width = int(number(best.get("width")))
         approx = max((f.get("filesize") or f.get("filesize_approx") or 0 for f in same_height), default=0)
         options.append(
             FormatInfo(
-                label=f"{h}p",
-                format_spec=f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba/b[height<={h}]",
+                label=f"{short_side(width, h)}p"
+                + (str(round(number(best.get("fps")))) if number(best.get("fps")) > 45 else ""),
+                format_spec=f"bv[height={h}]+ba/b[height={h}]/bv[height={h}]",
                 ext="mp4",
                 height=h,
                 filesize=int(approx),
+                width=width,
+                fps=number(best.get("fps")),
+                bitrate=int(number(best.get("tbr")) * 1000),
+                codec=str(best.get("vcodec") or ""),
             )
         )
     if any(_is_audio(f) and not _is_video(f) for f in formats):
         options.append(FormatInfo(label="仅音频", format_spec="ba[ext=m4a]/ba", ext="m4a", height=0))
     return options
+
+
+def _video_rank(fmt: dict) -> tuple[float, float, float]:
+    return number(fmt.get("height")), number(fmt.get("fps")), number(fmt.get("tbr"))
 
 
 def _cover(info: dict[str, Any]) -> str:

@@ -10,9 +10,11 @@ import httpx
 from ..utils import create_async_client
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
+from .quality import number
 
-# 原图: ci.xiaohongshu.com 上按 key 取, w/0 表示不缩放; 页面里给的都是缩到 1080 宽的版本
-_ORIGINAL_IMAGE = "https://ci.xiaohongshu.com/{key}?imageView2/2/w/0/format/jpg/q/90"
+# 按 key 读取未加工文件，不额外转码。原尺寸 JPEG 仍会重新压缩；实测原文件与 PNG
+# 解码像素一致，而 q90 / q100 JPEG 都有额外损失。页面预览通常还缩到了 1080 宽。
+_ORIGINAL_IMAGE = "https://ci.xiaohongshu.com/{key}"
 
 _DESKTOP_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
@@ -212,6 +214,8 @@ class RedBook(BaseParser):
             width=video.width,
             height=video.height,
             formats=video.formats,
+            video_fps=video.fps,
+            video_bitrate=video.bitrate,
             author=VideoAuthor(
                 uid=user.get("userId", ""),
                 name=user.get(nick_key) or user.get("nickname") or user.get("nickName") or "",
@@ -324,6 +328,8 @@ class _VideoTracks:
     height: int = 0
     duration: float = 0.0
     formats: list[FormatInfo] = field(default_factory=list)
+    fps: float = 0
+    bitrate: int = 0
 
 
 def _video_tracks(video: dict) -> _VideoTracks:
@@ -333,6 +339,7 @@ def _video_tracks(video: dict) -> _VideoTracks:
         _with_url(stream.get("h264")),
         key=lambda s: (
             (s.get("width") or 0) * (s.get("height") or 0),
+            number(s.get("fps") or s.get("frameRate")),
             s.get("videoBitrate") or s.get("avgBitrate") or 0,
         ),
         reverse=True,
@@ -343,19 +350,36 @@ def _video_tracks(video: dict) -> _VideoTracks:
     best = h264[0]
     tracks.url = best["masterUrl"]
     tracks.width, tracks.height = best.get("width") or 0, best.get("height") or 0
+    tracks.fps = number(best.get("fps") or best.get("frameRate"))
+    tracks.bitrate = int(number(best.get("videoBitrate") or best.get("avgBitrate")))
     tracks.duration = float(best.get("duration") or 0) / 1000 or tracks.duration
 
-    seen = {(tracks.width, tracks.height)}
+    seen = {(tracks.width, tracks.height, number(best.get("fps") or best.get("frameRate")))}
     for s in h264[1:]:
         size = (s.get("width") or 0, s.get("height") or 0)
-        if size not in seen:
-            seen.add(size)
+        key = (*size, number(s.get("fps") or s.get("frameRate")))
+        if key not in seen:
+            seen.add(key)
             tracks.formats.append(
                 FormatInfo(
-                    label=f"{min(size)}p", url=s["masterUrl"], height=min(size), filesize=int(s.get("size") or 0)
+                    label=f"{min(size)}p",
+                    url=s["masterUrl"],
+                    height=min(size),
+                    width=size[0],
+                    filesize=int(s.get("size") or 0),
+                    fps=key[2],
+                    bitrate=int(number(s.get("videoBitrate") or s.get("avgBitrate"))),
                 )
             )
     if h265 := _with_url(stream.get("h265")):
+        h265.sort(
+            key=lambda s: (
+                _short_side(s),
+                number(s.get("fps") or s.get("frameRate")),
+                number(s.get("videoBitrate") or s.get("avgBitrate")),
+            ),
+            reverse=True,
+        )
         short = _short_side(h265[0])
         tracks.formats.append(
             FormatInfo(
@@ -364,6 +388,9 @@ def _video_tracks(video: dict) -> _VideoTracks:
                 height=short,
                 filesize=int(h265[0].get("size") or 0),
                 codec="H.265",
+                width=int(h265[0].get("width") or 0),
+                fps=number(h265[0].get("fps") or h265[0].get("frameRate")),
+                bitrate=int(number(h265[0].get("videoBitrate") or h265[0].get("avgBitrate"))),
             )
         )
     return tracks

@@ -12,13 +12,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..parser.bilibili import BiliBili
+from ..parser.quality import frame_rate
 from ..utils import current_source, gather_or_cancel
 from . import config, ffmpeg
 from .fetch import TooLarge, download_source, too_large_message
 
 Report = Callable[[float, str], None]
 
-_HEIGHT = re.compile(r"height<=(\d+)")
+_HEIGHT = re.compile(r"height(?:<=|=)(\d+)")
 # 编码优先级：H.264 哪里都能放；超了上限再退到体积小一半的 H.265
 _AVC, _HEVC = 7, 12
 
@@ -43,7 +44,7 @@ def pick(
     """按 format_spec（解析结果里给的 yt-dlp 写法）挑 (画面, 声音)。仅音频时画面是 None。
 
     同一高度有 H.264 / H.265 / AV1 几份：先要 H.264，估算体积超了上限换 H.265，还超就报错。
-    fit=True（转换用的原视频，清晰度无所谓）时这一档都超了就往低一档找，找不到再报错。
+    fit=True 允许在这一档都超限时往低一档找；明确选档的请求应保持 fit=False。
     """
     audio = max(dash.get("audio") or [], key=_bw, default=None)
     if format_spec.startswith("ba"):
@@ -56,6 +57,8 @@ def pick(
     if not videos:
         raise RuntimeError("B站没有给出这个清晰度")
     heights = sorted({int(v["height"]) for v in videos}, reverse=True)
+    if m and not fit and heights[0] != max_h:
+        raise RuntimeError("来源当前未提供所选清晰度，请重新解析后选择")
     audio_bw = _bw(audio) if audio else 0
 
     def size(v: dict) -> float:
@@ -64,12 +67,20 @@ def pick(
     smallest = 0.0
     for height in heights if fit else heights[:1]:
         tier = [v for v in videos if int(v["height"]) == height]
-        ranked = sorted(tier, key=lambda v: ({_AVC: 0, _HEVC: 1}.get(v.get("codecid"), 2), -_bw(v)))
+        ranked = sorted(tier, key=_video_rank)
         for v in ranked:
             if size(v) <= limit:
                 return v, audio
         smallest = min(size(v) for v in tier)
     raise TooLarge(too_large_message(smallest, limit, fit))
+
+
+def _video_rank(stream: dict) -> tuple[float, int, int]:
+    return (
+        -frame_rate(stream.get("frame_rate")),
+        {_AVC: 0, _HEVC: 1}.get(stream.get("codecid"), 2),
+        -_bw(stream),
+    )
 
 
 async def _fetch(stream: dict, dest: Path, on_bytes) -> None:

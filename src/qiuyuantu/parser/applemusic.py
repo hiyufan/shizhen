@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import re
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, urlunparse
 
 from parsel import Selector
 
+from ..utils import gather_or_cancel
+from . import image_probe
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
+from .quality import number
 
 
 def page_url(url: str) -> str:
@@ -51,12 +54,34 @@ def _header(html: str) -> dict:
 
 
 def artwork_variants(header: dict) -> dict[str, str]:
-    dictionary = (header.get("videoArtwork") or {}).get("dictionary") or {}
-    return {
-        key: _media(value["video"])
-        for key, value in dictionary.items()
-        if isinstance(value, dict) and value.get("video")
-    }
+    variants = {}
+    for field in ("videoArtwork", "tallVideoArtwork"):
+        dictionary = (header.get(field) or {}).get("dictionary") or {}
+        for key, value in dictionary.items():
+            if isinstance(value, dict) and value.get("video"):
+                variants.setdefault(key, _media(value["video"]))
+    return variants
+
+
+async def _static_artwork(art: dict) -> tuple[str, int, int]:
+    width, height = int(number(art.get("width"))) or 3000, int(number(art.get("height"))) or 3000
+    template = art["url"].replace("{w}", str(width)).replace("{h}", str(height))
+    fallback = _media(template.replace("{f}", "jpg"), image=True)
+    lossless = template.replace("{f}", "png")
+    if "{w}" in art["url"] or "{h}" in art["url"]:
+        parsed = urlparse(lossless)
+        lossless = urlunparse(parsed._replace(path=re.sub(r"\.(?:jpe?g|webp)$", ".png", parsed.path)))
+    if lossless == fallback:
+        return fallback, width, height
+    # 同尺寸的 JPEG 会再次量化；平台尺寸模板的 PNG 导出需先验证，不能改写独立文件名。
+    lossless = _media(lossless, image=True)
+    urls = [lossless, fallback]
+    sizes = await gather_or_cancel(*(image_probe.probe(url, {"Referer": "https://music.apple.com/"}) for url in urls))
+    verified = [(url, size) for url, size in zip(urls, sizes, strict=True) if size]
+    if not verified:
+        return fallback, width, height
+    url, size = max(verified, key=lambda row: (row[1][0] * row[1][1], row[0] == lossless))
+    return url, size[0], size[1]
 
 
 class AppleMusic(BaseParser):
@@ -68,7 +93,7 @@ class AppleMusic(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         header, canonical = await self.artwork(share_url)
         art = header["artwork"].get("dictionary") or header["artwork"]
-        cover = _media(art["url"].replace("{w}", "3000").replace("{h}", "3000").replace("{f}", "jpg"), image=True)
+        cover, width, height = await _static_artwork(art)
         variants = artwork_variants(header)
         author = " / ".join(row.get("title") or "" for row in header.get("subtitleLinks") or [])
         return VideoInfo(
@@ -78,8 +103,8 @@ class AppleMusic(BaseParser):
             author=VideoAuthor(name=author),
             images=[ImgInfo(url=cover)],
             page_url=canonical,
-            width=int(art.get("width") or 0),
-            height=int(art.get("height") or 0),
+            width=width,
+            height=height,
             formats=[
                 FormatInfo(
                     label="方形动态封面" if "Square" in key else "竖版动态封面",

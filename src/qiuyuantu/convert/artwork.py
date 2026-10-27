@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -9,7 +10,10 @@ from tempfile import TemporaryDirectory
 from urllib.parse import urljoin, urlparse
 
 from ..parser.applemusic import AppleMusic, _media, artwork_variants
+from ..parser.base import FormatInfo
 from ..parser.hoyoplay import HoYoPlay
+from ..parser.mp4_probe import local_metadata
+from ..parser.quality import frame_rate, number, short_side
 from . import config, ffmpeg
 from .fetch import TooLarge, fetch_bytes
 from .net import headers_for, safe_client
@@ -32,6 +36,10 @@ def _check_encryption(text: str) -> None:
 
 
 def choose_stream(master: str, base: str) -> str:
+    return _stream_format(master, base).url
+
+
+def _stream_format(master: str, base: str) -> FormatInfo:
     _check_encryption(master)
     candidates = []
     lines = master.splitlines()
@@ -40,14 +48,22 @@ def choose_stream(master: str, base: str) -> str:
             continue
         attrs = _attributes(line)
         resolution = re.fullmatch(r"([0-9]+)x([0-9]+)", attrs.get("RESOLUTION", ""))
-        if not resolution or "avc1" not in attrs.get("CODECS", ""):
+        if not resolution or not any(codec in attrs.get("CODECS", "") for codec in ("avc1", "hvc1", "hev1")):
             continue
-        height = int(resolution[2])
-        if height <= config.SOURCE_MAX_HEIGHT and not lines[index + 1].startswith("#"):
-            candidates.append((height, -int(attrs.get("BANDWIDTH", 0)), _media(urljoin(base, lines[index + 1]))))
+        width, height = int(resolution[1]), int(resolution[2])
+        if not lines[index + 1].startswith("#"):
+            candidates.append(
+                FormatInfo(
+                    width=width,
+                    height=height,
+                    fps=frame_rate(attrs.get("FRAME-RATE")),
+                    bitrate=int(number(attrs.get("BANDWIDTH"))),
+                    url=_media(urljoin(base, lines[index + 1])),
+                )
+            )
     if not candidates:
-        raise ValueError("动态封面没有可用的公开 H.264 视频")
-    return max(candidates)[2]
+        raise ValueError("动态封面没有可用的公开 H.264 / H.265 视频")
+    return max(candidates, key=lambda row: (short_side(row.width, row.height), row.fps, row.bitrate))
 
 
 def _range(value: str, previous_end: int | None) -> tuple[int, int] | None:
@@ -115,7 +131,7 @@ async def _piece(url: str, path: Path, byte_range: tuple[int, int] | None, limit
             raise ValueError("动态封面分段没有下载完整")
 
 
-async def _apple_source(page: str, spec: str, directory: Path, report: Report) -> Path:
+async def _apple_source(page: str, spec: str, directory: Path, report: Report) -> tuple[Path, FormatInfo]:
     parser = AppleMusic()
     header, _ = await parser.artwork(page)
     variants = artwork_variants(header)
@@ -123,8 +139,8 @@ async def _apple_source(page: str, spec: str, directory: Path, report: Report) -
     if key not in variants:
         raise ValueError("这条作品当前没有可用的动态封面")
     master = await parser.get_text(variants[key])
-    stream = choose_stream(master, variants[key])
-    parts = media_parts(await parser.get_text(stream), stream)
+    stream = _stream_format(master, variants[key])
+    parts = media_parts(await parser.get_text(stream.url), stream.url)
     source, total = directory / "source.bin", 0
     with source.open("wb") as output:
         for index, (url, byte_range) in enumerate(parts):
@@ -136,7 +152,17 @@ async def _apple_source(page: str, spec: str, directory: Path, report: Report) -
                     output.write(chunk)
             piece.unlink()
             report(0.9 * (index + 1) / len(parts), "动态封面分段搬运中")
-    return source
+    return source, stream
+
+
+async def _validate_output(path: Path, expected: FormatInfo) -> None:
+    # HLS FRAME-RATE 是峰值；变帧率素材不能用平均值判断是否降档。
+    measured = await asyncio.to_thread(local_metadata, path, peak_fps=True)
+    if not measured:
+        raise ValueError("动态封面没有返回有效的 MP4 视频")
+    actual, _ = measured
+    if (actual.width, actual.height) != (expected.width, expected.height) or actual.fps + 0.1 < expected.fps:
+        raise ValueError("动态封面的实际尺寸或帧率与所选档位不一致")
 
 
 async def download(page: str, spec: str, out_dir: Path, stem: str, report: Report) -> Path:
@@ -145,7 +171,7 @@ async def download(page: str, spec: str, out_dir: Path, stem: str, report: Repor
         directory = Path(temporary)
         try:
             if urlparse(page).hostname == "music.apple.com":
-                source = await _apple_source(page, spec, directory, report)
+                source, expected = await _apple_source(page, spec, directory, report)
                 await ffmpeg.run(
                     [
                         "-i",
@@ -162,6 +188,7 @@ async def download(page: str, spec: str, out_dir: Path, stem: str, report: Repor
                         str(destination),
                     ]
                 )
+                await _validate_output(destination, expected)
             else:
                 info = await HoYoPlay().parse_share_url(page)
                 if not info.video_url:

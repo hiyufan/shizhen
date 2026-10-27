@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs, urlparse, urlunparse
 
+import httpx
 from parsel import Selector
 
 from .base import BaseParser, ImgInfo, VideoAuthor, VideoInfo
@@ -158,11 +159,24 @@ def qq_cover(url: str) -> str:
     host = parsed.netloc
     if path.startswith("/music/photo_new/"):
         host = "y.gtimg.cn"
-        path = re.sub(r"R[0-9]+x[0-9]+", "R800x800", path)
+        path = re.sub(r"R([0-9]+)x([0-9]+)", lambda m: f"R{max(800, int(m[1]))}x{max(800, int(m[2]))}", path)
     # /0 在 QQ 音乐并不代表原图，会返回 120px。公开歌单的 /1000 可取高清封面。
     elif path.startswith("/music_cover/"):
-        path = re.sub(r"/[0-9]+$", "/1000", path)
+        path = re.sub(r"/([0-9]+)$", lambda m: f"/{max(1000, int(m[1]))}", path)
     return urlunparse(parsed._replace(scheme="https", netloc=host, path=path, query="", fragment=""))
+
+
+def _qq_cover_candidates(cover: str) -> list[str]:
+    match = re.search(r"/T002R([0-9]+)x([0-9]+)M000", cover)
+    if not match:
+        return []
+    original = re.sub(r"T002R[0-9]+x[0-9]+M000", "T002M000", cover)
+    variants = [
+        re.sub(r"R[0-9]+x[0-9]+", f"R{size}x{size}", cover)
+        for size in (1500, 1200)
+        if size > max(int(match[1]), int(match[2]))
+    ]
+    return [original, *variants]
 
 
 class QQMusic(BaseParser):
@@ -170,6 +184,19 @@ class QQMusic(BaseParser):
 
     def get_default_headers(self) -> dict[str, str]:
         return {"User-Agent": self.ua("windows"), "Referer": "https://y.qq.com/"}
+
+    async def _best_cover(self, url: str) -> str:
+        cover = qq_cover(url)
+        # 无 R 尺寸段的是源文件；实测同一专辑为 2048px，而网页默认只给 300px。
+        # 部分旧封面没有该路径，验证成功才替换，不能返回一个猜出来的 404 地址。
+        for candidate in _qq_cover_candidates(cover):
+            try:
+                response = await self.fetch("HEAD", candidate, timeout=5)
+            except httpx.HTTPError:
+                continue
+            if response.headers.get("content-type", "").startswith("image/"):
+                return candidate
+        return cover
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         url = await _expand_short(self, share_url, ("c6.y.qq.com", "c.y.qq.com"))
@@ -183,7 +210,7 @@ class QQMusic(BaseParser):
         title = sel.css('meta[property="og:title"]::attr(content)').get(default="")
         title = re.sub(r"\s*-\s*QQ音乐.*$", "", title).strip()
         author = VideoAuthor(name=sel.css('meta[property="og:music:artist"]::attr(content)').get(default=""))
-        return _cover_info(title, qq_cover(cover), author, canonical)
+        return _cover_info(title, await self._best_cover(cover), author, canonical)
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         kind, ident = _legacy_id(video_id)

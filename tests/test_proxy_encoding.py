@@ -3,11 +3,27 @@
 import gzip
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from qiuyuantu import web
 from qiuyuantu.convert import net
 from qiuyuantu.web import proxy
+from qiuyuantu.web.limits import looks_like_image
+
+
+@pytest.mark.parametrize(
+    ("content_type", "expected"), [("image/webp", "webp"), ("image/gif", "gif"), ("image/png", "png")]
+)
+def test_original_image_download_extension_follows_the_response(content_type, expected):
+    assert proxy._attachment("photo.jpg", content_type).endswith("photo." + expected)
+    assert proxy._attachment("photo", content_type).endswith("photo." + expected)
+    assert proxy._attachment("photo.2_1", content_type).endswith("photo.2_1." + expected)
+
+
+def test_unprocessed_xhs_image_is_not_counted_as_a_video_stream():
+    assert looks_like_image("https://ci.xiaohongshu.com/notes_pre_post/token")
+    assert not looks_like_image("https://ci.xiaohongshu.com.evil.test/notes_pre_post/token")
 
 
 def test_proxy_retains_content_encoding_for_original_json_download(monkeypatch):

@@ -164,7 +164,13 @@ def test_huya_missing_video_is_reported_as_deleted(http):
     assert classify(exc.value).reason == "deleted"
 
 
-def test_lishipin(http):
+def test_lishipin(http, monkeypatch):
+    from qiuyuantu.parser import mp4_probe
+
+    async def probe(*_args):
+        return None
+
+    monkeypatch.setattr(mp4_probe, "probe", probe)
     http(
         {
             "https://www.pearvideo.com/videoStatus.jsp?contId=1785": {
@@ -190,9 +196,9 @@ def test_pipigaoxiao(http):
     assert calls[0][2]["content"] == '{"pid":777,"type":"post","mid":null}'
 
 
-def test_pipixia_prefers_unwatermarked_video_from_author_comment(http):
+def test_pipixia_prefers_unwatermarked_author_comment_with_same_media_id(http):
     def video(url):
-        return {"video_high": {"url_list": [{"url": url}]}}
+        return {"video_id": "v123", "video_high": {"url_list": [{"url": url}]}}
 
     item = {
         "author": {"id": 9, "name": "作者", "avatar": {"download_list": [{"url": "a.jpg"}]}},
@@ -241,7 +247,7 @@ def test_quanmin(http):
             "statusText": "",
             "title": "",
             "image": "c.jpg",
-            "video_info": {"clarityUrl": [{"url": "low.mp4"}, {"url": "hd.mp4"}]},
+            "video_info": {"clarityUrl": [{"url": "low.mp4", "height": 360}, {"url": "hd.mp4", "height": 1080}]},
         },
         "shareInfo": {"title": "分享标题"},
         "author": {"id": "a1", "name": "作者", "icon": "a.jpg"},
@@ -303,7 +309,13 @@ def test_sixroom(http):
     assert calls[0][1].endswith("&vid=ABC")
 
 
-def test_weishi(http):
+def test_weishi(http, monkeypatch):
+    from qiuyuantu.parser import mp4_probe
+
+    async def probe(*_args):
+        return None
+
+    monkeypatch.setattr(mp4_probe, "probe", probe)
     feed = {
         "video_url": "v.mp4",
         "images": [{"url": "c.jpg"}],
@@ -311,7 +323,7 @@ def test_weishi(http):
         "id": "f1",
         "poster": {"nick": "作者", "avatar": "a.jpg"},
     }
-    http({"https://h5.weishi.qq.com/": {"ret": 0, "data": {"errmsg": "", "feeds": [feed]}}})
+    http({"https://api.weishi.qq.com/": {"rsp_header": {"ret": 0}, "rsp_body": {"errmsg": "", "feeds": [feed]}}})
     info = run(WeiShi().parse_share_url("https://isee.weishi.qq.com/x?id=f1"))
     assert (info.video_url, info.cover_url, info.title) == ("v.mp4", "c.jpg", "微视")
 
@@ -358,6 +370,51 @@ def test_qqvideo_deleted(http):
     with pytest.raises(Exception) as exc:
         run(QQVideo().parse_video_id("v0"))
     assert classify(exc.value).reason == "deleted"
+
+
+def test_qqvideo_enumerates_public_tiers_without_trusting_requested_definition(monkeypatch):
+    qualities = [
+        {"name": "shd", "br": 1, "drm": 0, "lmt": 0, "vfps": 30},
+        {"name": "fhd", "br": 2, "drm": 0, "lmt": 0, "vfps": 60},
+        {"name": "uhd", "br": 3, "drm": 1, "lmt": 0},
+    ]
+    requested = []
+
+    async def metadata(_self, _vid, quality):
+        requested.append(quality)
+        high = quality == "fhd"
+        vi = {
+            "vid": "v0",
+            "br": 2 if high else 1,
+            "vw": 1920 if high else 1280,
+            "vh": 1080 if high else 720,
+            "fn": quality + ".mp4",
+            "fvkey": "key",
+            "ul": {"ui": [{"url": "https://cdn.test/"}]},
+        }
+        return {"vl": {"vi": [vi]}, "fl": {"fi": qualities}}
+
+    monkeypatch.setattr(QQVideo, "_info", metadata)
+    info = run(QQVideo().parse_video_id("v0"))
+    assert requested == ["shd", "fhd"]
+    assert info.video_url.startswith("https://cdn.test/fhd.mp4")
+    assert info.height == 1080 and info.video_fps == 60
+    assert len(info.formats) == 1 and info.formats[0].height == 720
+
+
+def test_sohu_keeps_platform_original_tier_instead_of_fixed_high_field(http):
+    data = {
+        "url_original_mp4": "https://cdn.test/original.mp4",
+        "url_super_mp4": "https://cdn.test/super.mp4",
+        "url_high_mp4": "https://cdn.test/high.mp4",
+        "video_name": "公开作品",
+        "vWidth": 1280,
+        "vHeight": 720,
+    }
+    http({"https://api.tv.sohu.com/v4/video/info/123.json": {"status": 200, "data": data}})
+    info = run(Sohu().parse_video_id("123"))
+    assert info.video_url == data["url_original_mp4"]
+    assert [f.url for f in info.formats] == [data["url_super_mp4"], data["url_high_mp4"]]
 
 
 def test_sohu(http):
@@ -458,7 +515,13 @@ WEIBO_STATUS = {
 }
 
 
-def test_weibo_video(http):
+def test_weibo_video(http, monkeypatch):
+    async def unknown_quality(*_args):
+        return None
+
+    from qiuyuantu.parser import weibo
+
+    monkeypatch.setattr(weibo.mp4_probe, "probe", unknown_quality)
     play = {
         "stream_url": "low.mp4",
         "urls": {"高清 1080P": "//f.video/hd.mp4"},
@@ -469,7 +532,10 @@ def test_weibo_video(http):
         "avatar": "//a.jpg",
     }
     calls = http(
-        {"https://h5.video.weibo.com/api/component?page=/show/1034:99": {"data": {"Component_Play_Playinfo": play}}}
+        {
+            "https://weibo.com/tv/api/component?": {},
+            "https://h5.video.weibo.com/api/component?page=/show/1034:99": {"data": {"Component_Play_Playinfo": play}},
+        }
     )
     info = run(WeiBo().parse_share_url("https://weibo.com/tv/show/1034:99"))
     assert summary(info) == {
@@ -479,11 +545,16 @@ def test_weibo_video(http):
         "author": ("1", "博主", "https://a.jpg"),
         "images": [],
     }
-    assert calls[0][2]["content"] == 'data={"Component_Play_Playinfo":{"oid":"1034:99"}}'
+    assert calls[0][2]["data"] == {"data": '{"Component_Play_Playinfo":{"oid":"1034:99"}}'}
 
 
 def test_weibo_image_post_from_mobile_api(http):
-    http({"https://m.weibo.cn/statuses/show?id=Q9pc": {"data": WEIBO_STATUS}})
+    http(
+        {
+            "https://weibo.com/ajax/statuses/show?id=Q9pc": {},
+            "https://m.weibo.cn/statuses/show?id=Q9pc": {"data": WEIBO_STATUS},
+        }
+    )
     info = run(WeiBo().parse_share_url("https://weibo.com/2543858012/Q9pc"))
     assert info.title == "#话题# 图片微博" and [i.url for i in info.images] == ["1-large.jpg", "2-mid.jpg"]
     assert summary(info)["author"] == ("", "博主", "a.jpg")
@@ -491,7 +562,13 @@ def test_weibo_image_post_from_mobile_api(http):
 
 def test_weibo_image_post_falls_back_to_html(http):
     html = "<script>var $render_data = " + json.dumps([{"status": WEIBO_STATUS}]) + "[0] || {};</script>"
-    http({"https://m.weibo.cn/statuses/show": (403, "", {}), "https://weibo.com/2543858012/Q9pc": html})
+    http(
+        {
+            "https://weibo.com/ajax/statuses/show?id=Q9pc": {},
+            "https://m.weibo.cn/statuses/show": (403, "", {}),
+            "https://weibo.com/2543858012/Q9pc": html,
+        }
+    )
     info = run(WeiBo().parse_share_url("https://weibo.com/2543858012/Q9pc"))
     assert [i.url for i in info.images] == ["1-large.jpg", "2-mid.jpg"]
 
