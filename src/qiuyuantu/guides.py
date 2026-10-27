@@ -46,6 +46,114 @@ class Guide:
 
 GUIDES: list[Guide] = [
     Guide(
+        slug="stream-emotes-to-gif",
+        title="7TV、BTTV和FFZ表情怎么保存为透明GIF",
+        description="从公开表情链接保存原文件，辨认静态与动态素材，再转透明 GIF 或实况照片。",
+        keywords="7TV to GIF,BTTV download,FFZ表情保存,直播表情转GIF",
+        h1="直播表情，怎么存成 GIF",
+        intro="WebP、GIF 和 PNG 在不同应用里的表现不一样。先保留平台原文件，再为需要的应用生成转换结果。",
+        steps=[
+            (
+                "复制单个表情链接",
+                "在 7TV、BetterTTV 或 FrankerFaceZ 打开目标表情，复制完整页面地址。大集合请先选择具体表情。",
+            ),
+            (
+                "解析并检查素材",
+                "打开直播表情工具，粘贴链接。检查名称和预览；静态图直接下载，动态素材再选择「转 GIF」。",
+            ),
+            (
+                "保存透明 GIF",
+                "按需要调整尺寸、帧率和体积，再下载结果。透明 GIF 可用于支持 GIF 的应用；手机相册是否自动播放取决于相册。",
+            ),
+        ],
+        sections=[
+            (
+                "原格式与 GIF 都保留",
+                "7TV 的 WebP 往往比 GIF 更小，GIF 的通用性更好，但只有 256 色和有限的透明度。需要软边缘时优先保留原文件。",
+            )
+        ],
+        faq=[("静态表情能变成动图吗？", "不能从单张图片还原不存在的动作。工具只转换素材实际包含的动画帧。")],
+        tool="stream-emotes",
+        tool_label="打开直播表情工具",
+        related=["line-signal-stickers", "special-animation-to-gif"],
+        updated="2026-10-27",
+        published="2026-10-27",
+    ),
+    Guide(
+        slug="line-signal-stickers",
+        title="LINE动态贴图与Signal公开贴纸怎么保存",
+        description="LINE 读取商店公开预览，Signal 使用完整分享链接。区分静态贴纸和动画，再保存或转换。",
+        keywords="LINE動態貼圖下載,Signal贴纸保存,APNG to GIF",
+        h1="公开贴纸，保存与转换",
+        intro="LINE 商店链接与 Signal 包链接使用不同入口。两者都不需要提供账号密码，但要保留原始完整分享地址。",
+        steps=[
+            ("选择对应入口", "LINE 使用商店贴图包地址；Signal 使用 signal.art 的完整分享链接，并保留 # 后面的参数。"),
+            ("选择公开素材", "解析后核对清单。LINE 只列出商店公开预览；Signal 按需读取分享包中的贴纸文件。"),
+            ("下载或转换", "静态图片直接下载。动态 APNG、WebP 或 GIF 可进入转换器；若提示静态素材，就保存原图。"),
+        ],
+        sections=[
+            (
+                "为什么保存的 PNG 不动",
+                "LINE 动态预览可能是 APNG，某些软件只展示首帧。转换成 GIF 可以改善兼容性；声音和弹出效果不会一起合成。",
+            ),
+            (
+                "Signal 链接与临时下载",
+                "缺少包参数时无法读取素材。临时下载链接过期后，重新提交完整分享链接即可；不要把它当作永久图床。",
+            ),
+        ],
+        faq=[
+            (
+                "需要购买或登录吗？",
+                "这里不提供购买权益。LINE 只读取公开预览；Signal 只读取持有公开分享链接即可访问的包。",
+            )
+        ],
+        tool="line-stickers",
+        tool_label="打开 LINE 贴图工具",
+        related=["stream-emotes-to-gif", "telegram-tgs-to-gif"],
+        updated="2026-10-27",
+        published="2026-10-27",
+    ),
+    Guide(
+        slug="special-animation-to-gif",
+        title="SVGA、PAG、VAP和Spine动画怎么转GIF",
+        description="上传特殊动画文件，Spine 先选择动画；检查透明预览后保存 GIF、MP4、实况包或动态照片。",
+        keywords="SVGA转GIF,PAG转GIF,VAP转GIF,Spine动画导出",
+        h1="特殊动画，转成通用格式",
+        intro="这些文件需要先渲染，不能靠修改后缀变成视频。先确认文件类型与配套素材，再查看实际转换结果。",
+        steps=[
+            (
+                "准备完整文件",
+                "SVGA、PAG 直接上传；VAP 需要内嵌透明区域配置。Spine ZIP 内放一份 JSON、一份 atlas 和对应图片，不接受单独的 .skel。",
+            ),
+            ("上传并选择动画", "打开特殊动画工具，选择本地文件。Spine 会列出真实动画名称，选择一个后点「开始转换」。"),
+            (
+                "检查预览并保存",
+                "确认画面、时长和目标片段，再生成 GIF、实况包或安卓动态照片。透明背景保留在 GIF，普通视频和实况不保留透明通道。",
+            ),
+        ],
+        sections=[
+            (
+                "支持边界先看清楚",
+                "SVGA 当前转换无声动画；PAG 不支持字体图层；VAP 不支持外部融合素材；Spine 支持区域附件和普通骨骼动画，网格、IK 与物理等复杂类型会明确报错。",
+            ),
+            (
+                "保留原文件",
+                "平台公开素材可以先下载原文件。转换失败时检查尺寸、帧数和提示，不把某张内嵌图片当作整段动画的替代。",
+            ),
+        ],
+        faq=[
+            (
+                "Spine 多个动画可以切换吗？",
+                "上传 ZIP 后可以选择其中的动画名称。当前一次转换一个；需要另一个时重新选择文件和动画即可。",
+            )
+        ],
+        tool="animation-converter",
+        tool_label="打开特殊动画工具",
+        related=["stream-emotes-to-gif", "discord-stickers-to-gif"],
+        updated="2026-10-27",
+        published="2026-10-27",
+    ),
+    Guide(
         slug="pixiv-original-images",
         title="Pixiv原图、漫画与小说怎么保存，目录链接怎么用",
         description="从 Pixiv 公开作品保存原图和小说 TXT；说明作者、系列、标签、榜单、Collections 与 Sketch 目录的用法和匿名访问边界。",

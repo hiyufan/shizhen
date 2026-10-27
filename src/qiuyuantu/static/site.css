@@ -323,6 +323,7 @@ img.failed { opacity: .35; cursor: pointer; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .check input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ink); flex: none; }
 .check small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; line-height: 1.6; color: var(--ink-3); }
+.animation-choice select { min-width: 0; max-width: 100%; }
 .field select { width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); font-size: 14px; }
 .hint { font-size: 13px; color: var(--ink-3); line-height: 1.6; margin: 0; }
 .hint b { color: var(--ink-2); font-weight: 600; }

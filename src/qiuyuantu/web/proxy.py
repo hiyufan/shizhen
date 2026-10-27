@@ -11,12 +11,13 @@ from urllib.parse import quote
 import anyio
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import stats
-from ..convert import net, youtube_native
+from ..convert import net, signal, youtube_native
 from ..convert.net import headers_for, is_safe_url_async, safe_filename
+from ..parser.animation import file_kind
 from . import limits
 from .auth import SITE_AUTH
 
@@ -149,15 +150,22 @@ def _cached_video(path: str, filename: str, download: int, url: str, ip: str):
     return _CachedVideoResponse(path, _StreamSlot(ip, counted=True), ip, headers)
 
 
-@router.get("/api/proxy", dependencies=SITE_AUTH)
-async def api_proxy(
-    request: Request,
-    url: str,
-    filename: str = "",
-    download: int = 0,
-    sig: str = "",
-    ip: str = Depends(limits.proxy_limit),
-):
+async def _signal_sticker(url: str, filename: str, download: int, ip: str):
+    try:
+        sticker = await signal.read_asset(url)
+    except ValueError as exc:
+        raise HTTPException(410, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "贴纸暂时无法读取，请稍后重试") from exc
+    limits.proxy_daily.add(ip, len(sticker.content))
+    headers = {"cache-control": "private, max-age=600"}
+    if download:
+        headers["content-disposition"] = _attachment(filename, sticker.media_type)
+        stats.record_download(ip, url, source="signal")
+    return Response(sticker.content, media_type=sticker.media_type, headers=headers)
+
+
+async def _validate_proxy(request: Request, url: str, sig: str, download: int):
     if not net.verify(url, sig):
         raise HTTPException(403, "这个地址不是解析结果里的，拒绝转发")
     if _outside_page(request, download):
@@ -167,10 +175,40 @@ async def api_proxy(
         raise HTTPException(410, "原视频已过期，请重新解析")
     if not cached and not await is_safe_url_async(url):
         raise HTTPException(400, "不支持的地址")
+    return cached
+
+
+def _proxy_headers(resp: httpx.Response, url: str, filename: str, download: int, ip: str) -> dict:
+    headers = _response_headers(resp)
+    if file_kind(url):
+        # 公开动画链接可来自任意公网主机，不能让伪装成动画的 HTML / JS 成为本站脚本源。
+        headers["content-type"] = "application/octet-stream"
+        headers["content-disposition"] = _attachment(filename, "application/octet-stream")
+        headers["content-security-policy"] = "sandbox; default-src 'none'"
+        headers["x-content-type-options"] = "nosniff"
+    if download:
+        headers["content-disposition"] = _attachment(filename, headers.get("content-type", ""))
+        stats.record_download(ip, url, source=_cdn_name(url))
+    return headers
+
+
+@router.get("/api/proxy", dependencies=SITE_AUTH)
+async def api_proxy(
+    request: Request,
+    url: str,
+    filename: str = "",
+    download: int = 0,
+    sig: str = "",
+    ip: str = Depends(limits.proxy_limit),
+):
+    cached = await _validate_proxy(request, url, sig, download)
     limits.proxy_daily.check(ip)
 
     if cached:
         return _cached_video(cached.path, filename, download, url, ip)
+
+    if signal.is_asset_url(url):
+        return await _signal_sticker(url, filename, download, ip)
 
     upstream_headers = headers_for(url)
     if byte_range := request.headers.get("range"):
@@ -186,10 +224,7 @@ async def api_proxy(
     if resp.headers.get("content-type", "").startswith("image/"):
         slot.release()
 
-    headers = _response_headers(resp)
-    if download:
-        headers["content-disposition"] = _attachment(filename, headers.get("content-type", ""))
-        stats.record_download(ip, url, source=_cdn_name(url))
+    headers = _proxy_headers(resp, url, filename, download, ip)
     return StreamingResponse(_relay_body(resp, slot, ip), status_code=resp.status_code, headers=headers)
 
 

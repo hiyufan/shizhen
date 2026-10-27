@@ -33,6 +33,7 @@ class Source:
             "width": self.width,
             "height": self.height,
             "fps": self.fps,
+            "animation": bool(self.gif_path),
         }
 
 

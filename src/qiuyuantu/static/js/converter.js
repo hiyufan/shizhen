@@ -131,6 +131,11 @@ function defaultWidth(src) {
 // ---------- 组装
 
 /** 返回清理函数：再开一个转换器时调 */
+function sourceDownloads(src) {
+  if (!src.animation) return [];
+  return [el('a', { class: 'btn sm quiet', href: '/api/source/' + src.id + '?download=1', download: '' }, translate('下载渲染后的 MP4'))];
+}
+
 function buildConverter(conv, src, format) {
   // fit：压到 GIF_TARGET 以内，帧率和宽度变成上限，超了服务端自动往下降
   const state = {
@@ -155,7 +160,9 @@ function buildConverter(conv, src, format) {
   const adjust = el('details', { class: 'adjust' }, summary, el('div', { class: 'conv-grid' }, left, right));
   const jobsBox = el('div', { class: 'jobs', style: 'margin-top:14px' });
   const resultBox = el('div', {});
-  conv.append(el('div', { class: 'conv-head' }, heading, switcher), adjust, jobsBox, resultBox);
+  conv.append(el('div', { class: 'conv-head' }, heading, switcher),
+    ...sourceDownloads(src),
+    adjust, jobsBox, resultBox);
   adjust.addEventListener('toggle', trimmer.layout); // 收起时修剪条宽度是 0，展开后重新排
 
   // 换格式时上一个格式的任务可能还在跑：只认最后一次，旧的做完了也不往结果区放

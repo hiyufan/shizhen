@@ -23,6 +23,8 @@ const PLATFORMS = {
   steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', telegram: 'Telegram', discord: 'Discord',
   wutheringwaves: t('鸣潮'), miyoushe: t('米游社'), 'bilibili-assets': t('B站装扮与收藏集'),
   'wechat-channels': t('视频号'),
+  '7tv': '7TV', bttv: 'BetterTTV', ffz: 'FrankerFaceZ', line: 'LINE', signal: 'Signal',
+  'noto-emoji': 'Noto Emoji', animation: t('特殊动画'),
   pixiv: 'Pixiv', 'pixiv-sketch': 'Pixiv Sketch',
 };
 

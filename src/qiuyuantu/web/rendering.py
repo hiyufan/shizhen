@@ -169,6 +169,8 @@ def render_tool_page(request: Request, page: seo.Page):
         page=page,
     )
     ctx["faq"] = page.all_faq
+    ctx["animation_upload"] = page.slug in {"svga-to-gif", "animation-converter"}
+    ctx["sticker_examples"] = seo.PUBLIC_ASSET_EXAMPLES.get(page.slug, [])
     ctx["related_guides"] = guides.pick(page.guides)
     if page.slug == "discord-stickers":
         from ..parser.discord import EXAMPLE_PACKS

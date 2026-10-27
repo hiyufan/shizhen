@@ -53,7 +53,12 @@
 | HoYoPlay | ✅ | 当前启动器壁纸 | – | 平台提供的原始素材 | 选择四款游戏，读取当前国服公开背景；有视频时可转换，不含历史档案 |
 | 鸣潮 | 当前背景视频 | 启动器首帧或静态图 | – | 国际服当前公开文件 | [工具](https://ynvan.com/wuthering-waves-wallpaper)；不含历史版本；视频可转三种格式 |
 | 米游社 | – | 正文原图与 GIF | – | 平台提供的原始文件 | [工具](https://ynvan.com/miyoushe-images)；单篇帖子，不含主页、评论与 HoYoLAB；GIF 可转换 |
-| B站装扮与收藏集 | 公开动态素材 | 公开图片 | – | 平台当前返回的素材 | [工具](https://ynvan.com/bilibili-assets)；每份独立下载与转换，不解锁账号权益；不含专用动画包 |
+| B站装扮与收藏集 | 公开动态素材 | 公开图片 | – | 平台当前返回的素材 | [工具](https://ynvan.com/bilibili-assets)；每份独立下载与转换，不解锁账号权益；支持公开动画字段中的 SVGA；其他专用格式按各自边界处理 |
+| 7TV / BetterTTV / FrankerFaceZ | – | 公开直播表情 | – | 官方 CDN 文件 | [工具](https://ynvan.com/stream-emotes)；单个表情与有限公开集合，动态素材可转换 |
+| LINE Store | – | 公开贴图预览 | – | PNG / APNG 原格式 | [工具](https://ynvan.com/line-stickers)；只读取实际公开预览，不包含购买后内容、声音或自定义文字合成 |
+| Signal | – | 公开分享包 | – | 实际 WebP / PNG / GIF | [工具](https://ynvan.com/signal-stickers)；需完整公开分享链接，无账号凭证，认证解密和短期素材引用 |
+| Noto Animated Emoji | – | 官方动画 emoji | – | WebP / GIF / Lottie | [工具](https://ynvan.com/animated-emoji)；WebP 可转换，保留 Google 与 CC BY 4.0 署名；超过现有限制的 Lottie 仅下载 |
+| SVGA / PAG / VAP / Spine | 渲染 MP4 | 透明帧 | – | 有界渲染 | [SVGA](https://ynvan.com/svga-to-gif)、[其他格式](https://ynvan.com/animation-converter)；公开文件链接或上传；Spine 仅区域附件，复杂约束 / 网格明确拒绝 |
 | Telegram 贴纸 | – | TGS / WebP | – | 公开目录已收录文件 | [工具](https://ynvan.com/telegram-stickers)；无需账号凭证；TGS 可转透明 GIF / 实况 / 动态照片；不含私人素材或全部实时贴纸包 |
 | 微信视频号 | 公开视频 | 公开预览封面 | – | 以实际文件为准，不信任接口画质标签 | [工具](https://ynvan.com/wechat-channels)；官方 sph 分享链接，官方预览核对作品，BugPk 公益接口补充视频；匿名下载与转换，不要求账号凭证，公益接口失败时保留封面 |
 | Discord | – | 公开目录贴纸 | – | APNG / Lottie JSON 等目录实际格式 | [工具](https://ynvan.com/discord-stickers)；公开贴纸包商店或编号链接、对应的 stickers 素材链接；逐项下载，动态素材可转透明 GIF / 实况 / 动态照片；不读取私人服务器或聊天 |
@@ -102,3 +107,9 @@ Steam 的大图可能只是静态预览，本项目选择公开的动画文件�
     <td align="center"><sub>教程页：每篇对准一个具体问题</sub></td>
   </tr>
 </table>
+
+## 特殊动画文件
+
+上传 SVGA、PAG、VAP，或包含 JSON、atlas 和全部图集图片的 Spine ZIP；Spine 上传后先选择动画。渲染后可下载 MP4，也可转透明 GIF、实况照片或动态照片。GIF 保留透明背景，照片使用普通视频画面。普通 MP4 上传也会识别 VAP 配置。
+
+自托管需安装 `python -m pip install -e ".[web,cli,animations]"` 并运行 `playwright install --with-deps chromium`；Web 镜像已包含依赖。SVGA / PAG 输入限 8 MiB，VAP / Spine 限 32 MiB，另有帧数、时长、像素、内存与超时限制。SVGA 音轨、PAG 字体、VAP 外部融合素材和 Spine 复杂类型会明确拒绝，详见[实现与实测边界](media-assets.md#本轮实现与验证)。

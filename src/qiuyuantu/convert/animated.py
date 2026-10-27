@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image, UnidentifiedImageError
 
-from . import ffmpeg, tgs
+from . import ffmpeg, special, tgs
 
 
 def _write_frames(source: Path, directory: Path, stopped: threading.Event) -> float:
@@ -43,11 +43,13 @@ def _write_frames(source: Path, directory: Path, stopped: threading.Event) -> fl
         return duration
 
 
-async def prepare(source: Path, destination: Path, *, alpha_destination: Path | None = None) -> None:
+async def prepare(
+    source: Path, destination: Path, *, alpha_destination: Path | None = None, animation: str = ""
+) -> None:
     # 取消时先停止并等解码线程退出，再删除帧目录，避免清理与写入交叉。
     with TemporaryDirectory(prefix="animation-", dir=source.parent) as temporary:
         directory = Path(temporary)
-        duration = await _frames(source, directory)
+        duration = await _frames(source, directory, animation)
         # 清单由上面的固定文件名生成。safe=0 允许 framerate 选项，保留毫秒级帧时长；
         # ffmpeg.run 仍逐输入限制为 file 协议，清单不使用平台返回的文本或文件名。
         inputs = ["-f", "concat", "-safe", "0", "-i", str(directory / "frames.txt")]
@@ -100,9 +102,17 @@ async def prepare(source: Path, destination: Path, *, alpha_destination: Path | 
             raise
 
 
-async def _frames(source: Path, directory: Path) -> float:
+async def _frames(source: Path, directory: Path, animation: str = "") -> float:
     with source.open("rb") as stream:
         prefix = stream.read(4096)
+    if prefix.startswith(b"PK\x03\x04"):
+        return await special.render_frames(source, directory, "archive", animation)
+    if len(prefix) >= 2 and prefix[0] == 0x78 and int.from_bytes(prefix[:2], "big") % 31 == 0:
+        return await special.render_frames(source, directory, "svga")
+    if prefix[4:8] in {b"ftyp", b"vapc"}:
+        return await special.render_frames(source, directory, "vap")
+    if prefix.startswith(b"PAG"):
+        return await special.render_frames(source, directory, "pag")
     if prefix.startswith(b"\x1f\x8b") or prefix.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"{"):
         return await tgs.render_frames(source, directory)
     stopped = threading.Event()

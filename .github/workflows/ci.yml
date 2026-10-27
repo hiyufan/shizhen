@@ -27,7 +27,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: 安装依赖
-        run: pip install -e ".[web,cli,dev]"
+        run: pip install -e ".[web,cli,dev,stickers]"
       - name: 代码规范（ruff：格式、import 顺序、复杂度、常见 bug 写法，规则见 pyproject.toml）
         run: |
           python -m ruff format --check .

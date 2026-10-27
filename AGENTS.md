@@ -60,6 +60,9 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 - 超限时按职责提取函数、分离数据与控制流、减少重复分支；函数名要说明行为。不要为凑阈值机械切碎代码，也不要用提高阈值、`noqa`、`eslint-disable` 或排除文件掩盖问题。
 - 保留已有有理由的例外：`seo.py` 与 `guides.py` 仅豁免 `E501`，不是免除其他检查。新增例外需有具体原因和最小作用范围；任务未要求时不放宽现有质量门槛。
 - Telegram 匿名贴纸取自公开目录已收录素材，Discord 贴纸匹配官方匿名目录，不使用账号凭证；TGS / Lottie 的 `rlottie-python` 为 `stickers` 可选依赖，Web 镜像包含该依赖。原生渲染在有超时与资源限制的子进程中执行，拒绝外部图片、字体资源和超限动画。
+- 7TV / BTTV / FFZ、LINE 商店预览、Signal 分享包与 Noto 使用公开入口，不接账号凭证。Signal 使用官方网页的 `cdn-ca.signal.org` 和分享包参数认证解密；密钥只保留在有期限的服务端引用中，网页通过 POST 解析，GET 兼容访问日志和失败记录需去除包密钥。
+- SVGA / Spine 区域附件使用 `stickers` 可选依赖中的 `resvg-py`，独立构造只含校验后 PNG 的 SVG，在受限子进程渲染。PAG 使用 `animations` 可选依赖、固定版本官方 WASM 与离线 Chromium，不加载平台脚本或外部资源；运行库与完整许可证由 `scripts/vendor_libpag.py` 校验生成。VAP 必须读取并核对内嵌 `vapc`，不猜透明区域，不读取融合资源。Spine 不分发官方 Runtimes，复杂网格、约束和特殊混合模式明确拒绝。
+- 特殊渲染使用墙钟、CPU、内存和进程树回收；Chromium 另建进程组，不能只按 PGID 计量。PAG 另限单个浏览器准备任务，Web 镜像使用 tini 回收孤儿后代。上传 ZIP 不提取平台路径，Spine 选择名称后才准备，过期原文件和产物都纳入清理与配额。
 - 异步路径复用现有客户端、任务和子进程封装，避免在事件循环中加入阻塞网络或媒体处理。保留超时、取消、子进程回收与并发配额。
 - 注释说明非显然的原因、兼容约束和失败模式；面向没有本次对话上下文的维护者，不记录提示词或迭代过程。
 
@@ -104,7 +107,7 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 | 部署脚本 | `shellcheck scripts/deploy.sh` |
 | `Dockerfile`、`pyproject.toml`、`requirements.txt` | 具备 Docker 环境时执行 `docker build -t shizhen-ci .`；CI 对这些文件的变化执行镜像构建 |
 
-- CI 的测试 job 使用 Python 3.12、Node.js 22，执行 Ruff、ESLint、核心 pytest、独立账号助手 pytest 和 ShellCheck，并检查 README 嵌入同步；命令以 [.github/workflows/ci.yml](.github/workflows/ci.yml) 为准。
+- CI 的测试 job 使用 Python 3.12、Node.js 22，执行 Ruff、ESLint、核心 pytest（安装 `stickers`，覆盖原生渲染）、独立账号助手 pytest 和 ShellCheck，并检查 README 嵌入同步；命令以 [.github/workflows/ci.yml](.github/workflows/ci.yml) 为准。
 - 本地 `.pre-commit-config.yaml` 仅运行 Ruff 检查及格式化，且可能自动修改文件；它不覆盖 ESLint、测试或完整 CI。
 - 解析、下载、转换行为的交付还应按 [开发说明](docs/development.md#贡献) 做真实链接与三种格式的烟测。外网验证与离线测试分开；受平台风控、凭证或工具限制时，说明未验证的部分，不能把替身测试当作真实平台成功。
 - `push` 到 `main` 包含核心 / Web 运行变更且 CI 通过会自动部署生产环境，流程见 [docs/deploy.md](docs/deploy.md)。不要把推送 `main` 或运行 `scripts/deploy.sh` 当成本地验证步骤；仅在任务已授权发布时执行。账号助手独占的改动只执行检查，不触发 Web 部署；共享核心或 Web 运行文件变化才部署 Web。

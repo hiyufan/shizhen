@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from ..convert import config, ffmpeg, jobs, net, store, tasks, youtube_native
+from ..convert import animation_uploads, config, ffmpeg, jobs, net, store, tasks, vap, youtube_native
 from ..convert.net import is_safe_url_async
 from . import limits
 from .auth import SITE_AUTH
@@ -162,13 +163,13 @@ async def api_prepare(req: PrepareRequest, ip: str = Depends(limits.job_limit)):
     return {"ready": False, "job": job.view(), "source_id": sid}
 
 
-async def _save_upload(file: UploadFile, dest: Path) -> None:
+async def _save_upload(file: UploadFile, dest: Path, *, limit: int | None = None) -> None:
     size = 0
     try:
         with open(dest, "wb") as f:
             while chunk := await file.read(1 << 20):
                 size += len(chunk)
-                if size > config.MAX_UPLOAD_BYTES:
+                if size > (limit or config.MAX_UPLOAD_BYTES):
                     raise HTTPException(413, "文件太大")
                 f.write(chunk)
     except BaseException:
@@ -187,7 +188,33 @@ async def api_upload(file: UploadFile = File(...), _ip: str = Depends(limits.upl
     if suffix not in _UPLOAD_SUFFIXES:
         suffix = ".mp4"
     dest = config.UPLOADS_DIR / f"{sid}{suffix}"
-    await _save_upload(file, dest)
+    special_suffix = Path(file.filename or "").suffix.lower() in {
+        ".svga",
+        ".pag",
+        ".vap",
+        ".zip",
+        ".tgs",
+        ".json",
+        ".gif",
+        ".webp",
+        ".png",
+        ".apng",
+    }
+    await _save_upload(file, dest, limit=min(config.MAX_UPLOAD_BYTES, 32 << 20) if special_suffix else None)
+    animation_suffixes = {".svga", ".pag", ".vap", ".zip", ".tgs", ".json", ".gif", ".webp", ".png", ".apng"}
+    original_suffix = Path(file.filename or "").suffix.lower()
+    try:
+        if original_suffix in animation_suffixes or await asyncio.to_thread(vap.metadata, dest):
+            upload = await asyncio.to_thread(animation_uploads.register, dest, Path(file.filename or "animation").stem)
+            if upload.animations:
+                return {"ready": False, "animation_upload": upload.id, "animations": upload.animations}
+            return _prepare_animation(upload.id, "", _ip)
+    except ValueError as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(400, str(exc)) from exc
+    except OSError as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(400, "动画文件暂时无法读取，请重新上传") from exc
     info = await ffmpeg.probe(dest)
     if info.duration <= 0 or info.width <= 0:
         dest.unlink(missing_ok=True)
@@ -206,9 +233,41 @@ async def api_upload(file: UploadFile = File(...), _ip: str = Depends(limits.upl
     return {"ready": True, "source": src.view()}
 
 
+class AnimationRequest(BaseModel):
+    upload_id: str = Field(pattern="^[a-f0-9]{32}$")
+    animation: str = Field(default="", max_length=100)
+
+
+def _prepare_animation(ident: str, animation: str, ip: str) -> dict:
+    try:
+        upload = animation_uploads.get(ident)
+    except ValueError as exc:
+        raise HTTPException(410, str(exc)) from exc
+    if upload.animations and animation not in upload.animations:
+        raise HTTPException(400, "请选择这份 Spine 文件中的一个动画")
+    sid = store.source_id_for("animation-upload", ident, animation)
+    if source := store.get(sid):
+        return {"ready": True, "source": source.view()}
+    if pending := jobs.find_pending("prepare", sid):
+        return {"ready": False, "job": pending.view(), "source_id": sid}
+
+    async def prepare(job):
+        await animation_uploads.prepare(job, ident, animation)
+
+    job = _start_job("prepare", prepare, ip, sid)
+    return {"ready": False, "job": job.view(), "source_id": sid}
+
+
+@router.post("/api/animation/prepare")
+async def api_animation_prepare(req: AnimationRequest, ip: str = Depends(limits.job_limit)):
+    return _prepare_animation(req.upload_id, req.animation, ip)
+
+
 @router.get("/api/source/{source_id}")
-async def api_source_file(source_id: str):
-    return FileResponse(_source_or_404(source_id).path, media_type="video/mp4")
+async def api_source_file(source_id: str, download: int = 0):
+    source = _source_or_404(source_id)
+    filename = net.safe_filename(source.title, "mp4") if download else None
+    return FileResponse(source.path, media_type="video/mp4", filename=filename)
 
 
 @router.get("/api/source/{source_id}/strip")

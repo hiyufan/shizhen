@@ -48,20 +48,20 @@ function assetPreview(asset, title) {
   if (asset.kind === 'video') {
     return mediaVideo(asset.url, { controls: true, playsinline: true, preload: 'none', poster: asset.cover_url ? proxy(asset.cover_url) : null });
   }
-  if (asset.ext === 'json' && !asset.cover_url) {
+  if (['json', 'svga', 'pag', 'vap', 'zip'].includes(asset.ext) && !asset.cover_url) {
     return el('div', { class: 'asset-placeholder' },
-      el('strong', {}, 'LOTTIE'), el('p', {}, t('转换后预览动画')));
+      el('strong', {}, asset.ext === 'json' ? 'LOTTIE' : asset.ext.toUpperCase()), el('p', {}, t('转换后预览动画')));
   }
   return proxyImg(asset.cover_url || asset.url, { alt: asset.label || title, loading: 'lazy' });
 }
 
 function assetDownloads(asset, name) {
-  if (['tgs', 'json', 'zip'].includes(asset.ext)) {
+  if (['tgs', 'json', 'zip', 'svga', 'pag', 'vap'].includes(asset.ext)) {
     const filename = name + '.' + asset.ext;
     return [el('a', {
       class: 'btn sm dark', href: mediaDownload(asset.url, filename), download: filename,
       onclick: () => trackDownload(asset.url),
-    }, t({ json: '下载原始 JSON', zip: '下载帧包 ZIP', tgs: '下载原始 TGS' }[asset.ext]))];
+    }, ['svga', 'pag', 'vap'].includes(asset.ext) ? t('下载原始文件') : t({ json: '下载原始 JSON', zip: '下载帧包 ZIP', tgs: '下载原始 TGS' }[asset.ext]))];
   }
   if (asset.kind !== 'video') {
     const url = proxy(asset.url, name, true);

@@ -3,8 +3,10 @@ import logging
 from urllib.parse import urlparse
 
 from .. import progress
+from ..convert.signal import public_url
 from ..utils import current_source
 from .acfun import AcFun
+from .animation import Animation, file_kind
 from .applemusic import AppleMusic
 from .base import VideoInfo, VideoSource
 from .bilibili import BiliBili
@@ -15,16 +17,19 @@ from .discord import Discord
 from .discord import is_sticker_page as is_discord_sticker
 from .doupai import DouPai
 from .douyin import DouYin
+from .emotes import BetterTTV, FrankerFaceZ, SevenTV
 from .errors import ParseError, classify
 from .haokan import HaoKan
 from .hoyoplay import HoYoPlay
 from .huya import HuYa
 from .kuaishou import KuaiShou
+from .line import Line
 from .lishipin import LiShiPin
 from .lvzhou import LvZhou
 from .meipai import MeiPai
 from .miyoushe import MiYouShe
 from .music import NetEaseMusic, QQMusic
+from .noto import NotoEmoji
 from .pipigaoxiao import PiPiGaoXiao
 from .pipixia import PiPiXia
 from .pixiv import Pixiv
@@ -33,6 +38,7 @@ from .qqvideo import QQVideo
 from .quanmin import QuanMin
 from .quanminkge import QuanMinKGe
 from .redbook import RedBook
+from .signal import Signal
 from .sixroom import SixRoom
 from .sohu import Sohu
 from .steam import Steam
@@ -51,6 +57,13 @@ logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
+    VideoSource.Animation: {"domain_list": [], "parser": Animation},
+    VideoSource.Signal: {"domain_list": ["signal.art"], "parser": Signal},
+    VideoSource.SevenTV: {"domain_list": ["7tv.app", "7tv.io"], "parser": SevenTV},
+    VideoSource.BetterTTV: {"domain_list": ["betterttv.com"], "parser": BetterTTV},
+    VideoSource.FrankerFaceZ: {"domain_list": ["frankerfacez.com"], "parser": FrankerFaceZ},
+    VideoSource.Line: {"domain_list": ["store.line.me", "line.me"], "parser": Line},
+    VideoSource.NotoEmoji: {"domain_list": ["fonts.gstatic.com"], "parser": NotoEmoji},
     VideoSource.PixivSketch: {"domain_list": ["sketch.pixiv.net"], "parser": PixivSketch},
     VideoSource.Pixiv: {"domain_list": ["pixiv.net", "pixiv.me", "i.pximg.net"], "parser": Pixiv},
     VideoSource.Steam: {"domain_list": ["store.steampowered.com"], "parser": Steam},
@@ -243,6 +256,8 @@ def detect_source(share_url: str) -> VideoSource:
     按主机名匹配（本身或子域名）。以前是在整个链接里找子串，pinterest.com / reddit.com
     里藏着 "t.co"，会被当成 X 的链接；参数里带个 x.com 也一样。
     """
+    if file_kind(share_url):
+        return VideoSource.Animation
     try:
         if is_asset_page(share_url):
             return VideoSource.BiliAssets
@@ -281,7 +296,7 @@ async def _run_parser(source: VideoSource, share_url: str) -> VideoInfo:
 
 async def parse_video_share_url(share_url: str) -> VideoInfo:
     """解析分享链接，获取视频信息；失败时抛 ParseError（带 reason）。"""
-    if direct := direct_media(share_url):
+    if not file_kind(share_url) and (direct := direct_media(share_url)):
         # 平台 CDN 上的图片 / 视频文件地址：不用解析（见 direct.py）
         direct.page_url = share_url
         return direct
@@ -294,7 +309,7 @@ async def parse_video_share_url(share_url: str) -> VideoInfo:
         if err.reason == "parse" and not isinstance(exc, ParseError):
             # 归不了类才说"页面结构变了"。这是唯一需要站长看一眼的分支，
             # 不留现场的话事后只能靠复现去猜（而链接可能已经失效）。
-            logger.warning("解析失败无法归类 source=%s url=%s", source.value, share_url, exc_info=exc)
+            logger.warning("解析失败无法归类 source=%s url=%s", source.value, public_url(share_url), exc_info=exc)
         raise err from exc
     finally:
         current_source.reset(token)

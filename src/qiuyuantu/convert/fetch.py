@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 
 from ..utils import fallback_proxy, is_cn_url, is_youtube_url, proxy_for, wants_fallback
-from . import config, ffmpeg, relay
+from . import config, ffmpeg, relay, signal
 from .net import headers_for, proxy_for_url, safe_client
 
 # (已下载字节, 总字节；不知道总大小时为 0)
@@ -82,7 +82,16 @@ def _complete_body_size(response: httpx.Response) -> int:
 
 async def download_source(url: str, dest: Path, headers: dict[str, str], on_bytes: ByteProgress) -> None:
     """用户要转换的原视频：按平台自动选代理，超过 MAX_SOURCE_BYTES 不收。"""
-    limit = config.MAX_SOURCE_BYTES
+    if signal.is_asset_url(url):
+        sticker = await signal.read_asset(url)
+        dest.write_bytes(sticker.content)
+        on_bytes(len(sticker.content), len(sticker.content))
+        return
+    from ..parser.animation import file_kind
+
+    kind = file_kind(url)
+    animation_limit = {"svga": 8 << 20, "pag": 8 << 20, "vap": 32 << 20, "spine": 32 << 20}.get(kind)
+    limit = min(config.MAX_SOURCE_BYTES, animation_limit) if animation_limit else config.MAX_SOURCE_BYTES
     async with safe_client(for_url=url, follow_redirects=True, timeout=_TIMEOUT) as client:
         await _stream_to_file(
             client,

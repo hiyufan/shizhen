@@ -30,6 +30,12 @@ def test_proxy_retains_content_encoding_for_original_json_download(monkeypatch):
             stream=httpx.ByteStream(compressed),
         )
 
+    from qiuyuantu.parser import douyin
+
+    async def no_warmup():
+        return None
+
+    monkeypatch.setattr(douyin, "warmup_browser", no_warmup)
     monkeypatch.setattr(proxy, "is_safe_url_async", safe)
     monkeypatch.setattr(proxy, "_open_upstream", upstream)
     with TestClient(web.app) as client:

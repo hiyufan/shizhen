@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import failures, feedback, progress, stats
-from ..convert import config, net, relay
+from ..convert import config, net, relay, signal
 from ..convert.net import is_safe_url_async
 from ..parser import detect_source, parse_video_share_url
 from ..parser.base import VideoInfo
@@ -56,6 +56,12 @@ class ParseCache:
 
         media = (value.get("data") or {}).get("video_url", "")
         if youtube_native.is_asset_url(media) and not youtube_native.source_for_asset(media):
+            self._items.pop(key, None)
+            return None
+        data = value.get("data") or {}
+        if data.get("source") == "signal" and any(
+            not signal.available(asset["url"]) for asset in data.get("assets", [])
+        ):
             self._items.pop(key, None)
             return None
         return value
@@ -167,7 +173,7 @@ def _remember_headers(info: VideoInfo, data: dict, share_url: str) -> None:
 
 def _client_data(info: VideoInfo, share_url: str) -> dict:
     data = dataclasses.asdict(info)
-    data["share_url"] = share_url
+    data["share_url"] = signal.public_url(share_url)
     _remember_headers(info, data, share_url)
     # cookie 只留在服务器上；页面拿这些头去 /api/prepare 时 cookie 本来也会被去掉
     data["video_headers"] = {k: v for k, v in info.video_headers.items() if k.lower() != "cookie"}
@@ -191,6 +197,7 @@ async def _parse(share_url: str) -> dict:
 
 
 async def _handle_failure(result: dict, share_url: str, platform: str, ip: str) -> None:
+    share_url = signal.public_url(share_url)
     # 修得好的失败才有反馈凭证：页面据此显示「反馈这个问题」
     if ticket := feedback.make_ticket(share_url, result["reason"], platform, result["msg"]):
         result["feedback"] = ticket
@@ -322,3 +329,17 @@ async def api_feedback(req: FeedbackRequest, ip: str = Depends(limits.feedback_l
         raise HTTPException(400, "邮箱格式不对")
     duplicate = await asyncio.to_thread(feedback.add_report, ticket, email, stats.hash_ip(ip))
     return {"ok": True, "duplicate": duplicate, "email": bool(email)}
+
+
+class ParseRequest(BaseModel):
+    url: str = Field(max_length=8000)
+
+
+@router.post("/api/parse", dependencies=SITE_AUTH)
+async def api_parse_post(req: ParseRequest, ip: str = Depends(limits.parse_limit)):
+    return await api_parse(req.url, ip)
+
+
+@router.post("/api/parse/stream", dependencies=SITE_AUTH)
+async def api_parse_stream_post(req: ParseRequest, ip: str = Depends(limits.parse_limit)):
+    return await api_parse_stream(req.url, ip)

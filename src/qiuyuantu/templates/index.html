@@ -21,8 +21,11 @@
       </div>
       <button class="btn dark" id="parse-btn" type="submit">{{ t("解析") }}</button>
     </form>
+    {% if animation_upload %}
+    <p class="supports"><button class="btn sm" type="button" data-upload-file>{{ t('选择动画文件') }}</button> {{ t('SVGA、PAG、VAP，或含 JSON 与图集的 Spine ZIP。') }}</p>
+    {% endif %}
     {% if sticker_examples %}
-    <p class="supports">{{ t('试试公开贴纸包：') }}{% for name, url in sticker_examples %}<a href="{{ page.path }}?url={{ url | urlencode }}">{{ name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    <p class="supports">{{ t('试试公开素材：') }}{% for name, url in sticker_examples %}<a href="{{ page.path }}?url={{ url | urlencode }}">{{ name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
     {% endif %}
     <p class="supports" data-reveal style="--i:4"><b>{{ t("支持") }}</b> {{ t("抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。") }}</p>
     <p class="supports music-supports" data-reveal style="--i:4">{{ t('音乐封面也能取：') }}<a href="/qq-music-cover">{{ t('QQ 音乐封面') }}</a> · <a href="/netease-music-cover">{{ t('网易云音乐封面') }}</a>{{ t('。') }}{{ t('动态封面可保留原格式，或转成 GIF 与实况照片。') }}</p>
@@ -80,6 +83,9 @@
       <a class="card" href="/pixiv-download" data-reveal="card" style="--i:17"><h3>{{ t('Pixiv 原图与小说') }}</h3><p>{{ t('保存插画、漫画原图和小说 TXT；目录按页选择作品。') }}</p><span class="spec">Pixiv · TXT · Collections</span></a>
       <a class="card" href="/pixiv-ugoira" data-reveal="card" style="--i:18"><h3>{{ t('Pixiv 动图转 GIF') }}</h3><p>{{ t('下载 Ugoira 帧包与时序，或转 MP4、GIF 与实况。') }}</p><span class="spec">Ugoira · GIF · MP4</span></a>
       <a class="card" href="/pixiv-sketch" data-reveal="card" style="--i:19"><h3>{{ t('Pixiv Sketch 原图') }}</h3><p>{{ t('从 Sketch 公开帖子和作者目录保存原始图片。') }}</p><span class="spec">Pixiv Sketch</span></a>
+      <a class="card" href="/stream-emotes" data-reveal="card" style="--i:20"><h3>{{ t('直播表情下载') }}</h3><p>{{ t('7TV、BTTV 与 FFZ，保留公开原文件，动态表情可继续转 GIF。') }}</p><span class="spec">7TV · BTTV · FFZ</span></a>
+      <div class="card" data-reveal="card" style="--i:21"><h3>{{ t('公开贴纸与 Emoji') }}</h3><p>{{ t('LINE、Signal 与 Noto，保留公开原文件，或选择动态素材转换。') }}</p><p><a href="/line-stickers">LINE</a> · <a href="/signal-stickers">Signal</a> · <a href="/animated-emoji">Noto Emoji</a></p></div>
+      <div class="card" data-reveal="card" style="--i:22"><h3>{{ t('特殊动画转换') }}</h3><p>{{ t('SVGA、PAG、VAP 与 Spine 区域附件动画，上传文件后预览和转换。') }}</p><p><a href="/svga-to-gif">SVGA</a> · <a href="/animation-converter">PAG / VAP / Spine</a></p></div>
     </div>
     {% else %}
     <div class="sec-head">
@@ -178,8 +184,8 @@
 </section>
 {% endblock %}
 {% block nav_upload %}
-    <label class="btn sm" for="file-input">{{ t("本地视频") }}</label>
-    <input id="file-input" type="file" accept="video/*,.mov,.mp4,.webm,.mkv" hidden>
+    <button class="btn sm" type="button" data-upload-file>{{ t("选择动画文件") if animation_upload else t("本地视频") }}</button>
+    <input id="file-input" type="file" accept="video/*,.mov,.mp4,.webm,.mkv,.svga,.pag,.vap,.zip,.tgs,.json,.gif,.webp,.png,.apng" hidden>
 {% endblock %}
 {% block scripts %}
 {% for url in js_preloads('app.js') %}<link rel="modulepreload" href="{{ url }}">

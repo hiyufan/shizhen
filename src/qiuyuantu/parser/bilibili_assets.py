@@ -22,6 +22,7 @@ PROPERTY_LABELS = {
     "image_preview": "预览图",
     "image_enhance": "大图",
     "image_ani": "动态图片",
+    "image_ani_cut": "裁切动态图片",
     "image_animate": "动态图片",
     "image_gif": "动态图片",
 }
@@ -67,12 +68,24 @@ def _property_assets(item: dict) -> list[MediaAsset]:
         if not url:
             continue
         suffix = urlparse(url).path.lower().rsplit(".", 1)[-1]
-        if suffix not in {"jpg", "jpeg", "png", "webp", "gif", "mp4", "webm"}:
+        if suffix not in {"jpg", "jpeg", "png", "webp", "gif", "mp4", "webm", "svga", "pag", "bin"}:
+            continue
+        if suffix == "bin" and key not in {"image_ani", "image_ani_cut", "image_animate"}:
             continue
         kind = "video" if suffix in {"mp4", "webm"} else "image"
         if suffix == "gif" or key in {"image_ani", "image_animate", "image_gif"}:
             kind = "animation"
-        assets.append(MediaAsset(url=url, label=(item.get("name") or "") + " · " + label, kind=kind))
+        special = suffix in {"bin", "svga", "pag"}
+        cover = _url((item.get("properties") or {}).get("image_preview") or "") if special else ""
+        assets.append(
+            MediaAsset(
+                url=url,
+                label=(item.get("name") or "") + " · " + label,
+                kind="animation" if special else kind,
+                cover_url=cover,
+                ext=("svga" if suffix == "bin" else suffix) if special else "",
+            )
+        )
     return assets
 
 

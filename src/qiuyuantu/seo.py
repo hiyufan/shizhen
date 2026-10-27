@@ -88,7 +88,198 @@ COMMON_FAQ: dict[str, tuple[str, str]] = {
 DEFAULT_COMMON = ["watermark", "ratelimit", "free"]
 ALL_COMMON = list(COMMON_FAQ)
 
+PUBLIC_ASSET_EXAMPLES = {
+    "stream-emotes": [
+        ("7TV PETPET", "https://7tv.app/emotes/01FSNK0GP000038GDBZ91HT6SQ"),
+        ("BTTV SourPls", "https://betterttv.com/emotes/566ca38765dbbdab32ec0560"),
+        ("FFZ ZrehplaR", "https://www.frankerfacez.com/emoticon/9"),
+    ],
+    "line-stickers": [("LINE", "https://store.line.me/stickershop/product/5428032/en")],
+    "animated-emoji": [("Noto Emoji", "https://fonts.gstatic.com/s/e/notoemoji/latest/1f929/512.webp")],
+    "svga-to-gif": [("SVGA", "https://raw.githubusercontent.com/svga/SVGA-Samples/master/kingset.svga")],
+    "animation-converter": [("PAG", "https://pag.io/file/like.pag")],
+}
+
 PAGES: list[Page] = [
+    Page(
+        slug="stream-emotes",
+        title="7TV、BTTV、FFZ表情下载_透明GIF转换 - 求原图",
+        description="粘贴 7TV、BetterTTV 或 FrankerFaceZ 公开表情链接，保存原格式，动态表情可转透明 GIF、iPhone 实况包和安卓动态照片。",
+        h1="直播表情，<br>保存后接着动。",
+        lead="7TV、BTTV、FFZ 的公开表情放在一个入口。粘贴单个表情链接，保留原文件，或把动态素材转成透明 GIF。",
+        keywords="7TV emote downloader,7TV to GIF,BTTV表情下载,FFZ表情下载,直播表情包下载",
+        placeholder="粘贴 7tv.app、betterttv.com 或 frankerfacez.com 表情链接…",
+        nav_label="直播表情下载",
+        body=[
+            (
+                "三站公开表情",
+                "7TV 保存 WebP；BTTV 按真实类型保存 GIF 或静态图；FFZ 读取公开图片。支持有限的公开集合，超过 200 项时请改用单个表情链接。",
+            ),
+            (
+                "透明动画转 GIF",
+                "动态素材先按真实帧读取，再转换。GIF 保留透明背景；实况与动态照片使用普通视频画面。静态表情直接下载，不会补出动画。",
+            ),
+        ],
+        faq=[
+            (
+                "需要 Twitch 账号吗？",
+                "不需要。这里只读取三个表情平台的公开素材，不访问 Twitch 账号接口。部分 BTTV 链接可能只能从公开全局目录中匹配。",
+            ),
+            (
+                "为什么 WebP 在相册里不动？",
+                "一些相册只显示预览帧。选择动态表情的「转 GIF」，再下载转换结果；原始 WebP 也会保留。",
+            ),
+        ],
+        guides=["stream-emotes-to-gif"],
+    ),
+    Page(
+        slug="line-stickers",
+        title="LINE动态贴图下载_APNG转透明GIF与实况 - 求原图",
+        description="读取 LINE 商店公开贴图预览，保存 PNG、APNG，动态贴图可转透明 GIF、实况包和安卓动态照片。无需登录。",
+        h1="LINE 动态贴图，<br>换个地方接着动。",
+        lead="粘贴 LINE 商店贴图包链接，选择公开展示的贴图。保留 PNG／APNG 原文件，也能把动态预览转成 GIF。",
+        keywords="LINE動態貼圖下載,LINE sticker downloader,LINE sticker to GIF,APNG转GIF",
+        placeholder="粘贴 store.line.me/stickershop/product/… 贴图包链接…",
+        nav_label="LINE 贴图",
+        body=[
+            (
+                "只读取商店公开预览",
+                "封面与正文贴图分开，只列出商店页面已经展示的素材。不包含购买后专属内容、声音或自定义文字；emoji 商品另属范围。",
+            ),
+            (
+                "APNG 也是会动的 PNG",
+                "文件后缀虽然是 .png，内部可能有多帧。原文件保留透明边缘；转换成 GIF 后可在更多应用中播放，但 GIF 只有 256 色。",
+            ),
+        ],
+        faq=[
+            ("整个包都能下载吗？", "当前逐张选择和下载页面公开预览，不提供购买权益，也不保证覆盖特殊贴图类型。"),
+            (
+                "弹出贴图和有声贴图怎么办？",
+                "只处理页面提供的图片或动画预览，不合成弹出效果和声音。没有可用预览时会提示无法读取。",
+            ),
+        ],
+        guides=["line-signal-stickers"],
+    ),
+    Page(
+        slug="signal-stickers",
+        title="Signal贴纸包下载_公开链接保存原图与动图 - 求原图",
+        description="粘贴完整 Signal 公开贴纸包分享链接，选择贴纸并保存图片。动态贴纸可转换，无需 Signal 账号或 Bot。",
+        h1="Signal 贴纸，<br>从分享链接保存。",
+        lead="使用包含完整包参数的 signal.art 分享链接，读取公开贴纸清单。选择图片下载；动态贴纸可以继续转换。",
+        keywords="Signal sticker downloader,Signal贴纸下载,Signal stickers to PNG,Signal贴纸转GIF",
+        placeholder="粘贴完整的 https://signal.art/addstickers/#… 分享链接…",
+        nav_label="Signal 贴纸",
+        body=[
+            (
+                "保留完整分享链接",
+                "请保留 # 后面的全部包参数。这些参数属于分享链接，缺失后无法读取素材；不用提供账号密码。",
+            ),
+            (
+                "静态与动态分别处理",
+                "清单不会保证每张都有动画。静态贴纸直接下载；转换时会检查实际帧数，静态图片不会被当成动态素材。",
+            ),
+        ],
+        faq=[
+            (
+                "链接完整还是读不到？",
+                "文件可能已经失效，或当前网络无法连接平台。可以重新复制公开分享链接再试；仅有包编号不够。",
+            ),
+            (
+                "临时素材过期怎么办？",
+                "重新粘贴原始完整分享链接解析即可。下载与转换链接会过期，不适合作为永久图床地址。",
+            ),
+        ],
+        guides=["line-signal-stickers"],
+    ),
+    Page(
+        slug="animated-emoji",
+        title="Noto动态Emoji下载_WebP与GIF转换 - 求原图",
+        description="保存 Google Noto 官方动态 emoji 的 WebP、GIF 和 Lottie 原文件，WebP 动画可转透明 GIF、实况包与动态照片。保留 CC BY 4.0 署名。",
+        h1="动态 Emoji，<br>找到喜欢的那个。",
+        lead="从 Google Noto 官方动画图库复制素材链接，保留官方 WebP、GIF 或 Lottie 文件，再按需要转换。",
+        keywords="animated emoji download,Noto emoji GIF,动态emoji下载,透明emoji动画",
+        placeholder="粘贴 fonts.gstatic.com 的 Noto 动态 emoji 素材链接…",
+        nav_label="动态 Emoji",
+        body=[
+            (
+                "官方素材与署名",
+                "素材来自 Google Noto Animated Emoji，采用 CC BY 4.0。下载和转换后仍需保留作者、许可与来源说明。",
+            ),
+            (
+                "原文件与转换结果",
+                "WebP 和 GIF 可以继续转换。Lottie 作为原文件下载，不承诺所有尺寸都能渲染；不同格式的帧数和时长可能不同。",
+            ),
+        ],
+        faq=[
+            (
+                "可以直接输入一个 Emoji 吗？",
+                "当前使用官方素材链接，先在官方动画图库选择 emoji，再复制 WebP、GIF 或 Lottie 地址。",
+            )
+        ],
+        guides=["stream-emotes-to-gif"],
+    ),
+    Page(
+        slug="svga-to-gif",
+        title="SVGA转GIF与MP4_B站装扮动画下载与转换 - 求原图",
+        description="上传 SVGA 或粘贴公开文件、B站装扮链接，逐帧还原动画，转透明 GIF、MP4、实况包与动态照片。支持有界的无声 SVGA 1.x 和 2.x。",
+        h1="SVGA 动画，<br>转成能保存的格式。",
+        lead="上传 SVGA 文件，或粘贴公开素材、B站装扮详情链接。还原动画后预览，保存透明 GIF、MP4 或实况照片。",
+        keywords="SVGA转GIF,SVGA转MP4,B站点赞动画下载,B站装扮动画导出,SVGA converter",
+        placeholder="粘贴公开 .svga 文件或 B站装扮详情链接…",
+        nav_label="SVGA 转 GIF",
+        body=[
+            (
+                "还原动画，不只取图片",
+                "读取逐帧变换、透明度、裁切、遮罩和矢量形状，再生成动画。原文件下载与转换结果分开；不把包里的某张图片冒充完整动画。",
+            ),
+            (
+                "转换范围",
+                "无声动画支持 SVGA 1.x ZIP 与 2.x 二进制。文件不超过 8 MiB，画布不超过 1024×1024、600 帧或 30 秒，另有总像素限制；含音轨的文件保留原文件下载。",
+            ),
+        ],
+        faq=[
+            (
+                "B站的 .bin 是什么？",
+                "部分装扮的公开动画使用 .bin 后缀保存 SVGA。使用装扮详情链接可识别对应素材，转换时仍会检查文件内容。",
+            ),
+            (
+                "GIF 和实况都透明吗？",
+                "GIF 保留透明背景；MP4、实况和安卓动态照片使用普通视频画面。转换失败时仍可下载平台公开的原始文件。",
+            ),
+        ],
+        guides=["special-animation-to-gif"],
+    ),
+    Page(
+        slug="animation-converter",
+        title="PAG、VAP、Spine动画转GIF与视频 - 求原图",
+        description="上传 PAG、VAP 或 Spine JSON图集ZIP，预览并转换为透明 GIF、MP4、实况与动态照片。Spine 可选择动画，复杂类型明确提示。",
+        h1="特殊动画，<br>预览后再保存。",
+        lead="上传 PAG、包含透明区域配置的 VAP，或带骨骼 JSON、atlas 和图片的 Spine ZIP。选择动画后，复用 GIF 与实况转换。",
+        keywords="PAG转GIF,VAP转GIF,Spine转GIF,Spine动画导出,PAG converter,VAP animation export",
+        placeholder="粘贴公开 .pag、.vap 或 .spine.zip 文件链接，或选择本地文件…",
+        nav_label="特殊动画转换",
+        body=[
+            (
+                "PAG 与 VAP",
+                "PAG 支持不含字体图层的有界动画。VAP 从文件内配置还原颜色与透明区域；需要额外图片或文字融合的文件不支持，不会猜测缺失配置。",
+            ),
+            (
+                "Spine 先选动画",
+                "ZIP 内放一份骨骼 JSON、一份 atlas 和对应 PNG／JPEG。支持 3.5–3.8、4.0–4.2 的区域附件与普通骨骼动画；网格、IK、路径、物理约束和特殊混合模式暂不支持。",
+            ),
+        ],
+        faq=[
+            (
+                "为什么只有 .skel 不能转换？",
+                "这个入口读取 JSON 骨骼与图集，不解析二进制 .skel。请从你有权使用的项目导出 JSON，并把对应图集与图片一起打包。",
+            ),
+            (
+                "文件过大或类型不支持怎么办？",
+                "可以缩短动画、降低画布尺寸，或在原制作工具中导出通用视频。工具会说明不支持的类型，不会忽略关键图层后显示成功。",
+            ),
+        ],
+        guides=["special-animation-to-gif"],
+    ),
     Page(
         slug="pixiv-download",
         title="Pixiv原图下载_漫画、小说与动图在线解析 - 求原图",

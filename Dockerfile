@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 # ffmpeg 用于 GIF / 实况转换与 yt-dlp 合并
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg tini && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 # chromium 装到固定路径并放开读权限：运行时是 app 用户（10001），浏览器只读执行
@@ -13,7 +13,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 COPY pyproject.toml ./
 RUN mkdir -p src/qiuyuantu src/parse_video_py \
     && touch src/qiuyuantu/__init__.py src/parse_video_py/__init__.py \
-    && pip install --no-cache-dir ".[web,cli,douyin,youtube,stickers]" \
+    && pip install --no-cache-dir ".[web,cli,douyin,youtube,stickers,animations]" \
     && pip uninstall -y qiuyuantu && rm -rf src \
     && playwright install --with-deps chromium \
     && chmod -R a+rX /opt/pw-browsers
@@ -48,4 +48,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')" || exit 1
 
 # 只跑 1 个 worker：任务状态在进程内存里。要横向扩容就多起几个容器并在 LB 上开会话保持
+# 回收渲染超时后被接管的浏览器后代进程。
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "main.py"]

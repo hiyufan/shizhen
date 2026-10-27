@@ -191,7 +191,7 @@ async def test_collection_selects_one_cdn_per_card_and_preserves_signed_url(publ
     [
         {"item_id": 9, "properties": {"image": IMAGE}},
         {"item_id": 42, "properties": {"image": "https://127.0.0.1/x.png"}},
-        {"item_id": 42, "properties": {"image_ani": "https://i0.hdslb.com/a.bin"}},
+        {"item_id": 42, "properties": {"image": "https://i0.hdslb.com/a.bin"}},
         {},
     ],
 )

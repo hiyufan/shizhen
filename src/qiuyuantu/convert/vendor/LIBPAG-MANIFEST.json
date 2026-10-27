@@ -1,0 +1,11 @@
+{
+  "name": "libpag",
+  "version": "4.5.85",
+  "url": "https://registry.npmjs.org/libpag/-/libpag-4.5.85.tgz",
+  "tarball_sha512": "1303141c18c141df448bc2f084aaf2f33635b664a39bbdde8f00655e0e7f41292d51659f7c520fbeb1c9dbdfd972c069002f1d5319fcb9478d65f040bf12dfa5",
+  "files_sha256": {
+    "libpag.min.js": "2daeca5676731fd1f5bdb1278ef20f2460cd4cf0d510ca9c080408c1704f98ad",
+    "libpag.wasm": "f0d106c6d1094faf7c466ac33b147549b55dabafb4172a5c2652fa7e0546209e",
+    "LIBPAG-LICENSE": "5d82b0da811324f0c0a5d54ff09b9d589f17765c4fb689520633acd0916b45cd"
+  }
+}

@@ -15,6 +15,7 @@ dependencies = [
     "yt-dlp[default]>=2025.1.1",
     "piexif>=1.1.3",
     "Pillow>=10",
+    "cryptography>=42",        # Signal 公开贴纸认证解密与反馈邮箱加密
     "imageio-ffmpeg>=0.5",
 ]
 
@@ -25,7 +26,6 @@ web = [
     "httptools>=0.6",          # uvicorn 的 HTTP 解析换 C 实现。别用 uvicorn[standard]：带的 uvloop 绕过 SSRF 防线
     "jinja2>=3.1",
     "python-multipart>=0.0.20",
-    "cryptography>=42",        # 反馈邮箱 AES-256-GCM 加密存储
     "fastapi-mcp>=0.4",
     "mcp>=1.12.0,<2.0.0",
 ]
@@ -41,7 +41,12 @@ douyin = [
     # 抖音图文兜底解析：无痕 Chromium 渲染 PC 版页面（见 douyin.py _note_via_browser）
     "playwright>=1.45",
 ]
+animations = [
+    "qiuyuantu[stickers]",
+    "playwright>=1.45",          # PAG 官方 WASM 在离线 Chromium 子进程中渲染
+]
 stickers = [
+    "resvg-py>=0.5,<0.6",      # SVGA 独立构造 SVG 后在受限进程内渲染
     "rlottie-python>=1.3.8,<2",  # TGS 原生渲染在独立子进程中运行
 ]
 dev = [
@@ -52,7 +57,7 @@ dev = [
     "pre-commit>=3.7",
     "fonttools[woff]>=4.50",   # 衬线字体子集：scripts/subset_fonts.py 和 tests/test_fonts.py
 ]
-all = ["qiuyuantu[web,cli,youtube,douyin,stickers]"]
+all = ["qiuyuantu[web,cli,youtube,douyin,stickers,animations]"]
 
 [project.scripts]
 qiuyuantu = "qiuyuantu.cli:app"

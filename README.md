@@ -48,6 +48,8 @@
 | Discord 公开贴纸 | [公开贴纸包与单个贴纸](https://ynvan.com/discord-stickers)：原始 APNG / Lottie JSON 下载，转透明 GIF、实况与动态照片，无需账号 Token |
 | 社区与装扮 | [米游社帖子原图与 GIF](https://ynvan.com/miyoushe-images)、[B站装扮与收藏集公开素材](https://ynvan.com/bilibili-assets) |
 | Pixiv | [插画、漫画与小说 TXT](https://ynvan.com/pixiv-download)、[Ugoira 转 GIF / 实况](https://ynvan.com/pixiv-ugoira)、[Sketch 原图](https://ynvan.com/pixiv-sketch)；公开目录按页选择作品，无需账号 |
+| 直播表情与公开贴图 | [7TV / BTTV / FFZ](https://ynvan.com/stream-emotes)、[LINE 商店预览](https://ynvan.com/line-stickers)、[Signal 公开包](https://ynvan.com/signal-stickers)、[Noto 动态 Emoji](https://ynvan.com/animated-emoji)；原文件下载与动画转换 |
+| 特殊动画 | [SVGA 与 B站装扮动画](https://ynvan.com/svga-to-gif)、[PAG / VAP / Spine](https://ynvan.com/animation-converter)；上传、预览、透明 GIF / MP4 / 实况；Spine 当前支持区域附件，复杂约束与网格明确报不支持 |
 
 支持的视频、图集、实况类型与清晰度见[完整平台表](docs/usage.md#支持的平台)。音乐工具只提取封面。
 

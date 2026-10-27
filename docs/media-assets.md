@@ -178,7 +178,104 @@ python scripts/probe_media_candidates.py pixiv https://www.pixiv.net/artworks/15
 
 类型与边界参考：[Collections 官方定义](https://www.pixiv.help/hc/en-us/articles/48871923503897-What-are-collections)、[URL 限定作品说明](https://www.pixiv.help/hc/en-us/articles/900002308986-What-is-URL-restriction)、[公开与私密收藏说明](https://www.pixiv.help/hc/en-us/articles/235646967-What-are-Bookmarks)、[小说系列说明](https://www.pixiv.help/hc/en-us/articles/235584188-I-want-to-post-a-novel-as-a-series-like-episode-1-episode-2-etc)、[gallery-dl 的公开 Pixiv 测试链接](https://github.com/mikf/gallery-dl/blob/master/test/results/pixiv.py)、[小说插图测试样例](https://github.com/mikf/gallery-dl/blob/master/test/results/pixivnovel.py)。Collections 详情及搜索路径还按当前官方网页 JavaScript 的实际 GET 请求核对，不依据旧资料猜测端点。
 
-## 下一批候选，尚未接入 Web 工具
+## 2026-10-27：下一轮平台与格式机会调查（接入前记录）
+
+本轮在现有平台之外比较匿名可用性、真实素材、已有整合工具与搜索入口。建议先做 **7TV / BetterTTV / FrankerFaceZ 直播表情统一入口**，再做 **B站公开装扮中的 SVGA 动画**；LINE 可作为较容易补齐的公开预览来源。Signal 保留为待解决当前出口问题的候选，Noto 作为补充素材来源。本节保留接入前的调查结论；后续已完成的功能、Signal 出口修复与真实转换结果见[本轮实现与验证](#本轮实现与验证)。
+
+已有 [EmoteDownloader](https://github.com/Daniel2193/EmoteDownloader) 整合 Twitch / BTTV / FFZ / 7TV，[sticker-convert](https://github.com/laggykiller/sticker-convert) 整合多个贴纸平台，[Stickify](https://github.com/n0bitaemon/stickify) 也提供网页贴纸流程。因此不能称为“无人整合”。本项目可争取的差异是公开分享链接、原格式下载、透明动画转换与手机保存的衔接；本轮没有验证任何竞品的全部实际行为，也没有获得关键词搜索量或增长数据。
+
+### 候选顺序与需求依据
+
+| 顺序 | 候选与用户问题 | 本次验证程度 | 可争取的差异与投入判断 |
+| --- | --- | --- | --- |
+| 1 | 7TV / BetterTTV / FrankerFaceZ：直播表情保存到本地、跨聊天应用使用 | 三站匿名目录和实际文件成功；7TV 样例完成三种转换，FFZ 只验证静态 PNG | 一处识别三站链接，区分静态 / 动态，提供透明 GIF 与限体积导出。主要复用现有图片转换层，新增解析和目录适配；频道与自定义集合尚须另测 |
+| 2 | B站 SVGA：赞动画等专用格式无法直接作为 GIF / 实况使用 | 官方样例与 B站真实 `.bin` 均完整下载并读出动画参数，尚未渲染 | 扩展现有装扮解析，减少用户先找文件再找转换器的步骤。需新增有界 SVGA 解析与逐帧渲染，投入明显高于图片来源适配 |
+| 3 | LINE Store：动态贴图下载后只显示首帧，或无法在其他应用使用 | 页面公开预览、真实 APNG 与三种转换成功 | 手机网页中选择预览素材并转换；已有网页和扩展支持 APNG / GIF / ZIP，单纯“整包下载”差异有限。先做普通静态 / 动态预览，其他类型分开验证 |
+| 4 | Signal：公开包希望保存成普通图片而非只安装到 Signal | 官方协议支持凭公开链接解密；当前环境 TLS 验证失败，未取得清单或贴纸 | 链接本身带包密钥，无需账号 Cookie；仍需完成实际下载、认证解密与格式验证。不能列作已经成功的平台 |
+| 5 | Google Noto Animated Emoji：按 emoji 找透明动画、在其他软件中使用 | 官方 WebP 与 Lottie 完整下载；WebP 解码成功 | 官方已有下载，因此宜作为统一素材入口与转换补充，不单独押注增长；动画素材许可为 CC BY 4.0，需保留出处与署名 |
+| 后续 | PAG / VAP / Spine：特殊动画转通用格式 | 仅核对官方运行库与已有导出项目，未验证真实转换 | 更偏向开发者工具能力；涉及不同渲染器、资源包与版本兼容，不能因完成 SVGA 就承诺通用支持 |
+
+需求与竞争证据：
+
+- **直播表情**：[7TV 官方](https://7tv.app/)明确使用 WebP / AVIF；[用户询问如何避免 WebP](https://www.reddit.com/r/7TV/comments/1c7zbdg/how_to_downlad_emote_not_as_webp/)及 [iMessage 表情项目的用户讨论](https://www.reddit.com/r/7TV/comments/1h761bx/send_7tv_emotes_on_imessage/)说明格式兼容和转发存在真实需求。这些是个案，不是搜索量。[giveemot.es](https://giveemot.es/)已提供 7TV 图片链接与格式选择，不能把“7TV 转 GIF”本身当作独占功能。
+- **SVGA**：[B站 V 家素材维护者](https://github.com/luotianyi-dev/vocaloid-bilibili-stickers)说明已经尝试 PNG 序列与 GIF，但其 GIF 质量不理想。这支持进一步调查透明边缘、遮罩和时序问题，不能推断所有其他转换器都存在同样缺陷。[svga.online](https://svga.online/)也已展示 SVGA / VAP 转换产品，页面出现访问 Token 入口；本轮未测试其转换质量。
+- **LINE**：[StampNyaa](https://github.com/MarvNC/StampNyaa)已做桌面下载与跨应用使用；[LINE Sticker Downloader 扩展](https://github.com/Li1vErk/line-sticker-downloader)支持选择下载、APNG 与 GIF；[kelvinct 网页工具](https://kelvinct.com/sticker/)也展示公开包的 APNG / GIF / ZIP。机会是复用本站已有操作流程与手机转换能力，不能称为没有网页方案。
+- **Signal**：[用户询问如何导出贴纸文件](https://www.reddit.com/r/signal/comments/1c9dmix)说明安装与保存文件是不同需求；[官方说明](https://signal.org/blog/make-privacy-stick/)明确公开分享 URL 中的包编号和包密钥允许任何持有链接的人查看、解密及安装。已有工具也支持该流程，不属于需要破解账号权限的方向。
+- **PAG / Spine**：[Tencent/libpag](https://github.com/Tencent/libpag)提供独立 PAG 渲染库，[SpineViewer](https://github.com/ww-rm/SpineViewer)已有查看、导出及壁纸工具。它们适合后续研究，不以项目 Star 数推断本站的流量或可获 Star 数。
+
+### 匿名真实探测记录
+
+探测保留环境通用网络代理，未使用平台账号、Cookie、Bot Token 或第三方账号凭证。HTTP 通过现有安全客户端，媒体下载设字节上限；临时文件和转换产物位于仓库外。以下数量及链接可用性是当次结果，可能随平台变化。
+
+| 来源与样例 | 实际结果 | 本次没有验证的部分 |
+| --- | --- | --- |
+| 7TV 公共集合 `GET https://7tv.io/v3/emote-sets/global` | 45 项；PETPET `01FSNK0GP000038GDBZ91HT6SQ` 的官方 CDN WebP 为 14,578 字节、128×128、5 帧、0.30 秒，含透明像素 | 任意用户频道、集合分页、全部 AVIF 变体及失效素材 |
+| BetterTTV 公共集合 `GET https://api.betterttv.net/3/cached/emotes/global` | 65 项；SourPls `566ca38765dbbdab32ec0560` 的官方 CDN `3x` 文件为 3,755,087 字节、140×140、492 帧 GIF、14.76 秒 | 该 GIF 的三种转换、频道与共享表情目录 |
+| FrankerFaceZ 公共集合 `GET https://api.frankerfacez.com/v1/set/global` | 23 项；ZrehplaR `9` 的官方 CDN PNG 为 42,534 字节、132×120，实际图片校验通过 | 动画及任意频道集合，不能据静态样例宣称动画覆盖 |
+| LINE Store 动态贴图包 `5428032` | 页面含封面与 24 个贴图预览对象；贴图 `110407190` 的公开 `animationUrl` 实际返回 258,586 字节、370×300、17 帧、2 秒 APNG，含透明像素 | 其余 23 张的下载、弹出 / 有声 / 自定义文字贴图及 emoji 商品；不推断未展示或购买后素材 |
+| SVGA 官方 `kingset.svga` | 160,200 字节；有界 zlib 解压后按官方 protobuf 字段读取为 750×750、20 fps、56 帧，10 份图像和 17 个精灵 | 完整渲染、遮罩、矢量及音轨还原 |
+| B站装扮 `2156` 的 `thumbup.properties.image_ani` | 默认请求返回 412；使用常规浏览器 UA 与 B站 Referer 后详情返回 `code=0`。实际 `.bin` 为 64,008 字节，解压后是 SVGA 2.1.0，360×540、20 fps、50 帧，13 份图像和 13 个精灵 | 尚未渲染或转 GIF；未验证所有装扮。扩展名为 `.bin`，不能只识别 `.svga` 后缀 |
+| Signal 官方 Zozo 分享包 | 从官方博文读取完整分享链接，保留 `#` 后包参数；请求 `cdn.signal.org` 与 `cdn2.signal.org` 时发生证书链验证错误 | 清单、认证解密、单贴纸、动画及整包下载均未成功验证；保持 TLS 验证，没有把协议可行当作实测成功 |
+| Noto 官方 `1f929` | 官方 CDN `512.webp` 为 580,418 字节、512×512、60 帧、1.8 秒；`lottie.json` 为 46,757 字节，元数据 1024×1024、60 fps、120 帧、2 秒，无外部资源与字体字段 | 未执行该 Lottie 渲染；尺寸超过本站当前 Lottie 512×512 限制，不能直接宣传现有渲染器支持。WebP 与 Lottie 版本时长也不能互相代替 |
+
+其中 7TV WebP 与 LINE APNG 各自通过现有 `animated.prepare()` 和 `tasks.convert()` 生成 GIF、实况 ZIP、动态照片，共 **6 份研究产物**：GIF 分别为 29,591 / 365,419 字节，均多帧且保留透明像素；实况包为 11,754 / 69,219 字节，JPG / MOV 配对标识一致；动态照片为 12,521 / 69,990 字节，XMP 所指附加 MP4 可解码。此处为转换层复用验证，尚未经过新平台的正式 Web 解析 / 签名代理流程，也未验证实体手机导入。
+
+### 实现路径与可宣传范围
+
+1. **先做直播表情统一入口**：单个表情链接优先；集合返回分页目录，让用户选择素材。7TV 本次返回 26 位 ULID，不能只接受历史 24 位十六进制编号。原格式与转换结果分开标注，不把静态图改名为 GIF；保持现有 600 帧 / 30 秒等限制，较长素材先保留原格式下载。
+2. **SVGA 单独完成渲染验证**：基于文件头与解压结构识别 1.x ZIP / JSON 和 2.x zlib / protobuf，再校验尺寸、帧率、帧数、图像总量、解压量与外部引用。逐帧处理变换、透明度、裁切、遮罩与矢量，输出透明中间文件后复用现有转换层。不能只提取内嵌 PNG 就称为动画还原。[官方格式定义](https://github.com/svga/SVGA-Format/blob/master/proto/svga.proto)和 [Web Lite 播放器](https://github.com/svga/SVGAPlayer-Web-Lite)可供核对；Lite 明确不支持 1.x 和音频，[旧 Web 播放器](https://github.com/svga/SVGAPlayer-Web)已归档，需分别评估实现与依赖。
+3. **LINE 先限制为页面已公开展示的预览**：从真实 `data-preview` 读取地址和类型，不猜购买后内容；封面与贴图分开。APNG 判断依靠真实帧，不依赖 `.png` 后缀。弹出、有声与自定义文字分别补样例后再扩大范围。
+4. **Signal 无账号路线保持不变**：完整分享链接中的包密钥用于本地解密，不要求账号凭证；不得丢弃 URL fragment、回显密钥或写入普通访问日志。核对官方 protobuf、HKDF 和先认证再解密的流程，待可信 TLS 路径下真实取得清单及文件后才确定接入范围。
+5. **Noto 复用官方素材，不重复建设素材库**：官方页面脚本已给出 `https://fonts.gstatic.com/s/e/notoemoji/latest/{codepoint}/512.webp`、`512.gif` 与 `lottie.json`。保留真实 Unicode 序列和动画格式；官方页面说明动画资源采用 CC BY 4.0，不能以字体仓库其他内容的许可替代。
+
+### SEO 与开源传播假设
+
+| 方向 | 完成后可覆盖的搜索意图 | 更适合展示的开源成果 |
+| --- | --- | --- |
+| 直播表情 | `7TV emote downloader`、`7TV to GIF`、`BTTV emote download`、`FFZ emote download`、直播表情包下载 | 三站统一结果、可复现样例、透明边缘与原始时序对比；作为英文 README 的可体验能力 |
+| SVGA / B站 | `SVGA 转 GIF`、`SVGA 转 MP4`、`B站点赞动画下载`、`B站装扮动画导出` | 有界解码和渲染、遮罩 / 矢量回归样例、与真实播放器逐帧对照；技术复用价值高于再增加一个普通图片域名 |
+| LINE | `LINE 動態貼圖下載`、`LINE sticker to GIF`、`APNG 转 GIF 透明` | 手机网页选择、公开预览与原文件身份校验、现有转换能力的完整示例 |
+| Signal / Noto | `Signal sticker downloader`、`Signal stickers to PNG`、`animated emoji download`、动态 emoji 转 GIF | Signal 公开包无需账号的可复现验证；Noto 的许可署名、Unicode 定位与格式转换示例 |
+
+这些词是待验证的内容方向，不是已有排名或确定流量。首批只为真实可用的入口发布工具页与教程，完成中英文、相关工具互链和站点图；通过搜索展现 / 点击、解析成功率、下载完成率与 GitHub 引荐观察效果。公开样例、能力边界和可复用实现有助于开源传播，但不能承诺因此增长多少 Star，不设置“先 Star 才下载”。
+
+本轮额外资料：[LINE 真实样例页](https://store.line.me/stickershop/product/5428032/en)、[SVGA 官方样例](https://github.com/svga/SVGA-Samples/blob/master/kingset.svga)、[Signal 清单协议](https://signal.art/addstickers/Stickers.proto)、[Signal 客户端协议说明](https://github.com/signalstickers/signalstickers-client/blob/master/STICKERS_INTERNALS.md)、[Google 官方动画图库](https://googlefonts.github.io/noto-emoji-animation/)。
+
+## 本轮实现与验证
+
+上述候选已接入解析、下载与转换流程；生产站点的实际能力以部署版本和平台响应为准。新增六个工具页、三篇教程和中英文内容，纳入首页互链、站点图及结构化数据。搜索词是内容方向，尚无本轮流量、排名或 Star 增长数据。
+
+| 能力 | 已接入范围 | 边界 |
+| --- | --- | --- |
+| 7TV / BetterTTV / FrankerFaceZ | 单个表情及有限公开集合，官方 CDN 原格式下载；动态素材复用 GIF / 实况 / 动态照片流程 | 每次最多 200 份素材，不递归下载；FFZ 本轮真实验证为静态 PNG，频道和所有动画变体未全面实测 |
+| LINE | Store 商品与公开贴图预览，按页面真实 `data-preview` 读取静态 / 动态地址 | 不猜购买后内容，不合成声音或自定义文字；弹出贴图只在公开预览提供对应地址时展示 |
+| Signal | 完整公开分享包，HKDF / HMAC / AES-CBC 认证解密后按需下载 | 官方页面使用的 `cdn-ca.signal.org` 解决标准 CA 校验问题，TLS 校验始终开启。包密钥仅保存在短期内存引用中，响应及素材下载 URL 不含密钥；服务重启 / 引用过期需重新解析，不读取账号或聊天 |
+| Noto Animated Emoji | 官方 Unicode 资源链接，WebP 动画和可取得的 GIF / Lottie 原文件 | 保留 Google 出处与 CC BY 4.0 署名；本轮 Lottie 原文件尺寸超过现有 512×512 渲染限制，仅下载，不宣称可转换 |
+| SVGA / B站赞动画 | 1.x ZIP / JSON、2.x zlib / protobuf，位图、矢量、变换、透明度、裁切与遮罩；识别 B站动画字段中的 `.bin` | 8 MiB 输入、32 MiB 解压、画布最长边 1024、最多 600 帧 / 30 秒、总输出像素 1 亿；含音轨时拒绝转换，原文件可下载 |
+| PAG | 固定官方 libpag 4.5.85 JS / WASM，本地 Chromium 无外部网络逐帧渲染 | 8 MiB、最长边 1024、最多 600 帧 / 30 秒、总像素 1 亿；暂不支持字体图层。依赖及完整许可随包保存，脚本可重现下载并校验摘要 |
+| VAP | 读取 MP4 `vapc` 的 RGB / alpha 区域，恢复透明帧 | 32 MiB、输出最长边 1024、最多 600 帧 / 30 秒；须有配置，不猜布局；外部融合素材不支持 |
+| Spine | ZIP 内含 JSON、atlas 和图集图片；上传后先选择动画，支持区域附件、普通骨骼变换、附件切换、绘制顺序及颜色时间轴 | 声明版本 3.5–3.8、4.0–4.2；真实渲染覆盖 3.8 / 4.2，4.0 / 4.1 元数据已核对。最多 600 帧 / 20 秒；网格、裁切附件、IK / 路径 / 物理约束、特殊混合或继承明确报错；不包含官方 Spine Runtime |
+
+特殊文件支持公开 `.svga` / `.pag` / `.vap` / `.spine.zip` 链接及本地上传；普通 `.mp4` 上传后识别有配置的 VAP。Spine ZIP 必须自带素材，不从外部路径补取。渲染在独立进程中执行，限制墙钟、CPU、进程树内存及并发；超时和取消回收子进程。所有路径沿用签名、限流、配额与安全下载，特殊文件代理强制附件和非可执行类型，不放宽网站 CSP。
+
+### 真实 Web 烟测
+
+临时本地 Web 服务使用隔离数据目录，通过正式解析、签名代理、准备和转换 API 验证；外部平台无账号凭证。下载了原文件，并检查转换 GIF 为多帧且有可见像素、实况 JPG / MOV 配对标识及动态照片 XMP 指向的附加视频。透明来源的 GIF 保留透明像素，原本不透明的 SourPls 不凭空去背景。
+
+- 7TV PETPET、BTTV SourPls、LINE `5428032` 首张 APNG、Noto `1f929` WebP。
+- SVGA 官方 `kingset.svga`、1.x `matteBitmap_1.x.svga`、B站装扮 `2156` 的真实 SVGA `.bin`。
+- PAG 官方 `like.pag`、VAP 官方 Android demo、SpineBoy 3.8 / 4.2 的 `walk`。
+- Signal 官方 Zozo 静态 WebP 已验证下载；公开 PumpkinCat 包 20 项，首张 512×512、20 帧 APNG 已走完整转换。
+
+上述 12 组动画各完成 GIF、实况包、动态照片，共 36 份真实 Web 转换产物；转换片段最长取 2 秒以控制烟测成本，完整渲染后的 MP4 单独验证下载。未验证全部集合、全部素材、平台未来响应或实体手机导入。批量烟测触发 429 时按 `Retry-After` 等待，没有取消现有限流。
+
+离线用例补充格式像素与透明度、遮罩与 KEEP、认证解密和篡改、引用过期、上传动画选择、签名与文件类型隔离、渲染进程树取消回收；离线替身不计入上述真实平台成功。核心 847 项、独立账号助手 439 项通过，Ruff、ESLint、字体 / CSP / SEO 检查通过。Docker Python 3.12 中禁用外网后完成 SVGA 1.x、PAG、VAP、Spine 真实渲染。
+
+页面使用本地 Chromium / Playwright 检查（当前无 Browser 插件），覆盖 1440px 桌面、390px 与 320px 窄屏、中英文、深色主题、等待 / 成功 / 失败、清空、旧请求隔离、重复提交、重试及超长动画名称。真实交互覆盖 7TV 三种格式切换 / MP4 下载和 Spine 上传选择 / GIF；其余格式的真实转换见 API 烟测。抖音、B站与 X 的真实链接回归成功；小红书旧短链在本轮和修改前 HEAD 均跳到主页并解析失败，未列为成功。实体 iPhone / Android 导入仍未验证。
+
+资料：[Signal 官方网页](https://signal.art/addstickers/)、[SVGA 样例](https://github.com/svga/SVGA-Samples)、[libpag](https://github.com/Tencent/libpag)、[VAP](https://github.com/Tencent/vap)、[Spine JSON 说明](https://esotericsoftware.com/spine-json-format)、[Google 动画 emoji](https://googlefonts.github.io/noto-emoji-animation/)。
+
+## 其他候选，尚未接入 Web 工具
 
 | 方向 | 可以解决的问题 | 接入前必须验证 |
 | --- | --- | --- |

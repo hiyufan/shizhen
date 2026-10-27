@@ -121,18 +121,20 @@ curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/8x0AeP8prW8/"
 }
 ```
 
-Extraction results may include an `assets` array for independent theme and collection media: `{url, label, kind: image|animation|video, cover_url, ext}`. These are separate assets rather than quality variants or native Live Photo pairs. Existing `images`, `formats`, JSON and SSE contracts remain available; asset and preview URLs are signed in `sig`. Send `image: true` to `/api/prepare` for animated images; use normal preparation for videos.
+Extraction results may include an `assets` array for independent theme and collection media: `{url, label, kind: image|animation|video|archive|file, cover_url, ext}`. These are separate assets rather than quality variants or native Live Photo pairs. Existing `images`, `formats`, JSON and SSE contracts remain available; asset and preview URLs are signed in `sig`. Send `image: true` to `/api/prepare` for animated images; use normal preparation for videos.
 
 Pixiv / Sketch directories use `entries: [{url, title, cover_url, kind, available}]`, `entry_total` and `next_page_url`. An empty `content_kind=directory` page is valid. `documents: [{title, content}]` holds plain text rendered through text nodes and local TXT downloads, never HTML. `animation_frames: [{file, delay}]` provides timing JSON. Original Ugoira ZIPs belong in `assets` (`kind=archive`); composed MP4 uses `formats[].format_spec=pixiv-ugoira`. Preparation re-fetches trusted platform metadata and keeps signing, quotas, cancellation and the existing job queue. Directory references are not signed as media; only their preview images are. Selecting a work uses the normal extraction endpoint.
 
 | Method | Path | Description |
 |---|---|---|
+| `POST` | `/api/parse` · `/api/parse/stream` | JSON `{url}`; used by the website to keep Signal share parameters out of query strings. GET compatibility endpoints remain available |
 | `GET` | `/api/parse?url=` | Extract from share text / links. Failures return a `reason`: `deleted` `login` `blocked` `network` `timeout` `unsupported` `empty` `parse` |
 | `GET` | `/api/parse/stream?url=` | Stream real extraction stages, followed by the same final result as the JSON endpoint; used by the website for stage messages, elapsed time, and a fallback indicator |
 | `GET` | `/api/proxy?url=&sig=&filename=&download=1` | Proxy direct media URLs with Range support; accepts only URLs signed in extraction results |
 | `POST` | `/api/prepare` | `{url \| page_url, sig, title}` caches the source video on the server and returns a `source_id` or background job |
-| `POST` | `/api/upload` | Upload a local video as multipart data; returns `source_id` |
-| `GET` | `/api/source/{id}` · `/strip?n=` | Source video with seeking support · thumbnail strip |
+| `POST` | `/api/upload` | Multipart video or animation; videos return a source, animations a preparation job, Spine ZIPs `animation_upload` and `animations` for selection |
+| `POST` | `/api/animation/prepare` | `{upload_id, animation}` selects an actual animation from an uploaded Spine ZIP and returns a preparation job |
+| `GET` | `/api/source/{id}` · `/strip?n=` | Source preview · thumbnail strip; `?download=1` downloads the prepared MP4. The additive source field `animation` identifies animation preparation |
 | `POST` | `/api/convert` | `{source_id, format: gif\|livephoto\|motionphoto, start, end, fps, width, dither, speed, key_time}` |
 | `POST` | `/api/live` | `{items: [{image_url, video_url, image_sig, video_sig}], format, title}` packages original platform Live Photos |
 | `POST` | `/api/download` | `{page_url, format_spec, sig, title}` downloads and merges media server-side with yt-dlp |

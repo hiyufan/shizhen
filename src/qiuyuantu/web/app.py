@@ -11,10 +11,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from .. import failures, feedback, stats, status
-from ..convert import config, jobs, net, relay, store, updater
+from ..convert import animation_uploads, config, jobs, net, relay, signal, store, updater
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
-from . import admin, legacy_api, media, pages, parse, proxy
+from . import access_log, admin, legacy_api, media, pages, parse, proxy
 from .middleware import site_headers
 from .rendering import STATIC_DIR
 
@@ -25,7 +25,9 @@ def _cleanup() -> None:
     """过期任务 / 原视频、没登记在册的孤儿文件、磁盘配额；统计只留最近几个月，失败链接只留 7 天。"""
     jobs.sweep()
     store.sweep()
-    known = jobs.known_paths() | store.known_paths()
+    animation_uploads.sweep()
+    signal.sweep()
+    known = jobs.known_paths() | store.known_paths() | animation_uploads.known_paths()
     store.sweep_orphans(known)
     store.enforce_quota(known)
     failures.prune()
@@ -113,6 +115,7 @@ def create_app() -> FastAPI:
     # 进程里任何库（yt-dlp、httpx……）都连不到内网，见 net.install_ssrf_guard
     net.install_ssrf_guard()
     # 去掉结尾斜杠的跳转由 middleware 用 301 做（框架自带的是 307）
+    access_log.install()
     app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.middleware("http")(site_headers)

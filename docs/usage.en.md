@@ -53,7 +53,12 @@
 | HoYoPlay | ✅ | Current launcher wallpapers | – | Original assets supplied by the platform | Choose one of four games for current China-launcher backgrounds; available videos can be converted; no historical archive |
 | Wuthering Waves | Current background video | First frame or still | – | Current international launcher assets | [Tool](https://ynvan.com/wuthering-waves-wallpaper); no historical archive; video converts to all three formats |
 | MiYouShe | – | Body images and GIFs | – | Platform-provided original files | [Tool](https://ynvan.com/miyoushe-images); single posts, excluding profiles, comments and HoYoLAB; GIF conversion available |
-| Bilibili themes & collections | Public videos | Public images | – | Current public assets | [Tool](https://ynvan.com/bilibili-assets); individual downloads and conversion; no account unlocks or proprietary animation packages |
+| Bilibili themes & collections | Public videos | Public images | – | Current public assets | [Tool](https://ynvan.com/bilibili-assets); individual downloads and conversion; no account unlocks; SVGA from public animation fields can be rendered |
+| 7TV / BetterTTV / FrankerFaceZ | – | Public emotes | – | Official CDN files | [Tool](https://ynvan.com/stream-emotes); individual emotes and bounded public sets, with animation conversion |
+| LINE Store | – | Public sticker previews | – | Original PNG / APNG | [Tool](https://ynvan.com/line-stickers); only files actually present in public previews, no purchased content, audio or custom text generation |
+| Signal | – | Public share packs | – | Actual WebP / PNG / GIF | [Tool](https://ynvan.com/signal-stickers); complete public share URL required; no account credentials, authenticated decryption and temporary asset references |
+| Noto Animated Emoji | – | Official emoji animations | – | WebP / GIF / Lottie | [Tool](https://ynvan.com/animated-emoji); WebP conversion, Google attribution under CC BY 4.0; Lottie files above existing bounds are download-only |
+| SVGA / PAG / VAP / Spine | Rendered MP4 | Transparent frames | – | Bounded rendering | [SVGA](https://ynvan.com/svga-to-gif), [other formats](https://ynvan.com/animation-converter); public file URLs or uploads; Spine region attachments only, complex constraints / meshes rejected |
 | Telegram stickers | – | TGS / WebP | – | Publicly cataloged files | [Tool](https://ynvan.com/telegram-stickers); no credentials; TGS converts to transparent GIF / Live Photo / Motion Photo; excludes private assets and complete live coverage |
 | WeChat Channels | Public videos | Public preview covers | – | Actual file quality; provider quality labels are not trusted | [Tool](https://ynvan.com/wechat-channels); official sph links; official preview identifies the post, public BugPk service supplies video; anonymous downloads and conversion; falls back to covers when unavailable |
 | Discord | – | Public catalog stickers | – | Actual APNG / Lottie JSON catalog format | [Tool](https://ynvan.com/discord-stickers); public pack store or ID links and matching sticker asset URLs; individual downloads, transparent GIF / Live Photo / Motion Photo conversion; no private server or chat access |
@@ -102,3 +107,9 @@ Steam’s large preview may be still; this tool selects its public animation fil
     <td align="center"><sub>Each tutorial answers a specific question</sub></td>
   </tr>
 </table>
+
+## Special animation files
+
+Upload SVGA, PAG, VAP or a Spine ZIP containing JSON, atlas and all images. Choose an animation after a Spine upload. Rendered animations can be downloaded as MP4 or converted into transparent GIF, Live Photo or Motion Photo. Transparency is preserved in GIF; photos use ordinary video frames. Ordinary MP4 uploads also detect VAP metadata.
+
+Self-hosted rendering requires `python -m pip install -e ".[web,cli,animations]"` and `playwright install --with-deps chromium`; the Web image includes these dependencies. SVGA / PAG input is limited to 8 MiB, VAP / Spine to 32 MiB; rendering also has frame, duration, pixel, memory and timeout limits. SVGA audio, PAG fonts, VAP external fusion resources and complex Spine features are explicitly rejected. See [implementation and verified scope](media-assets.md#本轮实现与验证).

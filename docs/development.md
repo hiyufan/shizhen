@@ -123,18 +123,20 @@ curl -s "https://ynvan.com/api/parse?url=https://v.douyin.com/8x0AeP8prW8/"
 }
 ```
 
-解析结果新增可选的 `assets` 数组，用于装扮和收藏集里的独立素材：`{url, label, kind: image|animation|video, cover_url, ext}`。这些不是同一视频的不同清晰度，也不是原生实况配对。原有 `images`、`formats`、JSON 与 SSE 接口继续可用；所有素材地址与预览图均在 `sig` 中签名。动态图片传 `image: true` 到 `/api/prepare`，视频使用普通准备流程。
+解析结果新增可选的 `assets` 数组，用于装扮和收藏集里的独立素材：`{url, label, kind: image|animation|video|archive|file, cover_url, ext}`。这些不是同一视频的不同清晰度，也不是原生实况配对。原有 `images`、`formats`、JSON 与 SSE 接口继续可用；所有素材地址与预览图均在 `sig` 中签名。动态图片传 `image: true` 到 `/api/prepare`，视频使用普通准备流程。
 
 Pixiv / Sketch 目录使用 `entries: [{url, title, cover_url, kind, available}]`、`entry_total` 与 `next_page_url`；`content_kind=directory` 的空页也是有效目录。`documents: [{title, content}]` 为纯文本，前端通过文本节点与本地 TXT 下载呈现，不能当 HTML 插入。`animation_frames: [{file, delay}]` 供时序 JSON 下载；Ugoira 原始 ZIP 放 `assets`（`kind=archive`），合成 MP4 使用 `formats[].format_spec=pixiv-ugoira`。准备任务重新读取可信平台元数据，并复用现有签名、配额、取消与任务队列。目录引用不签成媒体地址，只有预览图加入媒体签名；点击作品后走原有解析接口。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| `POST` | `/api/parse` · `/api/parse/stream` | JSON `{url}`；网页使用 POST，避免 Signal 分享包参数进入查询字符串。GET 兼容接口保留 |
 | `GET` | `/api/parse?url=` | 解析分享文字 / 链接。失败时返回 `reason`：`deleted` `login` `blocked` `network` `timeout` `unsupported` `empty` `parse` |
 | `GET` | `/api/parse/stream?url=` | 同一次解析实时发送阶段事件，最后发送与 JSON 接口相同的结果；网页据此显示轻松的阶段提示、等待时间和备用方式标记 |
 | `GET` | `/api/proxy?url=&sig=&filename=&download=1` | 转发直链，支持 Range；只接受解析结果里签过名的地址 |
 | `POST` | `/api/prepare` | `{url \| page_url, sig, title}` 把原视频缓存到服务端，返回 `source_id` 或后台任务 |
-| `POST` | `/api/upload` | multipart 上传本地视频，返回 `source_id` |
-| `GET` | `/api/source/{id}` · `/strip?n=` | 原视频（可拖动播放）· 缩略图条 |
+| `POST` | `/api/upload` | multipart 上传视频或动画；普通视频返回 source，动画返回准备任务，Spine ZIP 返回 `animation_upload` 和 `animations` 供选择 |
+| `POST` | `/api/animation/prepare` | `{upload_id, animation}` 从已上传 Spine ZIP 选择真实动画名称，返回准备任务 |
+| `GET` | `/api/source/{id}` · `/strip?n=` | 预览视频 · 缩略图条；`?download=1` 下载已准备的 MP4。source 元数据的 `animation` 表示来自动画准备 |
 | `POST` | `/api/convert` | `{source_id, format: gif\|livephoto\|motionphoto, start, end, fps, width, dither, speed, key_time}` |
 | `POST` | `/api/live` | `{items: [{image_url, video_url, image_sig, video_sig}], format, title}` 平台实况图原样打包 |
 | `POST` | `/api/download` | `{page_url, format_spec, sig, title}` 服务端用 yt-dlp 合并下载 |

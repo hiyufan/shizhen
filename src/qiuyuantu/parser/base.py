@@ -50,6 +50,13 @@ class VideoSource(Enum):
     MiYouShe = "miyoushe"  # 米游社单篇正文图集
     BiliAssets = "bilibili-assets"  # B 站公开装扮素材
     Telegram = "telegram"  # 公开目录收录的 Telegram 贴纸
+    Animation = "animation"
+    SevenTV = "7tv"
+    BetterTTV = "bttv"
+    FrankerFaceZ = "ffz"
+    Line = "line"
+    NotoEmoji = "noto-emoji"
+    Signal = "signal"
     Discord = "discord"  # Discord 官方公开目录中的贴纸
     WeChatChannels = "wechat-channels"  # 视频号匿名公开预览
     AppleMusic = "applemusic"  # Apple Music 公开封面
@@ -121,7 +128,7 @@ class MediaAsset:
 
     url: str
     label: str = ""
-    kind: str = "image"  # image / animation / video
+    kind: str = "image"  # image / animation / video / archive / file
     cover_url: str = ""
     ext: str = ""  # TGS 等原始格式不能按普通图片下载
 

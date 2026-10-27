@@ -29,7 +29,14 @@ def test_browser_language_quality_and_fallback(header, expected):
     assert browser_language(header) == expected
 
 
-def test_preferences_are_request_scoped_and_private():
+def test_preferences_are_request_scoped_and_private(monkeypatch):
+    async def no_warmup():
+        return None
+
+    # 页面偏好不依赖外部平台；安装可选浏览器依赖后仍保持此测试离线。
+    from qiuyuantu.parser import douyin
+
+    monkeypatch.setattr(douyin, "warmup_browser", no_warmup)
     with TestClient(web.app) as client:
         response = client.get("/", headers={"Accept-Language": "en-US"})
         doc = html.fromstring(response.text)

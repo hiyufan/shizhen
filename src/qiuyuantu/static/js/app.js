@@ -2,8 +2,8 @@
 
 import { isEnglish, serverMessage, t } from './i18n.js';
 
-import { api, parseWithProgress, useSignatures } from './api.js';
-import { openConverter } from './converter.js';
+import { parseWithProgress, useSignatures } from './api.js';
+import { cancelUpload, uploadFile } from './animation-upload.js';
 import { $, el, notice } from './dom.js';
 import { parseHints } from './parse-progress.js';
 import { renderResult } from './result.js';
@@ -34,6 +34,7 @@ let activeParse = null;
 askForStarAfterDownload($('#result'), $('#converter'));
 
 function hideOutputs() {
+  cancelUpload();
   $('#result').hidden = true;
   $('#converter').hidden = true;
 }
@@ -42,7 +43,7 @@ function hideOutputs() {
 const FROM = new URLSearchParams(location.search).get('src') === 'issue' ? '&src=issue' : '';
 
 async function parse(text, hints, signal) {
-  const r = await parseWithProgress('/api/parse/stream?url=' + encodeURIComponent(text) + FROM, hints.update, signal);
+  const r = await parseWithProgress('/api/parse/stream' + (FROM ? '?' + FROM.slice(1) : ''), hints.update, signal, { url: text });
   if (r.code !== 200) throw Object.assign(new Error(serverMessage(r.msg || t('解析失败'))), { reason: r.reason, feedback: r.feedback });
   return r.data;
 }
@@ -178,21 +179,19 @@ if (wallpaperGame) {
   });
 }
 
-// ---------- 本地视频
+// ---------- 本地视频与动画
+
+document.querySelectorAll('[data-upload-file]').forEach(button => {
+  button.addEventListener('click', () => $('#file-input').click());
+});
 
 $('#file-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  notice(t('正在上传 ') + file.name + '…', 'info');
-  const body = new FormData();
-  body.append('file', file);
-  try {
-    const r = await api('/api/upload', { method: 'POST', body });
-    notice('');
-    openConverter({ ready: r.source }, 'gif');
-  } catch (err) {
-    notice(t('上传失败：') + err.message);
-  }
+  cancelParse();
+  parseBusy(false);
+  hideOutputs();
+  await uploadFile(file);
   e.target.value = '';
 });
 
@@ -206,5 +205,5 @@ if (initial) {
 } else if (location.hash === '#upload') {
   // 选文件的对话框只能由用户点击打开，这里给一个就在眼前的按钮
   notice(t('转 GIF 或实况照片：'), 'info');
-  $('#notice').append(el('label', { class: 'btn sm dark', for: 'file-input' }, t('选择本地视频')));
+  $('#notice').append(el('button', { class: 'btn sm dark', type: 'button', onclick: () => $('#file-input').click() }, t('选择本地视频')));
 }

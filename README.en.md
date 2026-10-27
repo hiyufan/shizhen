@@ -48,6 +48,8 @@ Supports 30+ platforms. Available formats and quality depend on the source:
 | Public Discord stickers | [Public packs and individual stickers](https://ynvan.com/discord-stickers): original APNG / Lottie JSON downloads, transparent GIFs, Live Photos and Motion Photos; no account token |
 | Community & theme assets | [MiYouShe post images and GIFs](https://ynvan.com/miyoushe-images), [public Bilibili themes and collections](https://ynvan.com/bilibili-assets) |
 | Pixiv | [Illustrations, manga and novel TXT](https://ynvan.com/pixiv-download), [Ugoira to GIF / Live Photo](https://ynvan.com/pixiv-ugoira), [Sketch originals](https://ynvan.com/pixiv-sketch); browse public directories by page, without an account |
+| Stream emotes & public stickers | [7TV / BTTV / FFZ](https://ynvan.com/stream-emotes), [LINE previews](https://ynvan.com/line-stickers), [public Signal packs](https://ynvan.com/signal-stickers), [Noto animated emoji](https://ynvan.com/animated-emoji); original downloads and animation conversion |
+| Animation formats | [SVGA and Bilibili animations](https://ynvan.com/svga-to-gif), [PAG / VAP / Spine](https://ynvan.com/animation-converter); upload, preview and export transparent GIF / MP4 / Live Photos; Spine supports region attachments and explicitly rejects unsupported meshes and constraints |
 
 See the [platform and format matrix](docs/usage.en.md#supported-platforms) for supported media types, quality options and limitations. Music tools extract artwork only.
 

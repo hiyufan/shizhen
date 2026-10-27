@@ -6,10 +6,11 @@ import { el, sleep } from './dom.js';
 
 // 跨境链路偶尔断一下。GET 是幂等的，断了自动再试一次；POST 不重试，免得重复建任务
 async function fetchOnce(path, opts) {
-  const retry = (opts.method || 'GET') === 'GET' ? 1 : 0;
+  const { retry: allowedRetries, ...init } = opts;
+  const retry = allowedRetries ?? ((opts.method || 'GET') === 'GET' ? 1 : 0);
   for (let attempt = 0; ; attempt++) {
     try {
-      return await fetch(path, opts);
+      return await fetch(path, init);
     } catch (err) {
       if (opts.signal && opts.signal.aborted) throw err;
       if (attempt >= retry) throw new Error(t('网络连接中断了，检查一下网络再试'));
@@ -48,8 +49,11 @@ async function* streamEvents(response) {
   }
 }
 
-export async function parseWithProgress(path, update, signal) {
-  const response = await fetchOnce(path, { signal });
+export async function parseWithProgress(path, update, signal, payload) {
+  const opts = payload === undefined ? { signal } : {
+    signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), retry: 1,
+  };
+  const response = await fetchOnce(path, opts);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(serverMessage(body.detail || body.msg || t('请求失败 {status}', { status: response.status })));
