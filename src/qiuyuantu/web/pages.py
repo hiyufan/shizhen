@@ -29,13 +29,13 @@ from .rendering import (
 
 router = APIRouter()
 
+# /test 要允许爬虫读取页面和响应头的 noindex，才能移除旧索引；操作仍需统计口令。
 _ROBOTS = (
     "User-agent: *\n"
     "Disallow: /api/\n"
     "Disallow: /video/\n"
     "Disallow: /mcp\n"
     "Disallow: /stats\n"
-    "Disallow: /test\n"
     "Disallow: /*?url=\n"
     "Sitemap: {sitemap}\n"
 )

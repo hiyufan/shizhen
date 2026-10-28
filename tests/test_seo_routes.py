@@ -112,9 +112,43 @@ def test_indexed_pages_have_descriptive_titles_and_no_private_links(client):
         assert html.count('name="robots"') == 1
 
 
-def test_private_and_missing_pages_are_noindex(client):
+def test_private_and_missing_pages_are_noindex(client, monkeypatch):
+    from urllib.robotparser import RobotFileParser
+
+    from lxml import html
+
+    from qiuyuantu import stats
+
     assert "noindex" in client.get("/no-such-page").text
-    assert "Disallow: /test" in client.get("/robots.txt").text
+    monkeypatch.setattr(stats, "TOKEN", "test-mode-token")
+    robots = RobotFileParser()
+    robots.parse(client.get("/robots.txt").text.splitlines())
+    for agent in ("Googlebot", "bingbot"):
+        assert robots.can_fetch(agent, "http://testserver/test")
+        assert not robots.can_fetch(agent, "http://testserver/stats")
+        assert not robots.can_fetch(agent, "http://testserver/api/stats")
+    response = client.get("/test")
+    assert response.status_code == 200
+    assert response.headers["X-Robots-Tag"] == "noindex"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert html.fromstring(response.text).xpath('//meta[@name="robots"]/@content') == ["noindex,nofollow"]
+    assert "/test</loc>" not in client.get("/sitemap.xml").text
+
+
+def test_sitemap_page_revision_does_not_redate_other_pages(client, monkeypatch):
+    from dataclasses import replace
+    from xml.etree import ElementTree
+
+    from qiuyuantu import seo
+
+    monkeypatch.setattr(
+        seo, "PAGES", [replace(page, updated="2001-02-03") if page.slug == "bilibili" else page for page in seo.PAGES]
+    )
+    ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    tree = ElementTree.fromstring(client.get("/sitemap.xml").content)
+    dates = {node.findtext("sm:loc", namespaces=ns): node.findtext("sm:lastmod", namespaces=ns) for node in tree}
+    assert dates["http://testserver/bilibili"] == "2001-02-03"
+    assert dates["http://testserver/"] == seo.PAGE_BY_SLUG[""].updated
 
 
 @pytest.mark.parametrize("slug", ["qq-music-cover", "netease-music-cover"])

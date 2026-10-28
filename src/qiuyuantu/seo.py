@@ -44,6 +44,7 @@ class Page:
     # 这一页要带上的通用问答（COMMON_FAQ 的键）。整套 7 条只在首页出；落地页各挑最相关的 3 条，
     # 否则 600 多字的通用问答在 9 个页面上一字不差地重复，把各页独有内容稀释成一成左右。
     common: list[str] = field(default_factory=lambda: list(DEFAULT_COMMON))
+    updated: str = UPDATED  # 单页修订只更新自己的 sitemap 日期
 
     @property
     def path(self) -> str:
@@ -900,29 +901,30 @@ PAGES: list[Page] = [
         nav_label="B站下载",
         faq=[
             (
-                "为什么默认只给 480p？",
-                '网页端接口直接返回的播放地址就是 480p 的合一版本，点开立刻能播能存。720p 和 1080p 在 B站 是画面与声音分开存的，要服务器分别下载再合并，所以单列在"其他清晰度"里，点了需要等一会儿。',
+                "预览和下载的清晰度一样吗？",
+                "不一定。预览使用可直接播放的合一版本，「下载视频」选择本次解析到的最高画质档位。若画面与声音分开存储，服务器会先合并，再提供完整 MP4；也可在「其他清晰度」里手动选档。",
             ),
             (
                 "多 P 视频会解析哪一集？",
-                "固定解析第一 P。链接里的 p= 参数目前不生效，所以合集、课程这类多 P 投稿只能拿到第 1 集。",
+                "按链接里的 p= 参数选择分 P，例如 ?p=3 对应第 3 P；没有参数时默认第 1 P。想下载其他分 P，先在 B站 切到目标分 P，再复制含该参数的完整链接。",
             ),
         ],
         body=[
             (
                 "B站链接能拿到什么",
-                "默认给一个可直接播放的 480p MP4；720p、1080p 和仅音频由服务器下载合并后提供完整文件。BV 号完整链接、b23.tv 短链、手机 App 分享出来的链接都能直接贴。",
+                "预览与下载分开选择：预览优先使用可直接播放的版本，下载优先选择本次可用的最高画质。分离的音视频由服务器合并，也能单独下载原始音轨。BV 号完整链接、b23.tv 短链和 App 分享链接都支持。",
             ),
             (
                 "支持哪些链接",
-                "只支持普通投稿视频，也就是网址里带 /video/BV… 的那种。番剧、影视、课堂和直播回放（/bangumi/、/cheese/ 等路径）不在支持范围内。多 P 投稿固定取第一 P。",
+                "支持 /video/BV… 普通投稿及带 ?p= 的分 P 链接；/opus/ 动态链接可提取图片和实况。番剧、影视、课堂等付费或受限内容不在支持范围内。",
             ),
             (
                 "清晰度说明",
-                "不登录的情况下最高到 1080p。4K、HDR、杜比这些档位属于大会员专属，网页端不登录拿不到，这里也就不提供。仅音频档给的是从视频里分离出来的原始音轨，适合存 BGM 或者课程录音。",
+                "清晰度以本次解析结果为准，受原投稿和平台访问限制影响。需要登录或大会员权限的档位，只有部署者配置了相应有效凭证才可能提供；仅音频档保留原始音轨。",
             ),
         ],
         common=["free", "ratelimit", "links"],
+        updated="2026-10-28",
         guides=["bilibili-video-download", "video-to-gif", "video-to-live-photo"],
     ),
     Page(
@@ -1108,7 +1110,7 @@ def sitemap_xml(base: str) -> str:
             f"<changefreq>{freq}</changefreq><priority>{priority}</priority></url>"
         )
 
-    items = [url(p.path, "1.0" if not p.slug else "0.8") for p in PAGES]
+    items = [url(p.path, "1.0" if not p.slug else "0.8", lastmod=p.updated) for p in PAGES]
     items.append(url("/guides", "0.7"))
     items += [url(g.path, "0.7", "monthly", g.updated) for g in GUIDES]
     # 状态页每小时自检一次，lastmod 写今天（北京时间）
