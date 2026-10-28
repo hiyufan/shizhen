@@ -43,8 +43,8 @@
 - 保留语义化控件、可访问名称、键盘操作、可见焦点和状态播报。动画遵循 `prefers-reduced-motion`，触屏操作不能只依赖 hover。
 - 字体与界面资源继续自托管。前端逻辑写在 ES 模块中，模板通过 `js_url()` 加载；普通静态资源用 `static_url()`，模块内部用相对 import，保持现有内容哈希和预加载机制。
 - 主题默认跟随系统，语言默认按浏览器偏好协商；导航右侧的手动选择优先，并用 `qyt_theme` / `qyt_language` Cookie 保存。主题颜色复用 CSS 语义变量，不给内容区祖先新增层叠上下文。页面文案经 `t()` / `|t` 翻译，英文集中在 `locales/en.json`（内容）和 `locales/ui.en.json`（交互），动态数字使用命名占位符。接口保留原有文案契约，由前端翻译展示；带偏好的 HTML 不共享缓存。
-- 保留现有 CSP：不新增可执行内联脚本或 HTML 事件属性，不通过放宽 `script-src` 让新功能运行。现有关键 CSS 内联和 JSON-LD 按原机制维护。
-- 广告只在不带 `allow-same-origin` 或顶层导航权限的独立沙箱中运行，主页面 CSP 不放宽。帧内广告配置与状态回报使用外部经典脚本，以兼容广告商同步 `document.write`；普通页面交互仍使用 ES 模块。广告帧不计页面浏览，宽窄屏只加载对应一个广告位，说明见 [广告接入](docs/ads.md)。
+- 保留现有 CSP：普通功能不新增可执行内联脚本或 HTML 事件属性，不放宽 `script-src`。站长授权的 MultiTag 广告是例外，仅公开广告页放行配置的脚本来源和已核对的供应商脚本哈希，不使用 `unsafe-inline` / `unsafe-eval`。现有关键 CSS 内联和 JSON-LD 按原机制维护。
+- MultiTag 在公开页面的 `<head>` 后执行，管理页和错误页不加载，`PARSE_VIDEO_ADS=0` 同时关闭它和横幅。现有 `bauval.org` 横幅继续在不带 `allow-same-origin` 或顶层导航权限的独立沙箱中运行；帧内配置与状态回报使用外部经典脚本，以兼容广告商同步 `document.write`。普通页面交互仍使用 ES 模块，广告帧不计页面浏览，宽窄屏只加载对应一个横幅，说明见 [广告接入](docs/ads.md)。
 - 改标题、落地页或教程文案时检查字体覆盖。需要新字时运行 `python scripts/subset_fonts.py --src <NotoSerifCJK-OTF目录>`，同步提交生成的字体与 `fonts.css`；验证 `tests/test_fonts.py`，保留字体分片和体积限制。缺少字体源时明确报告，不用系统字体回退掩盖缺字。
 - 修改 `.sec` 背景或层级前阅读 CSS 中的层叠说明；其暖色背景与色团使用负 `z-index`，给祖先添加 `transform`、`filter` 或新的层叠上下文可能改变显示。
 

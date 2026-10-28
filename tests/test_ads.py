@@ -1,9 +1,10 @@
-"""广告仅在隔离文档执行，不能放宽工具页脚本策略或增加虚假浏览量。"""
+"""横幅隔离，MultiTag 在公开页头部执行，管理页不加载广告。"""
 
 import re
 
 import pytest
 from fastapi.testclient import TestClient
+from lxml import html
 
 from qiuyuantu import stats, web
 from qiuyuantu.web import ads
@@ -27,7 +28,7 @@ def test_banner_document_is_isolated_and_not_counted_as_a_page(monkeypatch, plac
     assert recorded == []
     page = client.get("/")
     assert "bauval.org" not in page.text
-    assert "script-src 'self';" in page.headers["content-security-policy"]
+    assert "bauval.org" not in page.headers["content-security-policy"]
     assert 'data-banner="/api/ads/"' in page.text
     assert "data-banner" not in client.get("/guide/video-to-gif").text
 
@@ -38,27 +39,43 @@ def test_ads_can_be_disabled_and_unknown_placements_never_load_scripts(monkeypat
     monkeypatch.setattr(ads, "ENABLED", False)
     assert client.get("/api/ads/mobile").status_code == 404
     assert 'data-banner="/api/ads/"' not in client.get("/").text
+    assert "quge5.com" not in client.get("/").text
+    assert "script-src 'self';" in client.get("/").headers["content-security-policy"]
 
 
-def test_additional_provider_tag_is_confined_to_the_ad_document():
-    from lxml import html
-
+def test_multitag_runs_once_in_public_page_head_and_not_in_banner_documents():
     client = TestClient(web.app)
     for placement in ("desktop", "mobile"):
         response = client.get(f"/api/ads/{placement}")
-        scripts = html.fromstring(response.text).xpath("//head/script")
+        assert "quge5.com" not in response.text
+        assert "quge5.com" not in response.headers["content-security-policy"]
+    for path in ("/", "/douyin", "/guides", "/guide/video-to-gif"):
+        response = client.get(path)
+        document = html.fromstring(response.text)
+        scripts = document.xpath('//script[@src="https://quge5.com/88/tag.min.js"]')
         assert len(scripts) == 1
+        assert scripts[0] is document.xpath("//head/*")[0]
         assert scripts[0].attrib == {
             "src": "https://quge5.com/88/tag.min.js",
             "data-zone": "302981",
             "async": "",
             "data-cfasync": "false",
         }
-        assert "https://quge5.com" in response.headers["content-security-policy"]
-    for path in ("/", "/douyin", "/guide/video-to-gif"):
+        csp = response.headers["content-security-policy"]
+        assert all(origin in csp for origin in ads.MULTITAG_SCRIPT_ORIGINS)
+        assert "worker-src 'self'" in csp
+
+
+def test_private_and_missing_pages_do_not_load_multitag(monkeypatch):
+    monkeypatch.setattr(stats, "TOKEN", "ad-private-test")
+    client = TestClient(web.app)
+    for path, status in (
+        ("/stats?token=ad-private-test", 200),
+        ("/test", 200),
+        ("/does-not-exist", 404),
+        ("/about", 410),
+    ):
         response = client.get(path)
+        assert response.status_code == status
         assert "quge5.com" not in response.text
-        assert "quge5.com" not in response.headers["content-security-policy"]
-    worker = client.get("/sw.js")
-    assert "quge5.com" not in worker.headers.get("content-security-policy", "")
-    assert "5gvci.com" not in worker.headers.get("content-security-policy", "")
+        assert "quge5.com" not in response.headers.get("content-security-policy", "")

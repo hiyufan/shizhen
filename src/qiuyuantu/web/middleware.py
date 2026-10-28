@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 
 from .. import seo, stats
 from ..convert import relay
-from . import attribution, limits
+from . import ads, attribution, limits
 
 _INLINE_SCRIPT = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
 _SCRIPT_ORIGIN = re.compile(r"<script\b[^>]*\bsrc=[\"']?(https://[^/\"'\s>]+)", re.I)
@@ -25,10 +25,13 @@ def _inline_hash(body: str) -> str:
 DIRECT_MEDIA_ORIGINS = ("https://video.twimg.com",)
 
 
-def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str = "") -> str:
+def build_csp(
+    analytics_html: str = "", edge_origin: str = "", media_origin: str = "", advertising: bool = False
+) -> str:
     """页面上我们自己的脚本都是 /js/ 下的外部文件，不许跑任何内联脚本（XSS 注入进来也执行不了）。
-    站长配的统计代码（PARSE_VIDEO_ANALYTICS）是唯一的例外：里面的内联脚本按内容哈希放行，
-    它引用的外部统计域名可以加载脚本、发图片打点和请求。JSON-LD 是数据块，浏览器不执行，不受影响。"""
+    站长配的统计代码（PARSE_VIDEO_ANALYTICS）里的内联脚本按内容哈希放行，
+    它引用的外部统计域名可以加载脚本、发图片打点和请求。公开广告页另放行配置的广告来源。
+    JSON-LD 是数据块，浏览器不执行，不受影响。"""
     hashes = [_inline_hash(body) for body in _INLINE_SCRIPT.findall(analytics_html) if body.strip()]
     origins = sorted(set(_SCRIPT_ORIGIN.findall(analytics_html)))
     third_party = "".join(" " + item for item in hashes + origins)
@@ -37,20 +40,25 @@ def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str
     direct = "".join(f" {o}" for o in DIRECT_MEDIA_ORIGINS)
     media_edge = (f" {media_origin}" if media_origin else "") + direct
     fetchable = "".join(f" {o}" for o in sorted({edge_origin, media_origin} - {""})) + direct
+    ad_sources = (*ads.MULTITAG_SCRIPT_ORIGINS, *ads.MULTITAG_INLINE_HASHES) if advertising else ()
+    ad_scripts = "".join(f" {source}" for source in ad_sources)
+    ad_resources = " https:" if advertising else ""
+    ad_directives = ("frame-src 'self' https:", "worker-src 'self'") if advertising else ()
     return "; ".join(
         (
             "default-src 'self'",
-            f"img-src 'self' data: blob:{edge}{hosts}",
+            f"img-src 'self' data: blob:{edge}{hosts}{ad_resources}",
             f"media-src 'self' blob:{media_edge}",
             "style-src 'self' 'unsafe-inline'",  # 首屏 CSS 是内联的，元素上也有 style 属性
-            f"script-src 'self'{third_party}",
+            f"script-src 'self'{third_party}{ad_scripts}",
             "font-src 'self'",
             # iPhone 存相册要 fetch 边缘节点上的图片 / 视频；推特视频开着代理的直接从推特拿
-            f"connect-src 'self'{fetchable}{hosts}",
+            f"connect-src 'self'{fetchable}{hosts}{ad_resources}",
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self'",
             "frame-ancestors 'none'",
+            *ad_directives,
         )
     )
 
@@ -59,6 +67,12 @@ CSP = build_csp(
     seo.ANALYTICS_HTML,
     relay.edge_origin() if relay.edge_img_enabled() else "",
     relay.edge_origin() if relay.edge_media_enabled() else "",
+)
+AD_CSP = build_csp(
+    seo.ANALYTICS_HTML,
+    relay.edge_origin() if relay.edge_img_enabled() else "",
+    relay.edge_origin() if relay.edge_media_enabled() else "",
+    advertising=True,
 )
 
 SECURITY_HEADERS = {

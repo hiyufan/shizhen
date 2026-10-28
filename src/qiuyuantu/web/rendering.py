@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import guides, seo, status
 from . import ads
+from .middleware import AD_CSP
 from .preferences import UI_ENGLISH_PATH, preferences, t, translate_data, ui_english
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -145,10 +146,15 @@ def page_context(
 def render(request: Request, name: str, context: dict, **kwargs):
     prefs = preferences(request)
     context.update(prefs)
+    context["multitag_enabled"] = (
+        ads.ENABLED and request.url.path not in {"/stats", "/test"} and kwargs.get("status_code", 200) == 200
+    )
     if context.get("json_ld") and prefs["locale"] == "en":
         data = translate_data(json.loads(context["json_ld"]), "en")
         context["json_ld"] = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
     response = templates.TemplateResponse(request=request, name=name, context=context, **kwargs)
+    if context["multitag_enabled"]:
+        response.headers["Content-Security-Policy"] = AD_CSP
     response.headers["Content-Language"] = "zh-CN" if prefs["locale"] == "zh" else "en"
     response.headers["Vary"] = "Accept-Language, Cookie"
     # HTML 带个人偏好：private 禁止 CDN / 代理把一个访客的语言 / 主题发给下一个访客，

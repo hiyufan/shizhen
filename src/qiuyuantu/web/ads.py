@@ -1,4 +1,4 @@
-"""横幅运行于独立沙箱，广告脚本不进入工具页面的执行环境。"""
+"""横幅保留独立沙箱；MultiTag 经站长授权在公开页面执行。"""
 
 import os
 
@@ -7,6 +7,9 @@ from fastapi import APIRouter, HTTPException, Request
 from .auth import SITE_AUTH
 
 ENABLED = os.environ.get("PARSE_VIDEO_ADS", "1") == "1"
+MULTITAG_SCRIPT_ORIGINS = ("https://quge5.com", "https://auqot.com", "https://ekhay.com", "https://b3mny.com")
+# Push 标签会注入 universal.min.js v3.1.647；仅允许该版本内容，不放行任意内联脚本。
+MULTITAG_INLINE_HASHES = ("'sha256-qZXLOaBiOd3D4Ypi84lO7EtsJFzqaGjAIHGiXgA/hDM='",)
 FORMATS = {
     "desktop": {"key": "b08de1e1c36939e9944cc6ba2c9831be", "width": 728, "height": 90},
     "mobile": {"key": "2ea4abab0d473f37f063621df7d49edc", "width": 320, "height": 50},
@@ -15,7 +18,7 @@ FORMATS = {
 CSP = "; ".join(
     (
         "default-src 'none'",
-        "script-src 'self' https://bauval.org https://quge5.com",
+        "script-src 'self' https://bauval.org",
         "style-src 'self'",
         "img-src https: data:",
         "connect-src https:",
