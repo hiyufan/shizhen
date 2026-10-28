@@ -257,6 +257,17 @@ def _write_history(conn, events: list, links: dict, labels: dict[int, audience.E
         )
 
 
+def stored_report(path: Path) -> dict:
+    events, _links = snapshot(path)
+    with contextlib.closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        stored = {
+            event_id: audience.Evidence(status, reason)
+            for event_id, status, reason in conn.execute("SELECT event_id, status, reason FROM event_audience")
+        }
+    labels = {event[0]: stored.get(event[0], audience.Evidence("unknown", "unclassified")) for event in events}
+    return report(events, labels)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, default=stats.DB_PATH)
@@ -271,7 +282,10 @@ def main() -> None:
     records = read_logs(args.log, events, hosts)
     labels = classifications(events, records)
     result = report(events, labels)
-    result["log_requests"] = len(records)
     if args.apply:
-        result["backup"] = str(apply(args.database, events, links, labels))
+        backup = apply(args.database, events, links, labels)
+        # 在线证据优先，应用结果必须按实际保留的分类汇总，不能再次输出推测覆盖结果。
+        result = stored_report(args.database)
+        result.update({"backup": str(backup), "processed_events": len(events)})
+    result["log_requests"] = len(records)
     print(json.dumps(result, ensure_ascii=False, indent=2))

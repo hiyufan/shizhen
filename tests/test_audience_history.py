@@ -2,7 +2,9 @@
 
 import contextlib
 import gzip
+import json
 import sqlite3
+import sys
 
 from qiuyuantu import audience, stats, traffic
 from qiuyuantu import audience_history as history
@@ -136,3 +138,15 @@ def test_backfill_does_not_overwrite_live_evidence_or_reused_rowid(tmp_path):
     history.apply(path, events, links, {1: audience.Evidence("human", "historical-browser-action")})
     with contextlib.closing(sqlite3.connect(path)) as conn:
         assert conn.execute("SELECT count(*) FROM event_audience").fetchone()[0] == 0
+
+
+def test_apply_report_uses_preserved_online_evidence(tmp_path, monkeypatch, capsys):
+    path = database(tmp_path)
+    events, links = history.snapshot(path)
+    history.apply(path, events, links, {1: audience.Evidence("human", "browser-interaction")})
+    monkeypatch.setattr(sys, "argv", ["clean_stats.py", "--database", str(path), "--apply"])
+    history.main()
+    result = json.loads(capsys.readouterr().out)
+    assert result["processed_events"] == result["events"] == 1
+    assert result["classes"]["human"]["events"] == 1
+    assert result["classes"]["unknown"]["events"] == 0
