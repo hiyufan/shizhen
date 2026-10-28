@@ -152,6 +152,9 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PARSE_VIDEO_STATS_TOKEN` | – | 设了才开始记录；打开 `/stats?token=<它>` 看每小时 / 每天有多少人在用、各平台成功率、失败原因、任务耗时 |
+| `PARSE_VIDEO_WINDSOR_API_KEY` | – | 站长报表只读同步凭证，仅放服务端；须同时配置统计口令和至少一个站点，见[绑定报表](analytics.md#绑定-google--bing-报表) |
+| `PARSE_VIDEO_SEARCH_GOOGLE_SITE` | – | Windsor 已授权的 Google Search Console 站点，例如 `sc-domain:example.com` |
+| `PARSE_VIDEO_SEARCH_BING_SITE` | – | Windsor 已授权的 Bing Webmaster 站点，例如 `https://example.com`；不是 Microsoft Ads 账号 |
 | `PARSE_VIDEO_STATS_IGNORE_IPS` | – | 不计入统计的 IP（逗号分隔），填服务器自己的公网地址；本机 / 内网地址本来就不计。站长自己的设备打开 `/test` 用统计口令开一次测试模式 |
 | `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | 解析失败反馈：建 issue 的私有仓库、只给它 Issues 读写的 fine-grained token、加密反馈邮箱的 32 字节密钥（base64）。和下面的 SMTP 四样都填了才显示「反馈这个问题」 |
 | `PARSE_VIDEO_SMTP_USER` / `_PASS` / `_HOST` / `_PORT` | – / – / `smtp.qq.com` / `465` | 反馈修好后发通知邮件的发件邮箱和 SMTP 授权码 |

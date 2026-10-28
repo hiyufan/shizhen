@@ -18,5 +18,8 @@ for _name in (
     "PARSE_VIDEO_TRUST_PROXY",
     "PARSE_VIDEO_PROXY",
     "PARSE_VIDEO_PROXY_CN",
+    "PARSE_VIDEO_WINDSOR_API_KEY",
+    "PARSE_VIDEO_SEARCH_GOOGLE_SITE",
+    "PARSE_VIDEO_SEARCH_BING_SITE",
 ):
     os.environ.pop(_name, None)

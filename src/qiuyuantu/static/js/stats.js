@@ -5,6 +5,7 @@ import { isEnglish, t as translate } from './i18n.js';
 import { $, el } from './dom.js';
 import { api } from './api.js';
 import { renderTraffic } from './stats-traffic.js';
+import { initSearchReports } from './stats-search.js';
 
 const TOKEN = $('[data-token]').dataset.token;
 const REFRESH_MS = 60000;
@@ -273,3 +274,4 @@ document.addEventListener('visibilitychange', () => {
 
 selectTab(range);
 startRefresh();
+initSearchReports();

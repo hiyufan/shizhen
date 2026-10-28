@@ -6,7 +6,7 @@
 
 | 数据 | 在哪里看 | 口径 |
 | --- | --- | --- |
-| 搜索展现、点击、CTR、平均排名 | Google Search Console、百度搜索资源平台、Bing Webmaster 的效果报表 | 搜索引擎报告；站内日志不能推算未点击的展现或完整搜索词 |
+| 搜索展现、点击、CTR、平均排名 | `/stats` → 搜索表现，或三家站长平台的效果报表 | 搜索引擎报告；站内日志不能推算未点击的展现或完整搜索词。当前 Windsor 的 Bing 数据源不提供排名 |
 | 搜索带来的会话和落地页 | `/stats` → 搜索带来的访问 | 根据入站 Referer 或明确标记的 organic 来源识别 |
 | 推广来源和活动 | `/stats` → 搜索与推广来源 | UTM 优先，其次是外部引荐域名 |
 | 成功解析、下载行为、转换成功 | 同一来源或落地页的行 | 按访问会话去重，分母是所选期间内开始的会话 |
@@ -16,6 +16,28 @@
 搜索点击和本站会话是两个口径：浏览器缓存、来源被应用隐藏、Cookie 被禁用、重复点击、机器人过滤和数据延迟都会产生差异。没有报表时写“未接入”，不能用 0 占位，也不能把三家平均排名直接取平均。查看报表需要对应站点的读取权限，站点验证文件本身不等于报表访问授权。
 
 官方入口：[Google Search Console](https://search.google.com/search-console)、[百度搜索资源平台](https://ziyuan.baidu.com/)、[Bing Webmaster Tools](https://www.bing.com/webmasters/)。
+
+## 绑定 Google / Bing 报表
+
+网站通过 Windsor Connectors API 读取已授权的站点；在 ChatGPT 中连接 Windsor 只授予对话工具访问权，不会自动给网站配置 API Key。先在 Windsor 连接 Google Search Console / Bing Webmaster 并选择站点，然后在服务器根目录的 `.env` 中配置：
+
+```dotenv
+PARSE_VIDEO_WINDSOR_API_KEY=<你的 Windsor API Key>
+PARSE_VIDEO_SEARCH_GOOGLE_SITE=sc-domain:example.com
+PARSE_VIDEO_SEARCH_BING_SITE=https://example.com
+```
+
+站点标识须与 Windsor 已连接账户完全一致；Google 也支持已授权的网址前缀资源。密钥仅保存在服务器，`.env` 使用 `chmod 600 .env`，已被 Git 和 Docker 构建上下文排除。不要把密钥贴到网页、聊天、提交或日志中。`docker-compose.yml` 会将这三个变量传入应用；还需要原有的 `PARSE_VIDEO_STATS_TOKEN`。直接运行 Python 时须先向进程注入环境变量，`main.py` 不会自动加载 `.env`。新增配置在应用重新启动后生效，按已有发布流程部署。
+
+应用启动后在后台同步，以后每 6 小时更新；失败后 15 分钟重试。同一进程不会重复同步同一平台。页面通过受统计口令保护的 `/api/stats/search` 读取本地快照，刷新页面不会直接调用 Windsor。页面提供 7 / 28 / 90 天范围，以各平台最新返回的日期为截止日，与前一等长期间比较；两家平台可能具有不同的日期范围。同步失败保留上一次成功的完整快照，并显示失败或旧报表状态。未绑定、等待首次同步、空报表和同步失败都不显示为零。
+
+快照保存在 `data/search_reports.db`，每个平台只保留最近一次成功获取的 180 天报表；成功换绑站点后删除该平台旧站点快照。同步参数显式排除当天；Google 关闭未定稿数据、仅取网页搜索，按太平洋时间解释日期。Bing 沿用平台返回日期，其当前连接器按关键词记录汇总，可能不包含后台总量中的全部查询，不提供页面和排名字段。未返回的日期不补零；最新记录日期不保证等同于平台的结算完成日期。
+
+总量单独请求日期维度，不从页面或关键词明细反推；CTR 使用点击 / 展现，Google 平均排名按展现加权，不对两家排名求平均。关键词 / 页面按点击数、展现排序，界面显示前 20 项。Google 的匿名查询、上游行数限制可能使明细之和小于总量；达到单次 50,000 行上限时明确标记明细不完整，总量达到上限则不更新快照。
+
+聚合关键词仅来自站长平台，不从浏览器来源读取、不与 IP 或访问会话关联。报表中的页面地址去除查询参数和 fragment。API Key 不入数据库、不回传浏览器，HTTP 客户端日志在报表请求期间屏蔽，错误只保存固定错误码。百度暂未自动同步，继续使用其后台报表。
+
+接口和凭证说明：[Windsor API 文档](https://windsor.ai/api-documentation/)。
 
 ## 推广链接
 

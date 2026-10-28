@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
-from .. import failures, feedback, stats, status
+from .. import failures, feedback, search_reports, stats, status
 from ..convert import animation_uploads, config, jobs, net, relay, signal, store, updater
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
@@ -66,6 +66,8 @@ def _background_jobs() -> list:
         coros.append(relay.keepalive())
     if stats.enabled():
         coros.append(stats.flusher())
+    if search_reports.enabled():
+        coros.append(search_reports.loop())
     if config.YTDLP_AUTOUPDATE_DAYS > 0:
         coros.append(updater.loop(config.YTDLP_AUTOUPDATE_DAYS))
     if os.environ.get("PARSE_VIDEO_STATUS_PROBE", "1") == "1":

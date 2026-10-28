@@ -32,3 +32,5 @@ for f in /etc/ssh/ssh_host_*_key.pub; do echo "<服务器 IP> $(cut -d' ' -f1,2 
 ## 搜索与推广效果
 
 配置 `PARSE_VIDEO_STATS_TOKEN` 后，`/stats` 展示搜索与推广来源、落地页及后续操作；新版本上线后开始采集，历史来源不能回填。推广链接生成、统计口径和三家搜索站长平台的报表入口见[搜索表现与推广来源](analytics.md)。
+
+Google / Bing 自动报表需要额外配置 Windsor API Key 和站点标识，见[绑定报表](analytics.md#绑定-google--bing-报表)。凭证只放服务器 `.env`，发布后应用在后台同步；Google / Bing 授权成功不代表网站已经配置或部署。

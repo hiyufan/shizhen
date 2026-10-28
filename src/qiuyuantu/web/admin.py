@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from .. import failures, seo, stats
+from .. import failures, search_reports, seo, stats
 from ..convert import config, jobs, store, updater, youtube_native
 from . import limits, parse
 from .auth import require_stats_enabled, require_stats_token
@@ -59,6 +60,13 @@ async def api_stats(range: str = "24h", tz: int = 0):  # noqa: A002 - 查询参�
     data = await asyncio.to_thread(stats.summary, since, now, step, tz_offset)
     data["failures"] = await asyncio.to_thread(failures.recent, max(since, now - failures.RETENTION_DAYS * 86400))
     data["range"] = range
+    return JSONResponse(data, headers=PRIVATE_PAGE_HEADERS)
+
+
+@router.get("/api/stats/search", dependencies=[Depends(require_stats_token)])
+async def api_search_stats(days: Literal["7", "28", "90"] = "28"):
+    """只读已同步的搜索报表；刷新页面不会请求第三方或暴露凭证。"""
+    data = await asyncio.to_thread(search_reports.summary, int(days))
     return JSONResponse(data, headers=PRIVATE_PAGE_HEADERS)
 
 

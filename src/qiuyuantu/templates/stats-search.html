@@ -1,0 +1,44 @@
+<section class="card dash-failures search-performance" id="search-performance" aria-labelledby="search-heading">
+  <div class="search-heading">
+    <h3 id="search-heading">{{ t("搜索表现 · 站长报表") }}</h3>
+    <label>{{ t("搜索报表范围") }}
+      <select id="search-days">
+        <option value="7">{{ t("最近 7 个报表日") }}</option>
+        <option value="28" selected>{{ t("最近 28 个报表日") }}</option>
+        <option value="90">{{ t("最近 90 个报表日") }}</option>
+      </select>
+    </label>
+  </div>
+  <p class="dash-note">{{ t("每 6 小时同步，以各平台最新返回日期向前统计。数据可能延迟，缺失日期不补零；与站内访问量分开查看。") }}</p>
+  <p class="dash-note" id="search-status" role="status" aria-live="polite">{{ t("正在加载搜索报表…") }}</p>
+  <div class="search-providers">
+    {% for provider, name in [('google', 'Google Search Console'), ('bing', 'Bing Webmaster')] %}
+    <article class="search-provider dash-acquisition" id="search-{{ provider }}" aria-label="{{ name }}">
+      <div class="search-provider-heading"><h4>{{ name }}</h4><span class="search-state" data-search-state>{{ t("等待报表") }}</span></div>
+      <p class="dash-note" data-search-account></p>
+      <p class="dash-note" data-search-message>{{ t("正在加载搜索报表…") }}</p>
+      <div data-search-content hidden>
+        <dl class="search-metrics">
+          {% for metric, label in [('impressions', '展现'), ('clicks', '搜索点击'), ('ctr', '点击率'), ('position', '平均排名')] %}
+          <div><dt>{{ label|t }}</dt><dd data-search-metric="{{ metric }}">–</dd></div>
+          {% endfor %}
+        </dl>
+        <p class="dash-note" data-search-period></p>
+        <p class="dash-note" data-search-comparison></p>
+        <p class="dash-note">{% if provider == 'google' %}{{ t("Google 为网页搜索，日期按太平洋时间。匿名查询不会出现在关键词明细中，明细之和可能小于总量。") }}{% else %}{{ t("Bing 按平台返回的关键词记录汇总，日期沿用平台报表；可能与后台总量不同。当前数据源未提供排名和页面明细。") }}{% endif %}</p>
+        <p class="dash-note" data-search-limited hidden>{{ t("明细达到读取上限，仅展示已返回的数据。") }}</p>
+        {% for kind, label in [('queries', '关键词'), ('pages', '搜索页面'), ('daily', '每日表现')] %}
+        {% if provider != 'bing' or kind != 'pages' %}
+        <details class="dash-table">
+          <summary>{{ label|t }}{% if kind != 'daily' %} · {{ t("前 20 项") }}{% endif %}</summary>
+          <div class="tbl-wrap" role="region" tabindex="0" aria-label="{{ name }} {{ label|t }}">
+            <table data-search-table="{{ kind }}"><thead><tr><th>{{ ('日期' if kind == 'daily' else label)|t }}</th><th>{{ t("展现") }}</th><th>{{ t("搜索点击") }}</th><th>{{ t("点击率") }}</th>{% if provider == 'google' %}<th>{{ t("平均排名") }}</th>{% endif %}</tr></thead><tbody></tbody></table>
+          </div>
+        </details>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>

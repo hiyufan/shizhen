@@ -24,6 +24,8 @@
       <div class="card stat"><div class="num" data-k="download">–</div><div class="cap">{{ t("下载请求次数") }}</div></div>
     </div>
 
+    {% include "stats-search.html" %}
+
     <div class="card dash-failures dash-acquisition" id="traffic">
       <h3>{{ t("搜索与推广来源") }}</h3>
       <p class="dash-note">{{ t("访问会话有效期为 30 分钟，浏览页面时续期，新的外部来源会开始新会话。下表按所选期间开始的会话统计，成功解析、下载行为和转换成功都按会话去重。") }}</p>
@@ -39,7 +41,7 @@
     <div class="card dash-failures dash-acquisition">
       <h3>{{ t("搜索带来的访问") }}</h3>
       <div class="tbl-wrap" role="region" tabindex="0" aria-label="{{ t("搜索带来的访问") }}"><table id="tbl-search"><thead><tr><th>{{ t("搜索引擎 / 落地页") }}</th><th>{{ t("访问会话") }}</th><th>{{ t("成功解析") }}</th><th>{{ t("下载行为") }}</th><th>{{ t("转换成功") }}</th></tr></thead><tbody></tbody></table></div>
-      <p class="dash-note">{{ t("这里统计搜索来源的到访。搜索展现、点击率、关键词和平均排名需要站长平台报表，尚未接入时不显示为零，也不与站内访问量混算。") }}</p>
+      <p class="dash-note">{{ t("这里统计搜索来源的实际到访。搜索平台报表见上方；搜索点击与访问会话口径不同，不合并计算。") }}</p>
       <div class="traffic-links">
         <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Google Search Console</a>
         <a href="https://ziyuan.baidu.com/" target="_blank" rel="noopener noreferrer">{{ t("百度搜索资源平台") }}</a>
