@@ -18,7 +18,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-**[在线体验](https://ynvan.com)** · [快速开始](#快速开始) · [文档](#文档) · [反馈问题](https://github.com/hiyufan/shizhen/issues)
+**[在线体验](https://ynvan.com/?utm_source=github&utm_medium=referral&utm_campaign=readme)** · [快速开始](#快速开始) · [文档](#文档) · [反馈问题](https://github.com/hiyufan/shizhen/issues)
 
 </div>
 
@@ -42,14 +42,14 @@
 | 素材 | 平台 |
 | --- | --- |
 | 视频与图片 | 抖音、小红书、快手、YouTube、X、B站、Instagram 等 |
-| 静态与动态封面 | [QQ 音乐](https://ynvan.com/qq-music-cover)、[网易云音乐](https://ynvan.com/netease-music-cover)、[Apple Music](https://ynvan.com/apple-music-cover) |
-| 游戏素材 | [Steam 动态头像、头像框与背景](https://ynvan.com/steam-assets)、[HoYoPlay 启动器壁纸](https://ynvan.com/hoyoplay-wallpaper)、[鸣潮国际服壁纸](https://ynvan.com/wuthering-waves-wallpaper) |
-| 匿名贴纸与视频号 | [Telegram 已收录贴纸](https://ynvan.com/telegram-stickers)（TGS 转透明 GIF / 实况）、[视频号下载](https://ynvan.com/wechat-channels)（公益接口补充视频，支持下载与转换） |
-| Discord 公开贴纸 | [公开贴纸包与单个贴纸](https://ynvan.com/discord-stickers)：原始 APNG / Lottie JSON 下载，转透明 GIF、实况与动态照片，无需账号 Token |
-| 社区与装扮 | [米游社帖子原图与 GIF](https://ynvan.com/miyoushe-images)、[B站装扮与收藏集公开素材](https://ynvan.com/bilibili-assets) |
-| Pixiv | [插画、漫画与小说 TXT](https://ynvan.com/pixiv-download)、[Ugoira 转 GIF / 实况](https://ynvan.com/pixiv-ugoira)、[Sketch 原图](https://ynvan.com/pixiv-sketch)；公开目录按页选择作品，无需账号 |
-| 直播表情与公开贴图 | [7TV / BTTV / FFZ](https://ynvan.com/stream-emotes)、[LINE 商店预览](https://ynvan.com/line-stickers)、[Signal 公开包](https://ynvan.com/signal-stickers)、[Noto 动态 Emoji](https://ynvan.com/animated-emoji)；原文件下载与动画转换 |
-| 特殊动画 | [SVGA 与 B站装扮动画](https://ynvan.com/svga-to-gif)、[PAG / VAP / Spine](https://ynvan.com/animation-converter)；上传、预览、透明 GIF / MP4 / 实况；Spine 当前支持区域附件，复杂约束与网格明确报不支持 |
+| 静态与动态封面 | [QQ 音乐](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[网易云音乐](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme) |
+| 游戏素材 | [Steam 动态头像、头像框与背景](https://ynvan.com/steam-assets?utm_source=github&utm_medium=referral&utm_campaign=readme)、[HoYoPlay 启动器壁纸](https://ynvan.com/hoyoplay-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme)、[鸣潮国际服壁纸](https://ynvan.com/wuthering-waves-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme) |
+| 匿名贴纸与视频号 | [Telegram 已收录贴纸](https://ynvan.com/telegram-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme)（TGS 转透明 GIF / 实况）、[视频号下载](https://ynvan.com/wechat-channels?utm_source=github&utm_medium=referral&utm_campaign=readme)（公益接口补充视频，支持下载与转换） |
+| Discord 公开贴纸 | [公开贴纸包与单个贴纸](https://ynvan.com/discord-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme)：原始 APNG / Lottie JSON 下载，转透明 GIF、实况与动态照片，无需账号 Token |
+| 社区与装扮 | [米游社帖子原图与 GIF](https://ynvan.com/miyoushe-images?utm_source=github&utm_medium=referral&utm_campaign=readme)、[B站装扮与收藏集公开素材](https://ynvan.com/bilibili-assets?utm_source=github&utm_medium=referral&utm_campaign=readme) |
+| Pixiv | [插画、漫画与小说 TXT](https://ynvan.com/pixiv-download?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Ugoira 转 GIF / 实况](https://ynvan.com/pixiv-ugoira?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Sketch 原图](https://ynvan.com/pixiv-sketch?utm_source=github&utm_medium=referral&utm_campaign=readme)；公开目录按页选择作品，无需账号 |
+| 直播表情与公开贴图 | [7TV / BTTV / FFZ](https://ynvan.com/stream-emotes?utm_source=github&utm_medium=referral&utm_campaign=readme)、[LINE 商店预览](https://ynvan.com/line-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Signal 公开包](https://ynvan.com/signal-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Noto 动态 Emoji](https://ynvan.com/animated-emoji?utm_source=github&utm_medium=referral&utm_campaign=readme)；原文件下载与动画转换 |
+| 特殊动画 | [SVGA 与 B站装扮动画](https://ynvan.com/svga-to-gif?utm_source=github&utm_medium=referral&utm_campaign=readme)、[PAG / VAP / Spine](https://ynvan.com/animation-converter?utm_source=github&utm_medium=referral&utm_campaign=readme)；上传、预览、透明 GIF / MP4 / 实况；Spine 当前支持区域附件，复杂约束与网格明确报不支持 |
 
 支持的视频、图集、实况类型与清晰度见[完整平台表](docs/usage.md#支持的平台)。音乐工具只提取封面。
 
@@ -57,7 +57,7 @@
 
 ### 在线使用
 
-打开 **[ynvan.com](https://ynvan.com)**，粘贴分享链接，点击「解析」后下载素材，或选一段进行转换。使用本站无需注册账号，具体操作见[教程](https://ynvan.com/guides)。
+打开 **[ynvan.com](https://ynvan.com/?utm_source=github&utm_medium=referral&utm_campaign=readme)**，粘贴分享链接，点击「解析」后下载素材，或选一段进行转换。使用本站无需注册账号，具体操作见[教程](https://ynvan.com/guides?utm_source=github&utm_medium=referral&utm_campaign=readme)。
 
 ### 本地运行
 
@@ -115,7 +115,7 @@ Compose 包含应用、Caddy 自动 HTTPS、YouTube PO Token 服务与 WARP 备�
 <details>
 <summary>为什么支持的平台也会解析失败？</summary>
 
-分享链接可能过期，内容可能需要登录，平台也可能限制服务器出口。可以先查看[平台状态](https://ynvan.com/status)、重新复制链接；自行部署时，再按[部署排障](docs/self-hosting.md#生产部署)检查代理与 Cookie。
+分享链接可能过期，内容可能需要登录，平台也可能限制服务器出口。可以先查看[平台状态](https://ynvan.com/status?utm_source=github&utm_medium=referral&utm_campaign=readme)、重新复制链接；自行部署时，再按[部署排障](docs/self-hosting.md#生产部署)检查代理与 Cookie。
 
 </details>
 

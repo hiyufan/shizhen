@@ -18,7 +18,7 @@ Save videos and original images from Douyin, Xiaohongshu, YouTube, X, Bilibili a
 
 [简体中文](README.md) · [English](README.en.md)
 
-**[Try it online](https://ynvan.com)** · [Quick start](#quick-start) · [Documentation](#documentation) · [Report a bug](https://github.com/hiyufan/shizhen/issues)
+**[Try it online](https://ynvan.com/?utm_source=github&utm_medium=referral&utm_campaign=readme)** · [Quick start](#quick-start) · [Documentation](#documentation) · [Report a bug](https://github.com/hiyufan/shizhen/issues)
 
 </div>
 
@@ -42,14 +42,14 @@ Supports 30+ platforms. Available formats and quality depend on the source:
 | Media | Platforms |
 | --- | --- |
 | Videos and images | Douyin, Xiaohongshu, Kuaishou, YouTube, X, Bilibili, Instagram and more |
-| Still and animated artwork | [QQ Music](https://ynvan.com/qq-music-cover), [NetEase Cloud Music](https://ynvan.com/netease-music-cover), [Apple Music](https://ynvan.com/apple-music-cover) |
-| Game assets | [Steam animated avatars, frames and backgrounds](https://ynvan.com/steam-assets), [HoYoPlay launcher wallpapers](https://ynvan.com/hoyoplay-wallpaper), [Wuthering Waves international wallpaper](https://ynvan.com/wuthering-waves-wallpaper) |
-| Anonymous stickers & Channels | [Cataloged Telegram stickers](https://ynvan.com/telegram-stickers) (TGS to transparent GIF / Live Photo), [Channels downloader](https://ynvan.com/wechat-channels) (public service supplies video for downloading and conversion) |
-| Public Discord stickers | [Public packs and individual stickers](https://ynvan.com/discord-stickers): original APNG / Lottie JSON downloads, transparent GIFs, Live Photos and Motion Photos; no account token |
-| Community & theme assets | [MiYouShe post images and GIFs](https://ynvan.com/miyoushe-images), [public Bilibili themes and collections](https://ynvan.com/bilibili-assets) |
-| Pixiv | [Illustrations, manga and novel TXT](https://ynvan.com/pixiv-download), [Ugoira to GIF / Live Photo](https://ynvan.com/pixiv-ugoira), [Sketch originals](https://ynvan.com/pixiv-sketch); browse public directories by page, without an account |
-| Stream emotes & public stickers | [7TV / BTTV / FFZ](https://ynvan.com/stream-emotes), [LINE previews](https://ynvan.com/line-stickers), [public Signal packs](https://ynvan.com/signal-stickers), [Noto animated emoji](https://ynvan.com/animated-emoji); original downloads and animation conversion |
-| Animation formats | [SVGA and Bilibili animations](https://ynvan.com/svga-to-gif), [PAG / VAP / Spine](https://ynvan.com/animation-converter); upload, preview and export transparent GIF / MP4 / Live Photos; Spine supports region attachments and explicitly rejects unsupported meshes and constraints |
+| Still and animated artwork | [QQ Music](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [NetEase Cloud Music](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme) |
+| Game assets | [Steam animated avatars, frames and backgrounds](https://ynvan.com/steam-assets?utm_source=github&utm_medium=referral&utm_campaign=readme), [HoYoPlay launcher wallpapers](https://ynvan.com/hoyoplay-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme), [Wuthering Waves international wallpaper](https://ynvan.com/wuthering-waves-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme) |
+| Anonymous stickers & Channels | [Cataloged Telegram stickers](https://ynvan.com/telegram-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme) (TGS to transparent GIF / Live Photo), [Channels downloader](https://ynvan.com/wechat-channels?utm_source=github&utm_medium=referral&utm_campaign=readme) (public service supplies video for downloading and conversion) |
+| Public Discord stickers | [Public packs and individual stickers](https://ynvan.com/discord-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme): original APNG / Lottie JSON downloads, transparent GIFs, Live Photos and Motion Photos; no account token |
+| Community & theme assets | [MiYouShe post images and GIFs](https://ynvan.com/miyoushe-images?utm_source=github&utm_medium=referral&utm_campaign=readme), [public Bilibili themes and collections](https://ynvan.com/bilibili-assets?utm_source=github&utm_medium=referral&utm_campaign=readme) |
+| Pixiv | [Illustrations, manga and novel TXT](https://ynvan.com/pixiv-download?utm_source=github&utm_medium=referral&utm_campaign=readme), [Ugoira to GIF / Live Photo](https://ynvan.com/pixiv-ugoira?utm_source=github&utm_medium=referral&utm_campaign=readme), [Sketch originals](https://ynvan.com/pixiv-sketch?utm_source=github&utm_medium=referral&utm_campaign=readme); browse public directories by page, without an account |
+| Stream emotes & public stickers | [7TV / BTTV / FFZ](https://ynvan.com/stream-emotes?utm_source=github&utm_medium=referral&utm_campaign=readme), [LINE previews](https://ynvan.com/line-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme), [public Signal packs](https://ynvan.com/signal-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme), [Noto animated emoji](https://ynvan.com/animated-emoji?utm_source=github&utm_medium=referral&utm_campaign=readme); original downloads and animation conversion |
+| Animation formats | [SVGA and Bilibili animations](https://ynvan.com/svga-to-gif?utm_source=github&utm_medium=referral&utm_campaign=readme), [PAG / VAP / Spine](https://ynvan.com/animation-converter?utm_source=github&utm_medium=referral&utm_campaign=readme); upload, preview and export transparent GIF / MP4 / Live Photos; Spine supports region attachments and explicitly rejects unsupported meshes and constraints |
 
 See the [platform and format matrix](docs/usage.en.md#supported-platforms) for supported media types, quality options and limitations. Music tools extract artwork only.
 
@@ -57,7 +57,7 @@ See the [platform and format matrix](docs/usage.en.md#supported-platforms) for s
 
 ### Use it online
 
-Open **[ynvan.com](https://ynvan.com)**, paste a share link, and select **Parse**. Download the result, or choose a clip to convert. No account is required on the site. Step-by-step instructions are in the [guides](https://ynvan.com/guides).
+Open **[ynvan.com](https://ynvan.com/?utm_source=github&utm_medium=referral&utm_campaign=readme)**, paste a share link, and select **Parse**. Download the result, or choose a clip to convert. No account is required on the site. Step-by-step instructions are in the [guides](https://ynvan.com/guides?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 ### Run locally
 
@@ -115,7 +115,7 @@ The webpage exports paired JPG + MOV files; it cannot write a Live Photo directl
 <details>
 <summary>Why does extraction fail on a supported platform?</summary>
 
-Links can expire, content may require login, and platforms can restrict server IPs. Check the [platform status](https://ynvan.com/status), copy a fresh share link, and consult [self-hosting troubleshooting](docs/self-hosting.en.md#production-deployment) if you run your own instance.
+Links can expire, content may require login, and platforms can restrict server IPs. Check the [platform status](https://ynvan.com/status?utm_source=github&utm_medium=referral&utm_campaign=readme), copy a fresh share link, and consult [self-hosting troubleshooting](docs/self-hosting.en.md#production-deployment) if you run your own instance.
 
 </details>
 

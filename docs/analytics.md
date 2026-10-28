@@ -43,6 +43,8 @@ PARSE_VIDEO_SEARCH_BING_SITE=https://example.com
 
 在 `/stats` 展开“生成推广链接”，选择站内落地页并填写来源、媒介和推广标记。地址使用配置的 `PARSE_VIDEO_SITE_URL`，不包含统计口令。分享给用户的是生成的公开工具页链接。
 
+中英文 README 指向本站公开页面的链接统一使用 `github / referral / readme`，具体入口可在落地页表中区分。下表其余场景是命名示例，不代表已经投稿或投放；只有实际发布时才使用对应标记，自然收录的外链保留域名归因。
+
 | 场景 | `utm_source` | `utm_medium` | `utm_campaign` |
 | --- | --- | --- | --- |
 | GitHub README | `github` | `referral` | `readme` |
