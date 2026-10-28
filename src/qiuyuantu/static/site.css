@@ -237,6 +237,17 @@ a.card { display: block; text-decoration: none; }
 .cover-media { width: 100%; max-width: 520px; align-self: start; border-radius: 16px; overflow: hidden; background: var(--card); }
 .cover-media img { width: 100%; aspect-ratio: 1; object-fit: contain; }
 .hero .music-supports { margin-top: 8px; }
+
+/* 固定预留横幅高度，加载、无填充或被拦截都不推动工具与下方内容。 */
+.banner-slot { display: none; width: 320px; margin: 36px calc((100% - 320px) / 2); text-align: left; --banner-height: 50px; }
+.banner-label { display: block; margin-bottom: 8px; font: 11px var(--sans); color: var(--ink-3); letter-spacing: .08em; }
+.banner-body { position: relative; height: var(--banner-height); background: var(--card); border-radius: 6px; overflow: hidden; }
+.banner-body iframe { display: block; position: absolute; inset: 0; border: 0; }
+.banner-fallback { display: grid; height: 100%; place-items: center; visibility: hidden; color: var(--ink-3); font: 12px var(--sans); }
+.banner-slot[data-state="unavailable"] .banner-fallback { visibility: visible; }
+.banner-slot:not([data-state="loaded"]) iframe { visibility: hidden; }
+@media (min-width: 320px) { .banner-slot { display: block; } }
+@media (min-width: 860px) { .banner-slot { width: 728px; margin-inline: auto; --banner-height: 90px; } }
 .media.portrait { justify-content: flex-start; background: transparent; }
 .media.portrait video, .media.portrait img { border-radius: 16px; max-height: 520px; }
 .side { display: flex; flex-direction: column; gap: 10px; }

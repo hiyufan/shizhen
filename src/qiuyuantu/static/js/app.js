@@ -5,6 +5,7 @@ import { isEnglish, serverMessage, t } from './i18n.js';
 import { parseWithProgress, useSignatures } from './api.js';
 import { cancelUpload, uploadFile } from './animation-upload.js';
 import { $, el, notice } from './dom.js';
+import { setupAdvertising } from './advertising.js';
 import { parseHints } from './parse-progress.js';
 import { renderResult } from './result.js';
 import { closeConverter } from './converter.js';
@@ -33,6 +34,7 @@ const hasLink = (text) => /https?:\/\//.test(text);
 let activeParse = null;
 
 askForStarAfterDownload($('#result'), $('#converter'));
+setupAdvertising();
 
 function hideOutputs() {
   cancelUpload();

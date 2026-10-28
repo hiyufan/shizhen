@@ -13,6 +13,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from .. import guides, seo, status
+from . import ads
 from .preferences import UI_ENGLISH_PATH, preferences, t, translate_data, ui_english
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -169,6 +170,7 @@ def render_tool_page(request: Request, page: seo.Page):
         page=page,
     )
     ctx["faq"] = page.all_faq
+    ctx["ads_enabled"] = ads.ENABLED
     ctx["animation_upload"] = page.slug in {"svga-to-gif", "animation-converter"}
     ctx["sticker_examples"] = seo.PUBLIC_ASSET_EXAMPLES.get(page.slug, [])
     ctx["related_guides"] = guides.pick(page.guides)

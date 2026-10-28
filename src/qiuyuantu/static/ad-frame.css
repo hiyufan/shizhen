@@ -1,0 +1,4 @@
+html, body { margin: 0; overflow: hidden; background: transparent; }
+.desktop { width: 728px; height: 90px; }
+.mobile { width: 320px; height: 50px; }
+iframe { display: block; border: 0; }

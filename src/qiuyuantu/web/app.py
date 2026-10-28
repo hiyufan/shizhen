@@ -14,7 +14,7 @@ from .. import failures, feedback, search_reports, stats, status
 from ..convert import animation_uploads, config, jobs, net, relay, signal, store, updater
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
-from . import access_log, admin, legacy_api, media, pages, parse, proxy
+from . import access_log, admin, ads, legacy_api, media, pages, parse, proxy
 from .middleware import site_headers
 from .rendering import STATIC_DIR
 
@@ -123,7 +123,7 @@ def create_app() -> FastAPI:
     app.middleware("http")(site_headers)
     mcp = _mount_mcp(app)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    for module in (legacy_api, parse, proxy, media, admin):
+    for module in (legacy_api, parse, proxy, media, admin, ads):
         app.include_router(module.router)
     # 放在最后：/{slug} 是兜底路由，不能抢在 /robots.txt /sitemap.xml 前面
     app.include_router(pages.router)

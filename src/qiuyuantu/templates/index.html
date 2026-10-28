@@ -33,6 +33,12 @@
     <div id="notice" class="notice" aria-live="polite" hidden></div>
     <div id="result" hidden></div>
     <div id="converter" hidden></div>
+    {% if ads_enabled %}
+    <aside class="banner-slot" data-banner="/api/ads/" data-title="{{ t('广告') }}" data-state="waiting" aria-label="{{ t('广告') }}">
+      <span class="banner-label">{{ t('广告') }}</span>
+      <div class="banner-body"><span class="banner-fallback">{{ t('广告暂不可用') }}</span></div>
+    </aside>
+    {% endif %}
     {% if page.body %}
     <div class="page-body">
       <div class="grid3">

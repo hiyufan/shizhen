@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advertisement</title>
+  <link rel="stylesheet" href="{{ static_url('ad-frame.css') }}">
+</head>
+<body data-key="{{ ad.key }}" data-width="{{ ad.width }}" data-height="{{ ad.height }}" class="{{ 'mobile' if ad.width == 320 else 'desktop' }}">
+  <script src="{{ js_url('ad-frame-bootstrap.js') }}"></script>
+  <script src="https://bauval.org/22/{{ ad.key }}"></script>
+</body>
+</html>
