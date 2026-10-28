@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
-from .. import guides, seo, status
+from .. import guides, seo, stats, status
 from . import ads
 from .middleware import AD_CSP
 from .preferences import UI_ENGLISH_PATH, preferences, t, translate_data, ui_english
@@ -146,6 +146,9 @@ def page_context(
 def render(request: Request, name: str, context: dict, **kwargs):
     prefs = preferences(request)
     context.update(prefs)
+    context["audience_enabled"] = (
+        stats.enabled() and request.url.path in seo.all_paths() and kwargs.get("status_code", 200) == 200
+    )
     context["multitag_enabled"] = (
         ads.ENABLED and request.url.path not in {"/stats", "/test"} and kwargs.get("status_code", 200) == 200
     )

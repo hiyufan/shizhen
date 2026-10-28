@@ -6,6 +6,7 @@ import { $, el } from './dom.js';
 import { api } from './api.js';
 import { renderTraffic } from './stats-traffic.js';
 import { initSearchReports } from './stats-search.js';
+import { renderAudience } from './stats-audience.js';
 
 const TOKEN = $('[data-token]').dataset.token;
 const REFRESH_MS = 60000;
@@ -181,6 +182,7 @@ function render(d) {
   $('#empty').hidden = d.first != null;
   fillTotals(d.totals);
   renderTraffic(d.traffic, fillTable);
+  renderAudience(d.audience);
 
   const unit = d.step < 86400 ? translate('每小时') : translate('每天');
   $('#c1-title').textContent = unit + (isEnglish ? ' ' : '') + translate('有多少人');
@@ -220,12 +222,13 @@ function selectTab(active) {
 
 let controller = null;
 let generation = 0;
+const audienceSelect = $('#audience');
 
 async function load() {
   const current = ++generation;
   if (controller) controller.abort();
   controller = new AbortController();
-  const query = '?range=' + range + '&tz=' + new Date().getTimezoneOffset();
+  const query = '?range=' + range + '&tz=' + new Date().getTimezoneOffset() + '&audience=' + audienceSelect.value;
   document.querySelector('.dash').setAttribute('aria-busy', 'true');
   $('#updated').textContent = translate('正在加载统计…');
   try {
@@ -251,6 +254,7 @@ tabs.addEventListener('click', (e) => {
   selectTab(range);
   load();
 });
+audienceSelect.addEventListener('change', load);
 
 let resizeTimer;
 addEventListener('resize', () => {

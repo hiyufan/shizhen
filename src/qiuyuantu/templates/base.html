@@ -45,7 +45,7 @@
 {% if site_verification %}{{ site_verification | safe }}{% endif %}
 {% block head %}{% endblock %}
 </head>
-<body{% block body_class %}{% endblock %}>
+<body{% if audience_enabled %} data-audience{% endif %}{% block body_class %}{% endblock %}>
 <div class="progress" id="progress" aria-hidden="true"></div>
 {# 站长开了 /test 的浏览器：左下角标一下，免得忘了自己在测试模式里（判断在服务端，这个 cookie 只管显示） #}
 {# 不写 href：每页都带一个指向 /test 的链接，搜索引擎会去抓这个站长页、当成「标题太短、内容太少」的页面 #}

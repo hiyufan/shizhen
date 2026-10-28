@@ -283,9 +283,10 @@ def _user_stats(since: float) -> dict[str, dict]:
     if not stats.DB_PATH.exists():
         return {}
     marks = ",".join("?" * len(_USER_SIDE))
-    with db.transaction(stats.DB_PATH, stats._SCHEMA) as conn:
+    with stats._db() as conn:
         rows = conn.execute(
-            f"SELECT source, COUNT(*), SUM(ok) FROM events WHERE kind = 'parse' AND ts >= ? "
+            f"SELECT source, COUNT(*), SUM(ok) FROM audience_events "
+            "WHERE audience = 'human' AND kind = 'parse' AND ts >= ? "
             f"AND reason NOT IN ({marks}) GROUP BY source",
             (since, *_USER_SIDE),
         ).fetchall()

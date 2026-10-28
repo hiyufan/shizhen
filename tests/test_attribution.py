@@ -39,7 +39,7 @@ def measured(tmp_path, monkeypatch):
 
 def report():
     stats.flush()
-    return stats.summary(time.time() - 86400, time.time() + 1, 3600)["traffic"]
+    return stats.summary(time.time() - 86400, time.time() + 1, 3600, selected="all")["traffic"]
 
 
 @pytest.mark.parametrize(
@@ -186,8 +186,8 @@ def test_funnel_uses_sessions_started_in_range_and_includes_cached_success(measu
         stats.record("parse", "8.8.8.8", reason="cache")
         stats.record("job", "8.8.8.8", source="prepare")
     stats.flush()
-    assert stats.summary(now - 3600, now + 1, 3600)["traffic"]["totals"]["visits"] == 0
-    result = stats.summary(now - 86400, now + 1, 3600)["traffic"]["totals"]
+    assert stats.summary(now - 3600, now + 1, 3600, selected="all")["traffic"]["totals"]["visits"] == 0
+    result = stats.summary(now - 86400, now + 1, 3600, selected="all")["traffic"]["totals"]
     assert result["parsed"] == 1 and result["converted"] == 0
 
 

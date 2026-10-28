@@ -17,7 +17,7 @@ import os
 import threading
 import time
 
-from . import attribution, db, traffic
+from . import attribution, audience, db, traffic
 from .convert import config, net
 
 DB_PATH = config.DATA_DIR / "stats.db"
@@ -35,16 +35,19 @@ TEST_FLAG_COOKIE = "sz_t"  # 给页面上的「测试模式」小标记看的，
 # 这次请求不计入统计。中间件里设；请求里 create_task 出去的转换任务会继承，任务做完记 job 时也就跳过了
 _muted: contextvars.ContextVar[bool] = contextvars.ContextVar("stats_muted", default=False)
 _visit: contextvars.ContextVar[attribution.Visit | None] = contextvars.ContextVar("stats_visit", default=None)
+_evidence: contextvars.ContextVar[audience.Evidence | None] = contextvars.ContextVar("stats_audience", default=None)
 
 
 @contextlib.contextmanager
-def request_context(*, muted: bool, visit: attribution.Visit | None):
+def request_context(*, muted: bool, visit: attribution.Visit | None, evidence: audience.Evidence | None = None):
     muted_token, visit_token = _muted.set(muted), _visit.set(visit)
+    evidence_token = _evidence.set(evidence)
     try:
         yield
     finally:
         _muted.reset(muted_token)
         _visit.reset(visit_token)
+        _evidence.reset(evidence_token)
 
 
 def mute() -> None:
@@ -71,6 +74,8 @@ def is_test_cookie(value: str | None) -> bool:
 
 _buf: list[tuple] = []
 _traffic_buf: list[tuple[tuple, attribution.Visit | None]] = []
+_evidence_buf: dict[int, audience.Evidence] = {}
+_signal_buf: list[tuple] = []
 _lock = threading.Lock()
 
 
@@ -93,7 +98,7 @@ _SCHEMA = (
 
 
 def _db():
-    return db.transaction(DB_PATH, _SCHEMA + traffic.SCHEMA)
+    return db.transaction(DB_PATH, _SCHEMA + traffic.SCHEMA + audience.SCHEMA)
 
 
 def counted(ip: str) -> bool:
@@ -109,6 +114,14 @@ def record(kind: str, ip: str, *, source: str = "", ok: bool = True, reason: str
     with _lock:
         _buf.append(row)
         _traffic_buf.append((row, _visit.get()))
+        _evidence_buf[id(row)] = _evidence.get() or audience.Evidence()
+
+
+def record_activity(visit: attribution.Visit, status: str) -> None:
+    if not enabled() or _muted.get():
+        return
+    with _lock:
+        _signal_buf.append((visit.id, status, "browser-interaction", time.time()))
 
 
 # 同一个人同一个文件，这么久之内只算一次下载
@@ -136,11 +149,24 @@ def flush() -> int:
     with _lock:
         rows, _buf[:] = list(_buf), []
         attributed, _traffic_buf[:] = list(_traffic_buf), []
-    if not rows:
+        evidence = dict(_evidence_buf)
+        _evidence_buf.clear()
+        signals, _signal_buf[:] = list(_signal_buf), []
+    if not rows and not signals:
         return 0
     with _db() as conn:
-        conn.executemany("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
-        traffic.write(conn, attributed)
+        ids = [conn.execute("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)", row).lastrowid for row in rows]
+        identities = {id(row) for row in rows}
+        attributed = [pair for pair in attributed if id(pair[0]) in identities]
+        traffic_ids = traffic.write(conn, attributed)
+        audience.write_signals(conn, signals)
+        visits = {id(row): visit.id if visit else "" for row, visit in attributed}
+        linked = dict(zip((id(row) for row, _visit_value in attributed), traffic_ids, strict=True))
+        for row, event_id in zip(rows, ids, strict=True):
+            audience.write_event(
+                conn, event_id, linked.get(id(row)), visits.get(id(row), ""), evidence.get(id(row), audience.Evidence())
+            )
+        audience.check_rates(conn, set(visits.values()))
     return len(rows)
 
 
@@ -160,7 +186,9 @@ def prune() -> int:
     cutoff = time.time() - RETENTION_DAYS * 86400
     with _db() as conn:
         traffic.prune(conn, cutoff)
-        return conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
+        deleted = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
+        audience.prune(conn)
+        return deleted
 
 
 _COUNTERS = ("view", "parse", "parse_ok", "job", "job_ok", "download")
@@ -188,51 +216,53 @@ def _series(rows: list, users: dict, since: float, until: float, step: int, tz_o
     return [buckets[k] for k in sorted(buckets)]
 
 
-def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
+def summary(since: float, until: float, step: int, tz_offset: int = 0, selected: str = "human") -> dict:
     """[since, until) 内按 step 秒分桶。tz_offset 是客户端时区偏移（秒），让"按天"的桶从当地零点开始。
 
     每个桶：浏览 / 解析（成功数）/ 任务（成功数）/ 下载 / 用了解析或任务的人数（去重 IP）。
     """
     step = max(60, int(step))
     bucket = f"(CAST((ts + {tz_offset}) / {step} AS INTEGER) * {step} - {tz_offset})"
+    table = audience.event_table(selected)
     with _db() as conn:
         # 解析结果缓存命中不是一次新的解析：一个人连点几下会把同一个结果重放好几遍，
         # 计进去会虚增次数、压低成功率。口径跟下面的 by_source 保持一致。
         rows = conn.execute(
-            f"SELECT {bucket} AS b, kind, COUNT(*), SUM(ok) FROM events "
+            f"SELECT {bucket} AS b, kind, COUNT(*), SUM(ok) FROM {table} "
             "WHERE ts >= ? AND ts < ? AND NOT (kind = 'parse' AND reason = 'cache') "
             "GROUP BY b, kind",
             (since, until),
         ).fetchall()
         users = dict(
             conn.execute(
-                f"SELECT {bucket} AS b, COUNT(DISTINCT ip) FROM events "
+                f"SELECT {bucket} AS b, COUNT(DISTINCT ip) FROM {table} "
                 "WHERE ts >= ? AND ts < ? AND kind IN ('parse', 'job') GROUP BY b",
                 (since, until),
             ).fetchall()
         )
         (total_users,) = conn.execute(
-            "SELECT COUNT(DISTINCT ip) FROM events WHERE ts >= ? AND ts < ? AND kind IN ('parse', 'job')",
+            f"SELECT COUNT(DISTINCT ip) FROM {table} WHERE ts >= ? AND ts < ? AND kind IN ('parse', 'job')",
             (since, until),
         ).fetchone()
         by_source = conn.execute(
-            "SELECT source, COUNT(*), SUM(ok), COUNT(DISTINCT ip), CAST(AVG(ms) AS INTEGER) FROM events "
+            f"SELECT source, COUNT(*), SUM(ok), COUNT(DISTINCT ip), CAST(AVG(ms) AS INTEGER) FROM {table} "
             "WHERE ts >= ? AND ts < ? AND kind = 'parse' AND reason != 'cache' "
             "GROUP BY source ORDER BY 2 DESC LIMIT 20",
             (since, until),
         ).fetchall()
         reasons = conn.execute(
-            "SELECT reason, COUNT(*) FROM events WHERE ts >= ? AND ts < ? AND kind = 'parse' AND ok = 0 "
+            f"SELECT reason, COUNT(*) FROM {table} WHERE ts >= ? AND ts < ? AND kind = 'parse' AND ok = 0 "
             "AND reason != 'cache' GROUP BY reason ORDER BY 2 DESC LIMIT 8",
             (since, until),
         ).fetchall()
         jobs = conn.execute(
-            "SELECT source, COUNT(*), SUM(ok), CAST(AVG(ms) AS INTEGER) FROM events "
+            f"SELECT source, COUNT(*), SUM(ok), CAST(AVG(ms) AS INTEGER) FROM {table} "
             "WHERE ts >= ? AND ts < ? AND kind = 'job' GROUP BY source ORDER BY 2 DESC",
             (since, until),
         ).fetchall()
         (first,) = conn.execute("SELECT MIN(ts) FROM events").fetchone()
-        acquisition = traffic.summary(conn, since, until)
+        acquisition = traffic.summary(conn, since, until, selected)
+        quality = audience.summary(conn, since, until)
 
     series = _series(rows, users, since, until, step, tz_offset)
     totals = {k: sum(c[k] for c in series) for k in _COUNTERS}
@@ -248,6 +278,7 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0) -> dict:
         "reasons": [{"reason": r, "n": n} for r, n in reasons],
         "jobs": [{"type": s, "n": n, "ok": ok or 0, "ms": ms or 0} for s, n, ok, ms in jobs],
         "traffic": acquisition,
+        "audience": {"selected": selected, **quality},
     }
 
 

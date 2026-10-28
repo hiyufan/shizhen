@@ -48,7 +48,9 @@ async def api_health():
 
 
 @router.get("/api/stats", dependencies=[Depends(require_stats_token)])
-async def api_stats(range: str = "24h", tz: int = 0):  # noqa: A002 - 查询参数名是对外接口
+async def api_stats(  # noqa: A002 - 查询参数名是对外接口
+    range: str = "24h", tz: int = 0, audience: Literal["human", "unknown", "machine", "all"] = "human"
+):
     """按时间分桶的使用量：浏览 / 解析 / 任务 / 下载 / 人数，以及各平台成功率。"""
     span, step = STATS_RANGES.get(range, STATS_RANGES["24h"])
     # JS 的 getTimezoneOffset 是「UTC 减本地」的分钟数
@@ -57,7 +59,7 @@ async def api_stats(range: str = "24h", tz: int = 0):  # noqa: A002 - 查询参�
     since = now - span
     since -= (since + tz_offset) % step  # 对齐到桶的起点，最左一格才是完整的
     await asyncio.to_thread(stats.flush)
-    data = await asyncio.to_thread(stats.summary, since, now, step, tz_offset)
+    data = await asyncio.to_thread(stats.summary, since, now, step, tz_offset, audience)
     data["failures"] = await asyncio.to_thread(failures.recent, max(since, now - failures.RETENTION_DAYS * 86400))
     data["range"] = range
     return JSONResponse(data, headers=PRIVATE_PAGE_HEADERS)

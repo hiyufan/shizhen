@@ -71,6 +71,41 @@ PARSE_VIDEO_SEARCH_BING_SITE=https://example.com
 
 来源表与原事件表分开新增，无需改写历史事件。面板明确展示采集起点、所选期间未记录来源的历史事件和没有会话的事件。新表按 `PARSE_VIDEO_STATS_DAYS` 与原统计一同清理。页面携带来源 Cookie 时使用私有重验证缓存，统计 API 使用 `no-store`；不将个人来源缓存给其他访客。
 
+## 真人与自动化清洗
+
+`/stats` 与 `/api/stats` 默认采用 `audience=human`，只展示高可信真人事件；可切换 `unknown`（不确定）、`machine`（自动化）和 `all`（全部原始记录）。趋势、平台、失败原因、任务和来源表使用同一筛选口径；公开状态页的用户成功率也只使用高可信真人。搜索站长报表独立于本站分类，失败链接排错列表仍展示所有已采集分类，不随筛选变化。
+
+“高可信”是证据分类，不是身份认证，也不是经过标注校准的概率。IP 去重不是自然人数，同一 IP 可以同时有真人和自动化请求；不能将各分类人数相加。未知流量不默认认作真人，快捷指令、小程序和直接 API 调用继续正常工作，没有足够浏览器交互证据时列入不确定。
+
+公开页面通过自托管 ES 模块，在可见页面收到可信指针、键盘或粘贴事件时，向 `/api/visit` 发送三个布尔标记：可见、发生交互、浏览器是否声明由自动化控制。不发送输入、剪贴板、按键、坐标、屏幕参数或完整 URL。服务端校验同源 Origin、限流和已有签名 `qyt_visit` 会话，签发与会话绑定、有效期 30 分钟的 HttpOnly / SameSite=Strict `qyt_activity` Cookie。信号异步落盘，可关联打点到达前已发生的同会话事件和后台任务，页面端失败不影响工具操作。
+
+已知自动化 UA 优先于交互 Cookie，自动化声明不能靠后续打点改回真人。初始异常规则为同会话 60 秒内至少 20 次非缓存解析，归入不确定并给出原因；不统计任务轮询、下载分片、缓存重放和广告请求。不因缺失 Referer、旧系统、VPN 或没有重新加载缓存资源单独判为机器人。主动交互、Cookie 和浏览器属性都可能被仿造，不能独立证明真人。
+
+`event_audience` 旁表保存事件与来源事件的对应关系、分类、固定原因码、会话和规则版本；`audience_sessions` 保存会话证据。原始 `events` / `traffic_events` 不因清洗删除或改写。日常过期清理同步移除旁表，避免 SQLite rowid 复用错误继承分类。站长测试、服务器自检和原有爬虫排除规则继续生效，未被原采集保留的请求不会被清洗程序补造出来。
+
+### 回溯全部现存历史
+
+使用原站点的数据目录与签名密钥运行下列命令。程序仅从本地读取 Nginx combined 格式日志，支持重复 `--log` 和 `.gz`；原始 IP 在内存中转换成原统计使用的 HMAC，不写入旁表，不上传日志。
+
+```bash
+# 默认只读预览；域名应包含站点实际使用的主域名与 www 域名
+python scripts/clean_stats.py --database data/stats.db \
+  --log /path/to/access.log --log /path/to/access.log.1.gz \
+  --host example.com --host www.example.com
+
+# 核对预览后应用，先自动创建包含 WAL 的 SQLite 在线备份，再事务性写入分类
+python scripts/clean_stats.py --database data/stats.db \
+  --log /path/to/access.log --host example.com --host www.example.com --apply
+```
+
+程序处理数据库中全部现存事件：同 IP、同 UA 的页面、JS 模块与同源主动接口在 30 分钟内形成访问链路时，归为高可信历史访问；明确自动化客户端归为自动化。仅加载页面或 JS、日志缺失和多个客户端关联不明时保留为不确定。历史日志没有交互标记，不能补造交互或来源；异步任务及下载只在同一时间段唯一可关联时继承分类，异常解析节奏会降为不确定。
+
+事件与日志按秒级时间附近保守匹配，存在多种 UA 时不强行选择；清洗不根据整个 IP 批量删除。重复应用更新历史分类，不覆盖任何已有在线分类，包括尚未证明真人的在线记录；快照后新增或被过期清理替换的事件不会套用旧分类。无日志也可以运行，旧记录全部标为不确定。历史侧表仅处理快照范围，新流量由在线模块持续分类。
+
+备份路径为 `stats.db.before-audience-<UTC时间>`，权限 0600；应用后可对比原始事件总数、三类数量与 `PRAGMA integrity_check`。恢复需先停止应用，使用 SQLite backup API 将备份恢复到原库，再启动应用；不要在写入中的 WAL 数据库上直接覆盖文件。备份含原始统计，恢复窗口结束后由站长清理，避免超出原有保留期限。
+
+规则参考：[isbot](https://github.com/omrilotan/isbot)、[Matomo Device Detector](https://github.com/matomo-org/device-detector)、[BotD](https://github.com/fingerprintjs/BotD)、[BOTracle](https://arxiv.org/abs/2412.02266)、[Shy Guys](https://arxiv.org/abs/2603.28546)。只采用与本站相符的信号，未引入第三方运行时或远程分类服务：通用名单中 `news` 会命中头条内置浏览器，Android Build 编号也可能被误当爬虫标识，不能照单全收。上线前用隔离样本检查误伤，论文与第三方平台的准确率不能当作本站准确率。
+
 ## 每周复盘
 
 固定比较两个完整周：先看各搜索平台的展现、点击、CTR 和重点页面，再看本站同来源的会话、成功解析会话、下载会话和转换成功会话。推广按 `source / medium / campaign` 分开，保留链接和发布时间。搜索引擎不披露的匿名查询、受导出行数限制的关键词明细不能当作全站总数。

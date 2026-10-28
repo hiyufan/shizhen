@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from . import audience
 from .attribution import Visit
 
 SCHEMA = (
@@ -17,9 +18,9 @@ SCHEMA = (
 )
 
 
-def write(conn, rows: list[tuple[tuple, Visit | None]]) -> None:
+def write(conn, rows: list[tuple[tuple, Visit | None]]) -> list[int]:
     if not rows:
-        return
+        return []
     conn.execute(
         "INSERT INTO traffic_meta VALUES ('started', ?) "
         "ON CONFLICT(key) DO UPDATE SET value = MIN(value, excluded.value)",
@@ -34,7 +35,7 @@ def write(conn, rows: list[tuple[tuple, Visit | None]]) -> None:
             )
         events.append((ts, visit.id if visit else "", kind, source, ok))
     conn.executemany("INSERT OR IGNORE INTO traffic_visits VALUES (?, ?, ?, ?, ?, ?, ?, ?)", visits)
-    conn.executemany("INSERT INTO traffic_events VALUES (?, ?, ?, ?, ?)", events)
+    return [conn.execute("INSERT INTO traffic_events VALUES (?, ?, ?, ?, ?)", event).lastrowid for event in events]
 
 
 def prune(conn, cutoff: float) -> None:
@@ -49,8 +50,10 @@ SELECT v.channel, v.source, v.medium, v.campaign, v.landing, v.ip,
        MAX(CASE WHEN e.kind = 'download' THEN 1 ELSE 0 END),
        MAX(CASE WHEN e.kind = 'job' AND e.ok = 1 AND
            e.source IN ('gif', 'livephoto', 'motionphoto', 'live') THEN 1 ELSE 0 END)
-FROM traffic_visits v LEFT JOIN traffic_events e ON e.visit = v.id AND e.ts < ?
-WHERE v.started >= ? AND v.started < ? GROUP BY v.id
+FROM traffic_visits v LEFT JOIN {events} e ON e.visit = v.id AND e.ts < ?
+WHERE v.started >= ? AND v.started < ?
+AND EXISTS (SELECT 1 FROM {events} page WHERE page.visit = v.id AND page.kind = 'view' AND page.ts < ?)
+GROUP BY v.id
 """
 
 
@@ -81,12 +84,15 @@ def _groups(rows: list, indices: tuple[int, ...], names: tuple[str, ...]) -> lis
     return sorted(result, key=lambda item: item["visits"], reverse=True)
 
 
-def summary(conn, since: float, until: float) -> dict:
-    rows = conn.execute(_COHORT, (until, since, until)).fetchall()
+def summary(conn, since: float, until: float, selected: str = "all") -> dict:
+    events = audience.event_table(selected, traffic=True)
+    rows = conn.execute(_COHORT.format(events=events), (until, since, until, until)).fetchall()
     first = conn.execute("SELECT value FROM traffic_meta WHERE key = 'started'").fetchone()
-    total = conn.execute("SELECT COUNT(*) FROM events WHERE ts >= ? AND ts < ?", (since, until)).fetchone()[0]
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM {audience.event_table(selected)} WHERE ts >= ? AND ts < ?", (since, until)
+    ).fetchone()[0]
     measured, unassigned = conn.execute(
-        "SELECT COUNT(*), COALESCE(SUM(visit = ''), 0) FROM traffic_events WHERE ts >= ? AND ts < ?",
+        f"SELECT COUNT(*), COALESCE(SUM(visit = ''), 0) FROM {events} WHERE ts >= ? AND ts < ?",
         (since, until),
     ).fetchone()
     totals = _groups(rows, (), ())

@@ -15,6 +15,22 @@
       <span class="dash-note mono" id="updated" role="status" aria-live="polite"></span>
     </div>
 
+    <div class="dash-audience">
+      <label for="audience">{{ t("统计口径") }}</label>
+      <select id="audience">
+        <option value="human">{{ t("高可信真人") }}</option>
+        <option value="unknown">{{ t("不确定") }}</option>
+        <option value="machine">{{ t("自动化") }}</option>
+        <option value="all">{{ t("全部原始记录") }}</option>
+      </select>
+      <p class="dash-note">{{ t("默认只看高可信真人；不确定与自动化单独保留。原始记录不删除，IP 去重不等于自然人数。") }}</p>
+      <p class="dash-note" id="audience-counts" role="status" aria-live="polite"></p>
+      <details class="dash-table"><summary>{{ t("查看分类依据") }}</summary>
+        <p class="dash-note">{{ t("分类结合会话、主动操作和自动化特征，不能保证完全准确；历史证据不足的记录保留为不确定。") }}</p>
+        <div class="tbl-wrap"><table id="tbl-audience"><thead><tr><th>{{ t("分类") }}</th><th>{{ t("依据") }}</th><th>{{ t("事件数") }}</th></tr></thead><tbody></tbody></table></div>
+      </details>
+    </div>
+
     <div id="empty" class="notice info" hidden>{{ t("还没有数据。设置了") }} <code class="mono">PARSE_VIDEO_STATS_TOKEN</code> {{ t("之后才开始记录，等有人用一次再来看。") }}</div>
 
     <div class="kpis" id="kpis">
@@ -83,7 +99,7 @@
 
     <div class="card dash-failures">
       <h3>{{ t("最近解析失败的链接") }}</h3>
-      <p class="dash-note">{{ t("只留 7 天，同一条链接只列一次。点链接用它重新解析一遍；鼠标停在原因上看报错原文。") }}</p>
+      <p class="dash-note">{{ t("排错列表保留全部分类，不随上方口径切换。只留 7 天，同一条链接只列一次。点链接用它重新解析一遍；鼠标停在原因上看报错原文。") }}</p>
       <div class="tbl-wrap"><table id="tbl-failures"><thead><tr><th>{{ t("时间") }}</th><th>{{ t("平台") }}</th><th>{{ t("原因") }}</th><th>{{ t("次数") }}</th><th>{{ t("链接") }}</th></tr></thead><tbody></tbody></table></div>
     </div>
 

@@ -6,7 +6,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from qiuyuantu import status, web
+from qiuyuantu import audience, status, web
 from qiuyuantu.convert import net, youtube_native
 from qiuyuantu.parser.base import VideoInfo
 from qiuyuantu.parser.errors import ParseError
@@ -128,8 +128,12 @@ def test_headline_before_first_probe():
 def test_user_stats_skip_user_side_failures(monkeypatch):
     monkeypatch.setattr(status.stats, "TOKEN", "t")
     monkeypatch.setattr(status.stats, "ignored_ip", lambda ip: False)
-    for ok, reason in ((True, ""), (False, "blocked"), (False, "deleted"), (True, "cache")):
-        status.stats.record("parse", "1.2.3.4", source="kuaishou", ok=ok, reason=reason)
+    with status.stats.request_context(
+        muted=False, visit=None, evidence=audience.Evidence("human", "browser-interaction")
+    ):
+        for ok, reason in ((True, ""), (False, "blocked"), (False, "deleted"), (True, "cache")):
+            status.stats.record("parse", "1.2.3.4", source="kuaishou", ok=ok, reason=reason)
+    status.stats.record("parse", "1.2.3.4", source="kuaishou", ok=False, reason="blocked")
     status.stats.flush()
     kuaishou = {x["platform"].key: x for x in status.snapshot()["platforms"]}["kuaishou"]
     assert kuaishou["users"] == {"n": 2, "ok": 1}

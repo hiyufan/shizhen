@@ -9,7 +9,7 @@ import re
 from fastapi import Request, Response
 from fastapi.responses import RedirectResponse
 
-from .. import seo, stats
+from .. import audience, seo, stats
 from ..convert import relay
 from . import ads, attribution, limits
 
@@ -105,10 +105,14 @@ def _is_script(user_agent: str) -> bool:
 
 
 def _api_without_page(request: Request) -> bool:
-    return (
-        request.url.path.startswith("/api/")
-        and not request.headers.get("referer")
-        and bool(_BROWSER_UA.match(request.headers.get("user-agent", "")))
+    if request.url.path == "/api/visit":
+        return False  # 打点路由自行校验 Origin 与签名会话，兼容隐藏 Referer 的浏览器。
+    if not request.url.path.startswith("/api/") or request.headers.get("referer"):
+        return False
+    visit = attribution.visit_for(request)
+    evidence = audience.activity_evidence(request.cookies.get(audience.COOKIE, ""), visit.id) if visit else None
+    return bool(_BROWSER_UA.match(request.headers.get("user-agent", ""))) and (
+        evidence is None or evidence.status != "human"
     )
 
 
@@ -143,8 +147,11 @@ def _strip_trailing_slash(request: Request) -> Response | None:
 async def site_headers(request: Request, call_next) -> Response:
     excluded = stats.enabled() and _excluded_from_stats(request)
     visit = attribution.visit_for(request) if stats.enabled() and not excluded else None
+    evidence = audience.agent_evidence(request.headers.get("user-agent", ""))
+    if visit and evidence.status != "machine":
+        evidence = audience.activity_evidence(request.cookies.get(audience.COOKIE, ""), visit.id)
     # 后台任务继承创建时的来源；finally 恢复上下文，不能串到另一位访客。
-    with stats.request_context(muted=excluded, visit=visit):
+    with stats.request_context(muted=excluded, visit=visit, evidence=evidence):
         response = await _site_response(request, call_next)
         attribution.set_cookie(request, response, visit)
         return response
