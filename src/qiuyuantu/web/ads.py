@@ -15,7 +15,7 @@ FORMATS = {
 CSP = "; ".join(
     (
         "default-src 'none'",
-        "script-src 'self' https://bauval.org",
+        "script-src 'self' https://bauval.org https://quge5.com",
         "style-src 'self'",
         "img-src https: data:",
         "connect-src https:",
