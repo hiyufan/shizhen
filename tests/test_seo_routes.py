@@ -48,6 +48,25 @@ def test_root_icons(client, path, content_type):
     assert client.get(versioned).content == r.content
 
 
+def test_root_service_worker_serves_javascript_without_page_tracking(client, monkeypatch):
+    from qiuyuantu import stats
+    from qiuyuantu.web.rendering import STATIC_DIR
+
+    seen = []
+    monkeypatch.setattr(stats, "enabled", lambda: True)
+    monkeypatch.setattr(stats, "record", lambda *args, **kwargs: seen.append(args))
+    response = client.get("/sw.js", headers={"User-Agent": "Mozilla/5.0"})
+    assert response.status_code == 200
+    assert response.content == (STATIC_DIR / "sw.js").read_bytes()
+    assert response.headers["content-type"].startswith("application/javascript")
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-robots-tag"] == "noindex"
+    head = client.head("/sw.js")
+    assert head.status_code == 200 and head.content == b""
+    assert head.headers["content-length"] == str(len(response.content))
+    assert seen == []
+
+
 @pytest.mark.parametrize(
     ("path", "target"),
     [("/douyin/", "/douyin"), ("/guide/video-to-gif/", "/guide/video-to-gif"), ("/gif/?a=1", "/gif?a=1")],

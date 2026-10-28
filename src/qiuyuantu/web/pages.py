@@ -138,6 +138,16 @@ async def robots(request: Request):
     return _ROBOTS.format(sitemap=seo.absolute(base_url(request), "/sitemap.xml"))
 
 
+@page_route("/sw.js")
+async def service_worker():
+    """原样托管站长提供的文件；注册与第三方脚本权限不在此入口配置。"""
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache", "X-Robots-Tag": "noindex"},
+    )
+
+
 @page_route(f"/{seo.INDEXNOW_KEY}.txt", response_class=PlainTextResponse)
 async def indexnow_key():
     # IndexNow 的验证文件：URL 路径含 key，响应体也必须是 key 本身
