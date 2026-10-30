@@ -14,6 +14,8 @@ from ..convert.net import safe_client
 from .base import FormatInfo
 from .quality import short_side
 
+# 先读 64 KiB：多数平台把 moov 放在文件开头，几十 KiB 就完整了；不完整时按 box 头记录的长度补读，最多 1 MiB。
+_FIRST_BYTES = 64 * 1024
 _HEAD_BYTES = 1024 * 1024
 _TAIL_BYTES = 512 * 1024
 _CONTENT_RANGE = re.compile(r"bytes ([0-9]+)-([0-9]+)/([0-9]+)\Z")
@@ -199,9 +201,42 @@ async def _slice(url: str, start: int, limit: int, headers: dict[str, str]) -> t
     return bytes(data), total
 
 
+def _moov_end(data: bytes) -> int | None:
+    """顶层 moov 的结束位置；先遇到 mdat 说明 moov 在文件尾部，返回 0；读到的部分不够判断时返回 None。"""
+    offset = 0
+    for _ in range(64):
+        if offset + 16 > len(data):
+            return None
+        size, kind, header = int.from_bytes(data[offset : offset + 4], "big"), data[offset + 4 : offset + 8], 8
+        if size == 1:
+            size, header = int.from_bytes(data[offset + 8 : offset + 16], "big"), 16
+        if kind == b"mdat":
+            return 0
+        if size < header:
+            return None
+        if kind == b"moov":
+            return offset + size
+        offset += size
+    return None
+
+
+async def _head(target: str, headers: dict[str, str]) -> tuple[bytes, int]:
+    data, total = await _slice(target, 0, _FIRST_BYTES, headers)
+    end = _moov_end(data)
+    if total <= len(data) or end == 0 or (end is not None and (end <= len(data) or end > _HEAD_BYTES)):
+        return data, total
+    stop = end or _HEAD_BYTES
+    try:
+        rest, _ = await _slice(target, len(data), stop - len(data), headers)
+    except ValueError:
+        # 首次请求被当成整段响应时无法续读，退回从头读取有界片段。
+        return await _slice(target, 0, stop, headers)
+    return data + rest, total
+
+
 async def _probe(url: str, headers: dict[str, str], request_url: str = "") -> FormatInfo | None:
     target = request_url or url
-    data, total = await _slice(target, 0, _HEAD_BYTES, headers)
+    data, total = await _head(target, headers)
     info = metadata(data)
     if info is None and total > len(data):
         tail, _ = await _slice(target, max(0, total - _TAIL_BYTES), _TAIL_BYTES, headers)

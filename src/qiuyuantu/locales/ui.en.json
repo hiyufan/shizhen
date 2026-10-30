@@ -223,6 +223,7 @@
   "下载视频": "Download video",
   "H.265 通常体积更小，播放兼容性因设备而异；画质取决于来源。": "H.265 usually produces smaller files. Playback support varies by device; quality depends on the source.",
   "其他清晰度 ▾": "More resolutions ▾",
+  "已找到更高画质：{label}": "Higher quality found: {label}",
   "下载视频 ▾": "Download video ▾",
   "下载 ": "Download ",
   "保存 ": "Save ",

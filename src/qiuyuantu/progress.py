@@ -59,7 +59,7 @@ def current() -> Progress | None:
 
 
 @contextlib.contextmanager
-def track(progress: Progress):
+def track(progress: Progress | None):
     token = _current.set(progress)
     try:
         yield

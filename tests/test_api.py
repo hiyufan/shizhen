@@ -186,7 +186,7 @@ async def test_concurrent_parses_share_one_upstream_request(client, monkeypatch,
 async def test_shared_parse_cancellation_tracks_remaining_waiters(client, monkeypatch, cancel_all):
     entered, release, stopped = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
-    async def parse(_url):
+    async def parse(_url, _on_early=None):
         entered.set()
         try:
             await release.wait()

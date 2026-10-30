@@ -153,3 +153,76 @@ async def test_native_helper_translates_only_public_stages(monkeypatch, tmp_path
         await youtube_native._worker("iN1N8o3Miv4", 720, tmp_path, "")
     assert [e["stage"] for e in events] == ["connecting", "downloading", "merging", "verifying"]
     assert "private-value" not in json.dumps(events)
+
+
+def _deferred_parse(extra, gate=None):
+    from qiuyuantu.parser import deferred
+    from qiuyuantu.parser.base import FormatInfo
+
+    async def enrich():
+        if gate is not None:
+            await gate.wait()
+        if isinstance(extra, Exception):
+            raise extra
+        return [FormatInfo(label="1080p", url=extra, height=1080, width=1920)]
+
+    async def parse(_url):
+        info = VideoInfo(video_url=INFO.video_url, cover_url="", title="示例", source="douyin")
+        await deferred.later(enrich(), lambda found: info.formats.extend(found))
+        return info
+
+    return parse
+
+
+def _events(response):
+    return [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+
+
+def test_stream_shows_base_result_first_then_pushes_found_formats(monkeypatch):
+    recorded = []
+    monkeypatch.setattr(api.stats, "record", lambda *args, **kwargs: recorded.append(kwargs))
+    monkeypatch.setattr(api, "parse_video_share_url", _deferred_parse("https://cdn.example/1080.mp4"))
+    events = _events(TestClient(web.app).get("/api/parse/stream", params={"url": PAGE}))
+    first, update = [event for event in events if event["type"] != "progress"]
+    assert first["type"] == "result" and first["pending"] and first["result"]["data"]["formats"] == []
+    assert update["type"] == "update"
+    assert [f["url"] for f in update["result"]["data"]["formats"]] == ["https://cdn.example/1080.mp4"]
+    assert update["result"]["data"]["sig"]["https://cdn.example/1080.mp4"]
+    assert len(recorded) == 1 and recorded[0]["ok"]
+    # 完整结果才进缓存，之后的 JSON 请求直接拿到补充后的清晰度。
+    cached = TestClient(web.app).get("/api/parse", params={"url": PAGE}).json()
+    assert cached["data"]["formats"] == update["result"]["data"]["formats"]
+    assert not api._pending
+
+
+def test_failed_enrichment_keeps_shown_result_and_ends_stream(monkeypatch):
+    monkeypatch.setattr(api, "parse_video_share_url", _deferred_parse(RuntimeError("probe failed")))
+    events = [
+        e
+        for e in _events(TestClient(web.app).get("/api/parse/stream", params={"url": PAGE}))
+        if e["type"] != "progress"
+    ]
+    assert [e["type"] for e in events] == ["result", "done"]
+    assert events[0]["result"]["code"] == 200
+
+
+def test_json_parse_waits_for_enrichment(monkeypatch):
+    monkeypatch.setattr(api, "parse_video_share_url", _deferred_parse("https://cdn.example/1080.mp4"))
+    body = TestClient(web.app).get("/api/parse", params={"url": PAGE}).json()
+    assert [f["url"] for f in body["data"]["formats"]] == ["https://cdn.example/1080.mp4"]
+
+
+@pytest.mark.asyncio
+async def test_enrichment_timeout_cancels_probe_and_keeps_base_result(monkeypatch):
+    gate = asyncio.Event()
+    monkeypatch.setattr(api, "DEFERRED_TIMEOUT", 0.01)
+    monkeypatch.setattr(api, "parse_video_share_url", _deferred_parse("https://cdn.example/1080.mp4", gate))
+    shown = []
+    result = await api._parse(PAGE, shown.append)
+    assert shown[0]["data"]["formats"] == result["data"]["formats"] == []
+
+
+@pytest.mark.asyncio
+async def test_callers_without_collector_wait_and_merge_in_place():
+    info = await _deferred_parse("https://cdn.example/1080.mp4")(PAGE)
+    assert [f.url for f in info.formats] == ["https://cdn.example/1080.mp4"]

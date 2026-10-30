@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import functools
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ import httpx
 
 from .. import progress
 from ..utils import create_async_client, gather_or_cancel
-from . import mp4_probe
+from . import deferred, mp4_probe
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, _random_ua
 from .errors import ParseError
 from .quality import number, rank, short_side
@@ -550,6 +551,14 @@ def _collect_formats(video_data: dict, primary: dict) -> list[FormatInfo]:
     return sorted(keep, key=lambda f: (-f.height, -f.fps, f.codec, -f.bitrate))
 
 
+def _ranked_formats(formats: list[FormatInfo], video_url: str) -> list[FormatInfo]:
+    return sorted({f.url: f for f in formats if f.url != video_url}.values(), key=rank, reverse=True)
+
+
+def _add_formats(info: VideoInfo, extra: list[FormatInfo]) -> None:
+    info.formats = _ranked_formats([*info.formats, *extra], info.video_url)
+
+
 def _aweme_from_router_data(router: dict) -> dict:
     """老的 SSR 页面数据（window._ROUTER_DATA）里取作品。"""
     if "loaderData" not in router:
@@ -693,11 +702,9 @@ class DouYin(BaseParser):
             music_url = primary.get("uri", "") if has_primary else ""
         else:
             video_url = await self._playable_url(_first(primary.get("url_list")).replace("playwm", "play"))
-            formats = _collect_formats(video, primary)
-            formats.extend(await self._original_formats(video))
-            formats = sorted({f.url: f for f in formats if f.url != video_url}.values(), key=rank, reverse=True)
+            formats = _ranked_formats(_collect_formats(video, primary), video_url)
             music_url = _video_music(aweme)
-        return VideoInfo(
+        info = VideoInfo(
             video_url=video_url,
             cover_url=_prefer_non_webp((video.get("cover") or {}).get("url_list")),
             music_url=music_url,
@@ -712,6 +719,11 @@ class DouYin(BaseParser):
             video_codec="H.265" if primary_variant.get("is_h265") else "H.264",
             author=_aweme_author(aweme),
         )
+        if not images:
+            # 官方入口的真实最高档要多两次跨境往返，约占解析时长的三分之二；
+            # 网页流式解析先返回接口档位，核对完成后再补充，其余调用方仍当场等待。
+            await deferred.later(self._original_formats(video), functools.partial(_add_formats, info))
+        return info
 
     async def _original_formats(self, video: dict) -> list[FormatInfo]:
         uri = (video.get("play_addr") or {}).get("uri") or ""

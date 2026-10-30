@@ -7,6 +7,7 @@ import dataclasses
 import json
 import logging
 import time
+from collections.abc import Callable
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,7 +17,7 @@ from pydantic import BaseModel, Field
 from .. import failures, feedback, progress, stats
 from ..convert import config, net, relay, signal
 from ..convert.net import is_safe_url_async
-from ..parser import detect_source, parse_video_share_url
+from ..parser import deferred, detect_source, parse_video_share_url
 from ..parser.base import VideoInfo
 from ..parser.errors import ParseError, classify
 from ..parser.quality import best_video_format
@@ -28,6 +29,9 @@ router = APIRouter()
 log = logging.getLogger("uvicorn.error")
 
 PARSE_TIMEOUT = 90
+# 画质补充只在页面已拿到基础结果后进行；超时就保留基础结果，不让连接一直挂着。
+DEFERRED_TIMEOUT = 15
+EarlyResult = Callable[[dict], None]
 
 
 class ParseCache:
@@ -83,32 +87,46 @@ cache = ParseCache()
 class _ParseFlight:
     task: asyncio.Task
     progress: progress.Progress
+    # 有可延后补充时先放基础结果；JSON 请求仍等 task 的完整结果。
+    early: asyncio.Future
     waiters: int = 0
 
 
 _pending: dict[str, _ParseFlight] = {}
 
 
-async def _shared_parse(share_url: str) -> dict:
+def _start_flight(share_url: str) -> _ParseFlight:
+    limits.parse_upstream_global.hit(limits.GLOBAL, "现在解析的人太多了，{wait} 秒后再试")
+    shared_progress = progress.Progress()
+    early = asyncio.get_running_loop().create_future()
+
+    def publish(result: dict) -> None:
+        # 基础结果不进缓存：同一链接的新请求加入这次抓取，拿到的是补充后的完整结果。
+        if not early.done():
+            early.set_result(result)
+
+    async def fetch() -> dict:
+        with progress.track(shared_progress):
+            result = await _parse(share_url, publish)
+        cache.put(share_url, result)
+        return result
+
+    return _ParseFlight(asyncio.create_task(fetch()), shared_progress, early)
+
+
+async def _shared_parse(share_url: str, on_early: EarlyResult | None = None) -> dict:
     """同一链接共用一次抓取；单个请求取消不影响仍在等待的请求。"""
     flight = _pending.get(share_url)
     if flight is None:
-        limits.parse_upstream_global.hit(limits.GLOBAL, "现在解析的人太多了，{wait} 秒后再试")
-
-        shared_progress = progress.Progress()
-
-        async def fetch() -> dict:
-            with progress.track(shared_progress):
-                result = await _parse(share_url)
-            cache.put(share_url, result)
-            return result
-
-        flight = _ParseFlight(asyncio.create_task(fetch()), shared_progress)
-        _pending[share_url] = flight
+        flight = _pending[share_url] = _start_flight(share_url)
     observer = progress.current()
     unsubscribe = flight.progress.subscribe(observer.receive) if observer else lambda: None
     flight.waiters += 1
     try:
+        if on_early is not None:
+            await asyncio.wait((flight.early, flight.task), return_when=asyncio.FIRST_COMPLETED)
+            if flight.early.done() and not flight.task.done():
+                on_early(flight.early.result())
         return await asyncio.shield(flight.task)
     finally:
         unsubscribe()
@@ -187,16 +205,37 @@ def _client_data(info: VideoInfo, share_url: str) -> dict:
     return data
 
 
-async def _parse(share_url: str) -> dict:
-    progress.emit("extracting")
+async def _extract(share_url: str) -> VideoInfo | dict:
     try:
-        info = await asyncio.wait_for(parse_video_share_url(share_url), PARSE_TIMEOUT)
+        return await asyncio.wait_for(parse_video_share_url(share_url), PARSE_TIMEOUT)
     except asyncio.TimeoutError:
         return _failure(504, "解析超时，请稍后再试", "timeout")
     except Exception as err:  # noqa: BLE001 - 统一归类后告诉用户
         perr = err if isinstance(err, ParseError) else classify(err)
         return _failure(500, str(perr), perr.reason)
+
+
+def _success(info: VideoInfo, share_url: str) -> dict:
     return {"code": 200, "msg": "解析成功", "data": _client_data(info, share_url)}
+
+
+async def _parse(share_url: str, on_early: EarlyResult | None = None) -> dict:
+    progress.emit("extracting")
+    with deferred.collect() as pending:
+        try:
+            info = await _extract(share_url)
+        except BaseException:
+            deferred.cancel(pending)
+            raise
+    if isinstance(info, dict):
+        deferred.cancel(pending)
+        return info
+    if not pending:
+        return _success(info, share_url)
+    if on_early is not None:
+        on_early(_success(info, share_url))
+    await deferred.finish(pending, DEFERRED_TIMEOUT)
+    return _success(info, share_url)
 
 
 async def _handle_failure(result: dict, share_url: str, platform: str, ip: str) -> None:
@@ -220,6 +259,21 @@ def _result_source(result: dict, platform: str) -> str:
 @router.get("/api/parse", dependencies=SITE_AUTH)
 async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
     """解析分享文本 / 链接，返回可下载的视频、图片和清晰度选项。"""
+    return await _parse_request(url, ip)
+
+
+def _record_parse(ip: str, result: dict, platform: str, started: float) -> None:
+    stats.record(
+        "parse",
+        ip,
+        source=_result_source(result, platform),
+        ok=result["code"] == 200,
+        reason=result.get("reason", ""),
+        ms=(time.monotonic() - started) * 1000,
+    )
+
+
+async def _parse_request(url: str, ip: str, on_early: EarlyResult | None = None) -> dict:
     share_url = extract_url(url)
     if share_url is None:
         stats.record("parse", ip, ok=False, reason="unsupported")
@@ -239,18 +293,20 @@ async def api_parse(url: str, ip: str = Depends(limits.parse_limit)):
 
     # 到这儿才真去平台抓：全站总量在这里扣，缓存命中和不支持的链接不占
     started = time.monotonic()
-    result = await _shared_parse(share_url)
-    ok = result["code"] == 200
-    if not ok:
+    shown = False
+
+    def early(result: dict) -> None:
+        # 耗时按用户实际等到结果计算；后台补充画质不再记一次解析。
+        nonlocal shown
+        shown = True
+        _record_parse(ip, result, platform, started)
+        on_early(result)
+
+    result = await _shared_parse(share_url, early if on_early else None)
+    if result["code"] != 200:
         await _handle_failure(result, share_url, platform, ip)
-    stats.record(
-        "parse",
-        ip,
-        source=_result_source(result, platform),
-        ok=ok,
-        reason=result.get("reason", ""),
-        ms=(time.monotonic() - started) * 1000,
-    )
+    if not shown:
+        _record_parse(ip, result, platform, started)
     return result
 
 
@@ -259,16 +315,33 @@ def _stream_event(event: dict) -> str:
 
 
 async def _stream_run(url: str, ip: str, state: progress.Progress, send) -> None:
+    shown: list[dict] = []
+
+    def early(result: dict) -> None:
+        state.closed = True
+        shown.append(result)
+        send({"type": "result", "result": result, "pending": True})
+
     try:
         with progress.track(state):
-            result = await api_parse(url, ip)
+            result = await _parse_request(url, ip, early)
     except HTTPException as err:
         result = _failure(err.status_code, str(err.detail), "")
     except Exception:  # noqa: BLE001 - 已开始的流不能再发送 HTTP 错误响应
         log.exception("解析状态流失败")
         result = _failure(500, "解析暂时出了点状况，请稍后再试", "parse")
     state.closed = True
-    send({"type": "result", "result": result})
+    if not shown:
+        send({"type": "result", "result": result})
+    elif result["code"] == 200 and result["data"]["formats"] != shown[0]["data"]["formats"]:
+        # 只推送真正多出来的画质；补充失败时页面保留已经展示的结果。
+        send({"type": "update", "result": result})
+    else:
+        send({"type": "done"})
+
+
+def _final_event(event: dict) -> bool:
+    return event["type"] in ("update", "done") or (event["type"] == "result" and not event.get("pending"))
 
 
 async def _parse_events(url: str, ip: str):
@@ -290,7 +363,7 @@ async def _parse_events(url: str, ip: str):
                 yield ": keepalive\n\n"
                 continue
             yield _stream_event(event)
-            if event["type"] == "result":
+            if _final_event(event):
                 return
     finally:
         state.closed = True

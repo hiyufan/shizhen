@@ -7,7 +7,7 @@ import { cancelUpload, uploadFile } from './animation-upload.js';
 import { $, el, notice } from './dom.js';
 import { setupAdvertising } from './advertising.js';
 import { parseHints } from './parse-progress.js';
-import { renderResult } from './result.js';
+import { renderResult, updateResult } from './result.js';
 import { closeConverter } from './converter.js';
 import { askForStarAfterDownload, feedbackBox } from './ui.js';
 
@@ -32,11 +32,19 @@ const pasteBtn = $('#paste-btn');
 const clearBtn = $('#clear-btn');
 const hasLink = (text) => /https?:\/\//.test(text);
 let activeParse = null;
+// 结果已显示、仍在等待补充画质的那次解析；换链接、清空或上传时断开，旧补充不能写进新结果。
+let pendingUpdates = null;
 
 askForStarAfterDownload($('#result'), $('#converter'));
 setupAdvertising();
 
+function stopUpdates() {
+  pendingUpdates?.abort();
+  pendingUpdates = null;
+}
+
 function hideOutputs() {
+  stopUpdates();
   cancelUpload();
   closeConverter();
   $('#result').hidden = true;
@@ -45,8 +53,19 @@ function hideOutputs() {
 // 从 GitHub issue 的「在线复现」点进来的，解析请求也带上来源，服务端不计入统计
 const FROM = new URLSearchParams(location.search).get('src') === 'issue' ? '&src=issue' : '';
 
-async function parse(text, hints, signal) {
-  const r = await parseWithProgress('/api/parse/stream' + (FROM ? '?' + FROM.slice(1) : ''), hints.update, signal, { url: text });
+function applyUpdate(controller) {
+  return (r) => {
+    if (pendingUpdates !== controller) return;
+    pendingUpdates = null;
+    if (r.code !== 200) return;
+    useSignatures(r.data);
+    updateResult(r.data);
+  };
+}
+
+async function parse(text, hints, controller) {
+  const path = '/api/parse/stream' + (FROM ? '?' + FROM.slice(1) : '');
+  const r = await parseWithProgress(path, hints.update, controller.signal, { url: text }, applyUpdate(controller));
   if (r.code !== 200) throw Object.assign(new Error(serverMessage(r.msg || t('解析失败'))), { reason: r.reason, feedback: r.feedback });
   return r.data;
 }
@@ -86,11 +105,12 @@ form.addEventListener('submit', async (e) => {
   notice('');
   // 上一条的结果和转换器先收起来：新链接解析要几秒，期间旧结果的按钮还能点，容易点到上一条的「转 GIF」
   hideOutputs();
+  pendingUpdates = controller;
   const hints = parseHints();
   const request = { controller, hints };
   activeParse = request;
   try {
-    const data = await parse(text, hints, controller.signal);
+    const data = await parse(text, hints, controller);
     if (activeParse !== request) return;
     hints.stop();
     useSignatures(data);

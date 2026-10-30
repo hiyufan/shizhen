@@ -49,7 +49,25 @@ async function* streamEvents(response) {
   }
 }
 
-export async function parseWithProgress(path, update, signal, payload) {
+/** 基础结果之后继续读同一条连接；补充失败、中断或取消时页面保留已展示的结果。 */
+async function followUpdates(events, onUpdate) {
+  try {
+    for (;;) {
+      const { done, value: event } = await events.next();
+      if (done || event.type === 'done') return;
+      if (event.type === 'update') {
+        onUpdate(event.result);
+        return;
+      }
+    }
+  } catch (_) {
+    // 连接中断或被新的解析取消
+  } finally {
+    await events.return();
+  }
+}
+
+async function openStream(path, signal, payload) {
   const opts = payload === undefined ? { signal } : {
     signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), retry: 1,
   };
@@ -58,9 +76,19 @@ export async function parseWithProgress(path, update, signal, payload) {
     const body = await response.json().catch(() => ({}));
     throw new Error(serverMessage(body.detail || body.msg || t('请求失败 {status}', { status: response.status })));
   }
-  for await (const event of streamEvents(response)) {
-    if (event.type === 'result') return event.result;
+  return streamEvents(response);
+}
+
+export async function parseWithProgress(path, update, signal, payload, onUpdate = null) {
+  const events = await openStream(path, signal, payload);
+  for (;;) {
+    const { done, value: event } = await events.next();
+    if (done) break;
     if (event.type === 'progress') update(event);
+    if (event.type !== 'result') continue;
+    if (event.pending && onUpdate) followUpdates(events, onUpdate);
+    else await events.return();
+    return event.result;
   }
   throw new Error(t('解析连接中断了，请重新试一次'));
 }

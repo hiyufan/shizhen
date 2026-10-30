@@ -123,8 +123,41 @@ async def test_reads_only_bounded_head_and_tail_when_movie_metadata_is_at_end(ne
     calls = network(response)
     assert (await mp4_probe.probe("https://cdn.test/end.mp4")).height == 1920
     assert len(calls) == 2
-    assert calls[0].headers["range"] == "bytes=0-1048575"
+    assert calls[0].headers["range"] == "bytes=0-65535"
     assert calls[1].headers["range"].startswith(f"bytes={len(body) - 524288}-")
+
+
+def _ranged(body):
+    def response(request):
+        start, end = map(int, request.headers["range"].removeprefix("bytes=").split("-"))
+        end = min(end, len(body) - 1)
+        return httpx.Response(
+            206, headers={"Content-Range": f"bytes {start}-{end}/{len(body)}"}, content=body[start : end + 1]
+        )
+
+    return response
+
+
+def _large_movie():
+    # moov 内多一个 free 子 box，模拟长视频超过首段读取量的样本表。
+    movie = _movie()
+    return _box(b"moov", movie[8:] + _box(b"free", bytes(100_000)))
+
+
+async def test_large_front_metadata_reads_exactly_the_rest_of_the_movie_box(network):
+    head = _box(b"ftyp", b"isom") + _large_movie()
+    body = head + _box(b"mdat", bytes(2_000_000))
+    calls = network(_ranged(body))
+    assert (await mp4_probe.probe("https://cdn.test/front.mp4")).height == 1920
+    end = len(head)
+    assert [c.headers["range"] for c in calls] == ["bytes=0-65535", f"bytes=65536-{end - 1}"]
+
+
+async def test_continuation_falls_back_to_bounded_head_when_range_is_ignored(network):
+    body = _box(b"ftyp", b"isom") + _large_movie() + _box(b"mdat", bytes(500_000))
+    calls = network(lambda _: httpx.Response(200, headers={"Content-Length": str(len(body))}, content=body))
+    assert (await mp4_probe.probe("https://cdn.test/no-range.mp4")).height == 1920
+    assert len(calls) == 3
 
 
 async def test_server_ignoring_range_cannot_make_probe_download_the_whole_file(network):
@@ -142,7 +175,7 @@ async def test_server_ignoring_range_cannot_make_probe_download_the_whole_file(n
 
     network(lambda _: httpx.Response(200, headers={"Content-Length": "3276800"}, stream=Stream()))
     assert (await mp4_probe.probe("https://cdn.test/ignored-range.mp4")).height == 1920
-    assert read == [*range(32), "closed"]
+    assert read == [0, 1, "closed"]
 
 
 @pytest.mark.parametrize("headers", [{"Content-Range": "bytes 1-20/1000"}, {"Content-Encoding": "gzip"}])

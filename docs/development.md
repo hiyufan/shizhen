@@ -148,7 +148,7 @@ Pixiv / Sketch 目录使用 `entries: [{url, title, cover_url, kind, available}]
 | `DELETE` | `/api/jobs/{id}` | 取消任务（仅发起者） |
 | `GET` | `/api/health` | 队列、磁盘、yt-dlp 版本 |
 
-解析状态流为 SSE：`data` 中的 `{type: "progress", stage, fallback}` 表示真实阶段，`{type: "result", result}` 是最终 JSON 结果。网页保留轻松的文案，显示实际等待时间，并在进入兜底后持续标记「备用方式已启用」；缓存命中不闪等待条，清空或换链接会停止旧请求和计时。阶段事件不传 Cookie、PO Token 或内部服务信息，原 JSON 解析接口继续可用。
+解析状态流为 SSE：`data` 中的 `{type: "progress", stage, fallback}` 表示真实阶段，`{type: "result", result}` 是最终 JSON 结果。部分平台的画质核对较慢（目前是抖音官方播放入口的最高档）：这时 `result` 带 `pending: true`，先给出接口已有的清晰度，核对完成后发送 `{type: "update", result}`（多出画质时）或 `{type: "done"}`，网页就地更新下载按钮。JSON 接口、命令行和账号助手仍等核对完成再返回，结果与原来一致。网页保留轻松的文案，显示实际等待时间，并在进入兜底后持续标记「备用方式已启用」；缓存命中不闪等待条，清空或换链接会停止旧请求和计时。阶段事件不传 Cookie、PO Token 或内部服务信息，原 JSON 解析接口继续可用。
 
 任务接口都返回 `{id, status: queued|running|done|error, progress, message, filename, filesize}`，轮询 `/api/jobs/{id}` 直到 `done` 后取 `/file`。限流触发时返回 `429` 并带 `Retry-After`。
 

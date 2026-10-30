@@ -51,7 +51,16 @@ async function saveDirect(e, url, filename) {
   else location.href = a.href;
 }
 
+// 当前结果的下载区刷新函数；只有视频结果会登记，换结果时清空。
+let refreshDownloads = null;
+
+/** 后台核对到更高画质后，就地更新同一份结果数据与下载按钮；转换按钮在点击时读取最新档位。 */
+export function updateResult(next) {
+  if (refreshDownloads) refreshDownloads(next);
+}
+
 export function renderResult(d) {
+  refreshDownloads = null;
   const title = d.title || t('未命名');
   // notice：平台不给的那部分是什么（比如快手实况只有照片），说在前面免得用户以为是网站漏了
   const sourceNotice = d.notice ? el('p', { class: 'fine' }, serverMessage(d.notice, '平台仅提供部分媒体，请检查结果后下载。')) : null;
@@ -141,8 +150,20 @@ function videoSection(d, baseName, jobsBox) {
       }))
     : el('div', { class: 'media portrait' }, d.cover_url ? proxyImg(d.cover_url, { alt: '' }) : null);
   const convert = (format) => () => openConverter(sourceRequest(d, baseName), format);
+  let actions = saveActions(d, baseName, jobsBox);
+  const status = el('p', { class: 'hint found', role: 'status' });
+  refreshDownloads = (next) => {
+    const before = defaultDownload(d)?.url;
+    Object.assign(d, next);
+    const fresh = saveActions(d, baseName, jobsBox);
+    actions.replaceWith(fresh);
+    actions = fresh;
+    const best = defaultDownload(d);
+    if (best?.url !== before && best?.label) status.textContent = t('已找到更高画质：{label}', { label: t(best.label) });
+  };
   const side = el('div', { class: 'side' },
-    saveActions(d, baseName, jobsBox),
+    actions,
+    status,
     el('div', { class: 'rule' }),
     el('p', { class: 'label' }, t('拿这段视频继续做')),
     el('div', { class: 'group' },

@@ -138,6 +138,34 @@ def test_official_playback_can_recover_higher_quality_than_web_list(monkeypatch)
     assert highest.label == "1080p" and highest.url.endswith("2160p.mp4")
 
 
+def test_web_stream_gets_api_formats_before_official_playback_check(monkeypatch):
+    from qiuyuantu.parser import deferred
+
+    aweme = copy.deepcopy(VIDEO_AWEME)
+    release = asyncio.Event()
+
+    async def original(self, video):
+        await release.wait()
+        return [FormatInfo(url="https://cdn.test/2160p.mp4", width=2160, height=3840, label="2160p")]
+
+    async def slides(self, video_id):
+        return {"aweme_details": [aweme]}
+
+    async def run():
+        with deferred.collect() as pending:
+            info = await DouYin().parse_share_url(PC_URL)
+        base = [f.url for f in info.formats]
+        release.set()
+        await deferred.finish(pending, 1)
+        return base, [f.url for f in info.formats]
+
+    monkeypatch.setattr(DouYin, "_original_formats", original)
+    monkeypatch.setattr(DouYin, "_get_slides_info", slides)
+    base, enriched = asyncio.run(run())
+    assert "https://cdn.test/2160p.mp4" not in base
+    assert enriched[0] == "https://cdn.test/2160p.mp4" and enriched[1:] == base
+
+
 def test_image_note_with_live_photo(monkeypatch):
     info = _parse(monkeypatch, NOTE_AWEME)
     assert info.video_url == "" and info.formats == []
