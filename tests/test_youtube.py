@@ -136,3 +136,67 @@ def test_already_using_fallback_does_not_retry_same_failed_route(routes, monkeyp
     with pytest.raises(RuntimeError, match="429"):
         fetch.ytdlp_download(PAGE, "b", tmp_path, "v", report=lambda *_: None, cancelled=lambda: False)
     assert calls == ["http://warp:1080"]
+
+
+def _recording_ytdlp(monkeypatch):
+    seen = []
+
+    class Downloader:
+        def __init__(self, opts):
+            seen.append(opts)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            pass
+
+        def extract_info(self, *_args, **_kw):
+            return {"title": "example"}
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", SimpleNamespace(YoutubeDL=Downloader))
+    return seen
+
+
+def test_fallback_route_uses_readable_clients_for_parse_and_download(routes, monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "POT_URL", "http://bgutil:4416")
+    seen = _recording_ytdlp(monkeypatch)
+    YtDlp._extract(PAGE, "http://warp:1080")
+    net.remember_fallback([PAGE])
+    download = fetch._ytdlp_opts(PAGE, "b", tmp_path, "v", fit=False)
+    for opts in (seen[0], download):
+        # 解析与下载的客户端一致，format_id 才能对上；PO Token 参数保留。
+        assert opts["extractor_args"]["youtube"]["player_client"] == ["tv_simply"]
+        assert opts["extractor_args"]["youtubepot-bgutilhttp"] == {"base_url": ["http://bgutil:4416"]}
+
+
+def test_default_route_and_other_sites_keep_ytdlp_clients(routes, monkeypatch, tmp_path):
+    seen = _recording_ytdlp(monkeypatch)
+    YtDlp._extract(PAGE)
+    YtDlp._extract("https://vimeo.com/1", "http://warp:1080")
+    opts = fetch._ytdlp_opts(PAGE, "b", tmp_path, "v", fit=False)
+    for item in (*seen, opts):
+        assert "youtube" not in item.get("extractor_args", {})
+
+
+def test_download_retry_on_fallback_switches_clients(routes, monkeypatch, tmp_path):
+    clients = []
+
+    def run(opts, _url, out_dir, stem):
+        clients.append((opts.get("extractor_args") or {}).get("youtube", {}).get("player_client"))
+        if len(clients) == 1:
+            raise RuntimeError("HTTP Error 403: Forbidden")
+        path = out_dir / f"{stem}.mp4"
+        path.write_bytes(b"media")
+        return {"requested_downloads": [{"filepath": str(path)}]}
+
+    monkeypatch.setattr(fetch, "_ytdlp_run", run)
+    fetch.ytdlp_download(PAGE, "b", tmp_path, "v", report=lambda *_: None, cancelled=lambda: False)
+    assert clients == [None, ["tv_simply"]]
+
+
+def test_empty_fallback_client_setting_keeps_ytdlp_defaults(routes, monkeypatch):
+    monkeypatch.setattr(config, "YOUTUBE_FALLBACK_CLIENTS", [])
+    seen = _recording_ytdlp(monkeypatch)
+    YtDlp._extract(PAGE, "http://warp:1080")
+    assert "youtube" not in seen[0].get("extractor_args", {})

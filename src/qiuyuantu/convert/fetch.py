@@ -217,6 +217,12 @@ def _ytdlp_opts(page_url: str, format_spec: str, out_dir: Path, stem: str, *, fi
         proxy = proxy_for_url(page_url) or proxy
     if proxy:
         opts["proxy"] = proxy
+    return _fallback_clients(opts, page_url)
+
+
+def _fallback_clients(opts: dict, page_url: str) -> dict:
+    if is_youtube_url(page_url) and opts.get("proxy") and opts["proxy"] == fallback_proxy():
+        return config.with_fallback_clients(opts)
     return opts
 
 
@@ -292,7 +298,7 @@ def ytdlp_download(
         if not wants_fallback(err, page_url) or opts.get("proxy") == fallback_proxy():
             raise
         # YouTube 抽查「确认不是机器人」：换备用出口重下（见 utils.wants_fallback）
-        info = _ytdlp_run(opts | {"proxy": fallback_proxy()}, page_url, out_dir, stem)
+        info = _ytdlp_run(_fallback_clients(opts | {"proxy": fallback_proxy()}, page_url), page_url, out_dir, stem)
     return _downloaded_file(hooks, info, out_dir, stem)
 
 

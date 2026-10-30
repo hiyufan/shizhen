@@ -119,6 +119,7 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | `PARSE_VIDEO_YOUTUBE_NATIVE` | `1` | Docker 原生会话 / SABR 兜底；设 `0` 关闭，手动安装还须配置隔离解释器 |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_PROXY` | – | 兜底专用的无认证 HTTP 代理；默认依次使用 YouTube 专用出口、WARP、通用出口 |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT` | `75` | 单次原生会话下载与完整校验的秒数上限；还受接口 / 任务总超时约束 |
+| `PARSE_VIDEO_YOUTUBE_FALLBACK_CLIENTS` | `tv_simply` | 经备用出口（WARP）解析 / 下载 YouTube 时用的 yt-dlp 播放器客户端，逗号分隔；留空用 yt-dlp 默认 |
 | `PARSE_VIDEO_YOUTUBE_HLS` | `1` | 兜底时先经同一出口下 HLS（不开浏览器，约 10 秒），没走通再开浏览器；设 `0` 只走浏览器 |
 | `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS` | `0` | 每隔几天自动升级 yt-dlp 并在空闲时重启 |
 | `PARSE_VIDEO_PARSE_CACHE` | `600` | 解析结果缓存秒数 |

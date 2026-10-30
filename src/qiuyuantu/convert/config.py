@@ -19,6 +19,14 @@ COOKIES_BROWSER = os.environ.get("PARSE_VIDEO_COOKIES_BROWSER", "")
 
 # YouTube PO Token 服务 (bgutil-ytdlp-pot-provider 的 HTTP 服务地址), 公网部署防 "Sign in to confirm you're not a bot"
 POT_URL = os.environ.get("PARSE_VIDEO_POT_URL", "")
+# 经备用出口（WARP）解析 YouTube 时使用的播放器客户端，逗号分隔；留空用 yt-dlp 默认。
+# 默认客户端的 https 直链经 WARP 读媒体多为 403，只能退到 HLS / 浏览器；tv_simply 的直链可直接读取
+# （2026-10-29 实测 8 条被抽查的视频全部可读，最高 2160p，音视频分轨和文件中段都能取，3～34 MB/s）。
+YOUTUBE_FALLBACK_CLIENTS = [
+    name.strip()
+    for name in os.environ.get("PARSE_VIDEO_YOUTUBE_FALLBACK_CLIENTS", "tv_simply").split(",")
+    if name.strip()
+]
 
 # 原生 YouTube 会话 / SABR 兜底使用隔离解释器，不能替换普通平台的 yt-dlp。
 YOUTUBE_NATIVE_PYTHON = os.environ.get("PARSE_VIDEO_YOUTUBE_NATIVE_PYTHON", "")
@@ -83,6 +91,17 @@ def ytdlp_cookie_opts() -> dict:
     if POT_URL:
         opts["extractor_args"] = {"youtubepot-bgutilhttp": {"base_url": [POT_URL]}}
     return opts
+
+
+def with_fallback_clients(opts: dict) -> dict:
+    """备用出口专用的 YouTube 客户端；与 PO Token 等已有 extractor_args 合并，不覆盖。
+
+    解析与服务端下载必须用同一组客户端，否则解析给出的 format_id 在下载时可能不存在。"""
+    if not YOUTUBE_FALLBACK_CLIENTS:
+        return opts
+    args = dict(opts.get("extractor_args") or {})
+    args["youtube"] = {**args.get("youtube", {}), "player_client": list(YOUTUBE_FALLBACK_CLIENTS)}
+    return opts | {"extractor_args": args}
 
 
 def ytdlp_runtime_opts() -> dict:

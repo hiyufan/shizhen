@@ -183,6 +183,28 @@ docker run --rm --memory=2g \
 
 边界：HLS 现在不需要 PO Token，YouTube 以后可能收紧。到那时会自动退回浏览器路径，只是变慢。状态页自检走的是用户的实际路径，HLS 正常时测不到浏览器路径是否还通。日志里的「YouTube HLS 没走通，改开浏览器」变多，就说明 HLS 开始失效。
 
+### WARP 下改用 tv_simply 客户端（2026-10-29）
+
+近期解析失败的视频重新测试后分成三类：
+- 年龄限制：直连、WARP，以及 tv_simply、android_vr、web_embedded、tv_embedded 都返回「Sign in to confirm your age」，没有匿名办法。
+- 已被平台删除。
+- 其余的直连全部被机器人验证拦截；换哪个客户端都一样，限制在 IP 层面。
+
+经 WARP 逐个比较 yt-dlp 的播放器客户端，结果如下：
+
+| 客户端 | 解析 | https 直链读 1 KB |
+|---|---|---|
+| 默认、mweb、web_embedded | 成功，最高 1080p | 403 |
+| tv、web_safari、ios | 失败（要求重新加载或没有可用格式） | – |
+| android_vr | 成功，只有 360p | 206 |
+| **tv_simply** | **成功，最高 2160p** | **206** |
+
+tv_simply 经 WARP 测了 8 条公开视频，全部可读：视频分轨、音频分轨、文件中段都能取，速度 3～34 MB/s。因此经备用出口解析和下载 YouTube 时改用 `PARSE_VIDEO_YOUTUBE_FALLBACK_CLIENTS`（默认 `tv_simply`）。解析和服务端下载使用同一组客户端，format_id 才能对上；默认出口不受影响。
+
+应用接口实测（同一容器、新代码、独立数据目录）：7 条视频首次解析都由 WARP + tv_simply 完成，用时 3.2～7.7 秒，改动前是 9～14 秒，且多数要靠浏览器兜底。2 小时的视频解析时不再因为「视频太大」失败。一条 2 分半视频的 1080p 下载任务 6 秒完成（46 MB），准备素材 7 秒，GIF、实况照片、动态照片各 2～4 秒。
+
+HLS 与浏览器路径仍保留在后面。tv_simply 哪天失效时，race 会自动交给它们，只是变慢；也可以把这个变量改成别的客户端，或留空恢复 yt-dlp 默认。直连连续两次被拦后，接下来 10 分钟不再先试直连（见 `parser/ytdlp.py` 的 `_DirectBreaker`）。
+
 ### 升级原生下载器
 
 `docker/youtube/requirements.txt` 里的 yt-dlp 是 SABR 实验分支的固定提交，带 sha256 校验，不在 `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS` 的自动升级范围里。状态页 YouTube 报失败、日志里原生会话报错时，先去 [bashonly/yt-dlp](https://github.com/bashonly/yt-dlp) 看 SABR 分支有没有新提交，或者上游是否已合并 SABR；换提交时重新计算哈希：

@@ -181,6 +181,8 @@ class YtDlp(BaseParser):
         }
         if proxy := proxy or youtube_proxy(url) or proxy_for():
             opts["proxy"] = proxy
+        if proxy and proxy == fallback_proxy() and is_youtube_url(url):
+            opts = convert_config.with_fallback_clients(opts)
         # yt-dlp 自己跟跳转、抓页面里嵌的地址；连内网由 net 里换掉的 getaddrinfo 拦
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)

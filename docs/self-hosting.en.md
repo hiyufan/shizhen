@@ -119,6 +119,7 @@ All configuration uses environment variables. Every variable is optional.
 | `PARSE_VIDEO_YOUTUBE_NATIVE` | `1` | Native session / SABR fallback included in Docker; set to `0` to disable; manual installations also require an isolated interpreter |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_PROXY` | – | Unauthenticated HTTP proxy for the fallback; defaults to the dedicated YouTube connection, then WARP, then the general proxy |
 | `PARSE_VIDEO_YOUTUBE_NATIVE_TIMEOUT` | `75` | Time limit in seconds for a native session download and validation; also subject to the endpoint / job timeout |
+| `PARSE_VIDEO_YOUTUBE_FALLBACK_CLIENTS` | `tv_simply` | yt-dlp player clients used for YouTube extraction and downloads through the fallback (WARP) proxy, comma-separated; leave empty for yt-dlp defaults |
 | `PARSE_VIDEO_YOUTUBE_HLS` | `1` | Try HLS through the same outbound connection before launching a browser, typically around 10 seconds; use the browser if it fails; set to `0` to use only the browser path |
 | `PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS` | `0` | Update yt-dlp every specified number of days and restart when idle |
 | `PARSE_VIDEO_PARSE_CACHE` | `600` | Extraction result cache lifetime in seconds |
