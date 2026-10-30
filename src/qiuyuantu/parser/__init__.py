@@ -19,6 +19,7 @@ from .doupai import DouPai
 from .douyin import DouYin
 from .emotes import BetterTTV, FrankerFaceZ, SevenTV
 from .errors import ParseError, classify
+from .goofish import Goofish
 from .haokan import HaoKan
 from .hoyoplay import HoYoPlay
 from .huya import HuYa
@@ -57,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
+    VideoSource.Goofish: {"domain_list": ["goofish.com", "m.tb.cn", "2.taobao.com"], "parser": Goofish},
     VideoSource.Animation: {"domain_list": [], "parser": Animation},
     VideoSource.Signal: {"domain_list": ["signal.art"], "parser": Signal},
     VideoSource.SevenTV: {"domain_list": ["7tv.app", "7tv.io"], "parser": SevenTV},

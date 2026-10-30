@@ -19,7 +19,7 @@ const PLATFORMS = {
   doupai: t('逗拍'), meipai: t('美拍'), quanminkge: t('全民K歌'), sixroom: t('六间房'), xinpianchang: t('新片场'), haokan: t('好看视频'),
   qqvideo: t('腾讯视频'), sohu: t('搜狐视频'), cctv: t('央视网'), vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
-  qqmusic: t('QQ 音乐'), netease: t('网易云音乐'),
+  qqmusic: t('QQ 音乐'), netease: t('网易云音乐'), goofish: t('闲鱼'),
   steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', telegram: 'Telegram', discord: 'Discord',
   wutheringwaves: t('鸣潮'), miyoushe: t('米游社'), 'bilibili-assets': t('B站装扮与收藏集'),
   'wechat-channels': t('视频号'),

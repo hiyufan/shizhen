@@ -22,6 +22,7 @@ CN_SOURCES = {
     "bilibili-assets",
     "miyoushe",
     "wechat-channels",
+    "goofish",
     "weibo",
     "xigua",
     "pipixia",
@@ -65,6 +66,11 @@ CN_HOST_KEYWORDS = (
     "music.126.net",
     "y.qq.com",
     "y.gtimg.cn",
+    "goofish.com",
+    "m.tb.cn",
+    "alicdn.com",
+    "taobaocdn.com",
+    "video.taobao.com",
 )
 
 

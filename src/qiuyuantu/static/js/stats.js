@@ -22,7 +22,7 @@ const PLATFORMS = {
   douyin: translate('抖音'), redbook: translate('小红书'), kuaishou: translate('快手'), youtube: 'YouTube', twitter: 'X', bilibili: translate('B站'), weibo: translate('微博'),
   tiktok: 'TikTok', instagram: 'Instagram', xigua: translate('西瓜视频'), pipixia: translate('皮皮虾'), acfun: 'AcFun', ytdlp: translate('其它（yt-dlp）'),
   '': translate('未识别'),
-  qqmusic: translate('QQ 音乐'), netease: translate('网易云音乐'),
+  qqmusic: translate('QQ 音乐'), netease: translate('网易云音乐'), goofish: translate('闲鱼'),
   steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', discord: 'Discord',
   pixiv: 'Pixiv', 'pixiv-sketch': 'Pixiv Sketch', telegram: 'Telegram',
   wutheringwaves: translate('鸣潮'), miyoushe: translate('米游社'),

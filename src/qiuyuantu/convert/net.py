@@ -22,6 +22,9 @@ from . import config, relay
 
 # 各家 CDN 直链需要带的 Referer，缺了会 403
 _REFERERS = {
+    "alicdn.com": "https://h5.m.goofish.com/",
+    "taobaocdn.com": "https://h5.m.goofish.com/",
+    "video.taobao.com": "https://h5.m.goofish.com/",
     "pximg.net": "https://www.pixiv.net/",
     "img-sketch.pixiv.net": "https://sketch.pixiv.net/",
     "steamstatic.com": "https://store.steampowered.com/",

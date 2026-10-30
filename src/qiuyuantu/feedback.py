@@ -65,6 +65,7 @@ PLATFORM_NAMES = {
     "weibo": "微博",
     "twitter": "X",
     "youtube": "YouTube",
+    "goofish": "闲鱼",
     "ytdlp": "其他站点",
 }
 REASON_NAMES = {"parse": "解析出错", "empty": "没拿到内容", "unsupported": "不支持的链接", "timeout": "超时"}
