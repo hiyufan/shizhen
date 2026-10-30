@@ -7,6 +7,7 @@ import pytest
 
 from qiuyuantu.parser import douyin
 from qiuyuantu.parser.douyin import DouYin, _WarmBrowser
+from qiuyuantu.parser.errors import ParseError
 
 
 class FakePage:
@@ -69,7 +70,7 @@ def test_aweme_info_without_images_returns_immediately():
 
 
 def test_note_not_found_page_gives_up_at_once(monkeypatch):
-    """要登录的视频走 /note/ 地址只显示「图文不存在」：一轮就交回原错，不再重开一次白等 15 秒。"""
+    """页面只显示「图文不存在」：一轮就给出没有公开的定论，不再重开一次白等 15 秒。"""
     page = FakePage([{**_dom(0, None, detail=False), "gone": True}])
     opened = []
 
@@ -80,7 +81,12 @@ def test_note_not_found_page_gives_up_at_once(monkeypatch):
             yield page
 
     monkeypatch.setattr(douyin, "_warm_browser", Browser())
-    assert asyncio.run(DouYin()._note_via_browser("1")) is None
+    parser = DouYin()
+    parser._note = True
+    with pytest.raises(ParseError) as exc:
+        asyncio.run(parser._note_via_browser("1"))
+    assert exc.value.reason == "restricted" and "没有公开给未登录用户" in str(exc.value)
+    assert "cookies" not in str(exc.value)
     assert opened == [1] and page.waited == 0
 
 

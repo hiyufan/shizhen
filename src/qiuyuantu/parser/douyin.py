@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import functools
+import importlib.util
 import json
 import logging
 import os
@@ -244,7 +245,11 @@ def _note_images(dom: dict) -> list[ImgInfo]:
 def _dom_summary(dom: dict | None) -> str:
     """日志里的一次打开结果。"""
     if dom is None:
-        return "不是图文"
+        return "浏览器不可用"
+    if dom.get("video"):
+        return "跳到视频页"
+    if dom.get("gone"):
+        return "图文不存在"
     if not dom:
         return "页面出错"
     via = "，直接读 HTML" if dom.get("from_html") else ""
@@ -337,6 +342,15 @@ async def _note_from_response(resp, video_id: str) -> dict | None:
     except Exception:  # noqa: BLE001 - 页面已经跳走 / 响应体拿不到 / 超时
         return None
     return await asyncio.to_thread(note_from_html, html, video_id)
+
+
+# 浏览器兜底给出定论后的提示：说清楚内容没有公开，不再暗示站长配置登录信息能解决。
+_LOGIN_ONLY_VIDEO = "这条抖音只给登录用户看，服务器拿不到，重试也一样"
+_NOTE_NOT_PUBLIC = "这条抖音没有公开给未登录用户，可能是私密、仅好友可见或审核中，服务器拿不到，重试也一样"
+
+
+def _browser_available() -> bool:
+    return importlib.util.find_spec("playwright") is not None
 
 
 def _looks_like_note(url: str) -> bool:
@@ -611,6 +625,9 @@ class DouYin(BaseParser):
             emit("fallback", fallback=True)
             info = await (early or self._note_via_browser(video_id))
             if info is None:
+                if err.reason == "login" and _browser_available():
+                    # 浏览器这次没得出定论（打不开 / 等不到图），多半是一时的，提示稍后再试
+                    raise ParseError("blocked") from err
                 raise
             return info
         info = await self._build(aweme)
@@ -867,14 +884,15 @@ class DouYin(BaseParser):
         # filter_list 一般只给个 reason 码，没有 detail_msg；有就带上
         detail = filtered.get("detail_msg") or filtered.get("notice") or ""
         if not cookie and self._note:
-            # 没配 cookie 时，图文被 filter 是平台不给匿名数据而不是作者限制：
-            # 报 restricted 会让用户以为链接有问题，站长也看不出配 cookie 能修。
+            # 图文被 filter 是平台不给匿名数据：报 login 交给浏览器兜底（见 _parse_aweme_or_note），
+            # 浏览器给出定论或一时没打开时会换成对应的提示；没装浏览器的自部署才需要站长配 cookie。
+            log.info("抖音图文匿名被 filter id=%s reason=%s", video_id, filtered.get("reason"))
             return ParseError("login", detail or f"抖音 filter reason={filtered.get('reason')}")
         if not cookie and not detail:
             # 匿名的视频被 filter（多是 reason=8）：网页、App feed、分享页、浏览器全试过，
             # 都要登录才给（2026-10）。原来只报个 reason 码，有人对同一条连点了 9 次
             log.info("抖音视频匿名被 filter id=%s reason=%s", video_id, filtered.get("reason"))
-            return ParseError("restricted", "这条抖音只给登录用户看，服务器拿不到，重试也一样")
+            return ParseError("restricted", _LOGIN_ONLY_VIDEO)
         return ParseError("restricted", detail or f"抖音 filter reason={filtered.get('reason')}")
 
     async def _note_via_browser(self, video_id: str) -> VideoInfo | None:
@@ -913,6 +931,11 @@ class DouYin(BaseParser):
         finally:
             took = time.monotonic() - started
             log.info("抖音图文兜底 id=%s 用时 %.1fs：%s", video_id, took, "，".join(steps) or "无")
+        if dom and (dom.get("video") or (dom.get("gone") and not self._note)):
+            # 视频走 /note/ 地址也会显示「图文不存在」；接口已经说明是登录才给看的视频
+            raise ParseError("restricted", _LOGIN_ONLY_VIDEO)
+        if dom and dom.get("gone"):
+            raise ParseError("restricted", _NOTE_NOT_PUBLIC)
         dom = dom if dom and _page_images(dom) else downscaled
         if not dom:
             return None
@@ -934,8 +957,8 @@ class DouYin(BaseParser):
         for attempt in range(2):
             dom = await self._open_note(video_id, page_url, attempt)
             step(f"第{attempt + 1}次打开（{_dom_summary(dom)}）")
-            if dom is None or (dom.get("total") == 0 and not _page_images(dom)):
-                break  # 是视频 / awemeInfo 里没有图：不是图文，交回上层报原错
+            if dom is None or dom.get("video") or dom.get("gone") or (dom.get("total") == 0 and not _page_images(dom)):
+                break  # 浏览器不可用 / 页面给出定论 / awemeInfo 里没有图：重开一次也一样
             if not _page_images(dom):
                 # 一张图都没等到：多半是撞上人机验证的变体页，或者这条其实是视频（视频走
                 # /note/ 地址不会跳 /video/，页面上没有图文区块）。再试一次，还不行才算失败
@@ -951,8 +974,9 @@ class DouYin(BaseParser):
         return dom, downscaled
 
     async def _open_note(self, video_id: str, page_url: str, attempt: int) -> dict | None:
-        """打开一次图文页取数据。页面出错返回 {}（换个页面再来）；是视频 / playwright 没装
-        返回 None（交回上层报原错）；作品没了抛 ParseError。"""
+        """打开一次图文页取数据。页面出错返回 {}（换个页面再来）；playwright 没装返回 None
+        （交回上层报原错）；跳到视频页返回 {"video": True}，页面写着图文不存在时 gone 为真；
+        跳去首页（作品没了）抛 ParseError。"""
         try:
             async with _warm_browser.page() as page:
                 # 第一次 12 秒还没到 DOMContentLoaded 多半是跨境连接卡死了（正常
@@ -968,15 +992,14 @@ class DouYin(BaseParser):
                 await page.wait_for_load_state("domcontentloaded", timeout=timeout)
                 if f"/note/{video_id}" not in page.url:
                     if f"/video/{video_id}" in page.url:
-                        # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，
-                        # 播放地址走 blob/HLS，DOM 里拿不到直链，交回上层报原错
-                        return None
+                        # 抖音把 /note/{id} 归一成 /video/{id}：这是条视频，播放地址走 blob/HLS，
+                        # DOM 里拿不到直链；走到兜底说明接口也不给，只能是登录才给看
+                        return {"video": True}
                     # 跳去首页/推荐流说明这条作品没了
                     raise ParseError("deleted", f"抖音图文页跳转到了 {page.url[:60]}")
-                dom = await self._extract_note_dom(page)
-                # 页面明说「图文不存在」：多半是要登录才给看的视频（filter reason=8），
+                # 页面明说「图文不存在」：私密、仅好友可见、审核中或要登录才给看，
                 # 重开一次也一样，以前要白等两轮 15~18 秒
-                return None if dom.get("gone") else dom
+                return await self._extract_note_dom(page)
         except ImportError:
             return None
         except ParseError:

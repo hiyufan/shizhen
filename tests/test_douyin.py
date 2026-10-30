@@ -369,15 +369,16 @@ class _FilteredClient:
 
 
 @pytest.mark.parametrize(
-    ("cookie", "note", "reason", "says_login"),
+    ("cookie", "note", "browser", "reason", "says_login"),
     [
-        ("", False, "restricted", True),  # 匿名视频：说清楚要登录、重试没用，不再只报 reason 码
-        ("", True, "login", False),  # 匿名图文：照旧报 login，提示站长配 cookie
-        ("sessionid=x", False, "restricted", False),  # 带了登录还被 filter：真是作者限制
+        ("", False, True, "restricted", True),  # 匿名视频：说清楚要登录、重试没用，不再只报 reason 码
+        ("", True, True, "login", False),  # 匿名图文：报 login 交给浏览器兜底
+        ("sessionid=x", False, True, "restricted", False),  # 带了登录还被 filter：真是作者限制
     ],
 )
-def test_filtered_slides_message(monkeypatch, cookie, note, reason, says_login):
+def test_filtered_slides_message(monkeypatch, cookie, note, browser, reason, says_login):
     monkeypatch.setenv("PARSE_VIDEO_DOUYIN_COOKIE", cookie)
+    monkeypatch.setattr(douyin, "_browser_available", lambda: browser)
     monkeypatch.setattr(douyin, "create_async_client", lambda **_kw: _FilteredClient())
     parser = DouYin()
     parser._note = note
@@ -475,3 +476,55 @@ def test_api_note_missing_live_is_filled_from_page(monkeypatch, dropped, browser
     else:
         # 第一张接口没给实况、页面有，补上；第二张接口已经有的不覆盖
         assert lives == ["https://v/live1.mp4", "https://v3-web.douyinvod.com/live2.mp4"]
+
+
+@pytest.mark.parametrize(
+    ("dom", "message"),
+    [({"video": True}, "只给登录用户看"), ({"gone": True, "images": []}, "没有公开给未登录用户")],
+)
+def test_browser_verdict_replaces_cookie_hint_for_filtered_note(monkeypatch, dom, message):
+    async def filtered(self, video_id):
+        raise ParseError("login", "抖音 filter reason=1")
+
+    async def open_note(self, video_id, page_url, attempt):
+        return dom
+
+    monkeypatch.setattr(DouYin, "_get_slides_info", filtered)
+    monkeypatch.setattr(DouYin, "_open_note", open_note)
+    with pytest.raises(ParseError) as exc:
+        asyncio.run(DouYin().parse_share_url("https://www.douyin.com/note/" + VIDEO_ID))
+    assert exc.value.reason == "restricted" and message in str(exc.value)
+    assert "cookies" not in str(exc.value)
+
+
+@pytest.mark.parametrize(("browser", "reason"), [(True, "blocked"), (False, "login")])
+def test_inconclusive_browser_asks_to_retry_and_only_selfhost_without_browser_needs_cookie(
+    monkeypatch, browser, reason
+):
+    async def filtered(self, video_id):
+        raise ParseError("login", "抖音 filter reason=1")
+
+    async def nothing(self, video_id):
+        return None
+
+    monkeypatch.setattr(DouYin, "_get_slides_info", filtered)
+    monkeypatch.setattr(DouYin, "_note_via_browser", nothing)
+    monkeypatch.setattr(douyin, "_browser_available", lambda: browser)
+    with pytest.raises(ParseError) as exc:
+        asyncio.run(DouYin().parse_share_url("https://www.douyin.com/note/" + VIDEO_ID))
+    assert exc.value.reason == reason
+    assert ("filter reason" in str(exc.value)) is (not browser)
+
+
+def test_login_only_video_keeps_its_message_when_note_page_is_empty(monkeypatch):
+    async def filtered(self, video_id):
+        raise ParseError("restricted", douyin._LOGIN_ONLY_VIDEO)
+
+    async def open_note(self, video_id, page_url, attempt):
+        return {"gone": True, "images": []}
+
+    monkeypatch.setattr(DouYin, "_get_slides_info", filtered)
+    monkeypatch.setattr(DouYin, "_open_note", open_note)
+    with pytest.raises(ParseError) as exc:
+        asyncio.run(DouYin().parse_share_url(PC_URL))
+    assert "只给登录用户看" in str(exc.value)
