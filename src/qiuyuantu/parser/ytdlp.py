@@ -7,6 +7,7 @@ YouTube / TikTok / Instagram 以及其它没有专用解析器的站点, 统一�
 
 import asyncio
 import contextlib
+import time
 from http.cookies import CookieError, SimpleCookie
 from typing import Any
 
@@ -14,10 +15,38 @@ from .. import progress
 from ..convert import config as convert_config
 from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
-from ..utils import fallback_proxy, proxy_for, run_ytdlp, wants_fallback, youtube_proxy
+from ..utils import fallback_proxy, is_youtube_url, proxy_for, run_ytdlp, wants_fallback, youtube_proxy
 from . import instagram
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
+from .errors import classify
 from .quality import number, short_side
+
+
+class _DirectBreaker:
+    """机房出口被 YouTube 抽查时，直连常要先失败 1～3 秒才切到备用出口。
+
+    连续被拦后暂时跳过直连；到期后放一次直连试探，成功就恢复，仍被拦则继续跳过。"""
+
+    THRESHOLD = 2
+    SKIP_SECONDS = 600
+
+    def __init__(self) -> None:
+        self.failures = 0
+        self.until = 0.0
+
+    def skipping(self) -> bool:
+        return time.monotonic() < self.until
+
+    def blocked(self) -> None:
+        self.failures += 1
+        if self.failures >= self.THRESHOLD:
+            self.until = time.monotonic() + self.SKIP_SECONDS
+
+    def reset(self) -> None:
+        self.failures, self.until = 0, 0.0
+
+
+_direct = _DirectBreaker()
 
 
 class YtDlp(BaseParser):
@@ -27,31 +56,58 @@ class YtDlp(BaseParser):
         if youtube_native.cached(share_url):
             progress.emit("cached")
             return await youtube_native.parse(share_url)
+        guarded = is_youtube_url(share_url) and bool(fallback_proxy())
+        if guarded and _direct.skipping():
+            return await self._without_direct(share_url)
         try:
             info = await run_ytdlp(self._extract, share_url)
-            return await self._usable_info(info, share_url)
+            result = await self._usable_info(info, share_url)
         except Exception as err:
-            # 图片帖会报 No video formats found 或 There is no video in this post；
-            # 空媒体响应也可能只是 yt-dlp 的接口没拿到，公开页面仍然有原图。
-            # 兜底失败不能盖掉原错误（例如本来是限龄，兜底却撞上网络超时）。
-            if instagram.post_code(share_url):
-                progress.emit("fallback", fallback=True)
-                with contextlib.suppress(Exception):
-                    if post := await instagram.image_post(share_url):
-                        return post
-            if wants_fallback(err, share_url):
-                progress.emit("fallback", fallback=True)
-                if youtube_native.should_try(err, share_url):
-                    return await self._race_fallbacks(share_url)
-                try:
-                    info = await run_ytdlp(self._extract, share_url, fallback_proxy())
-                    return await self._usable_info(info, share_url, fallback=True)
-                except Exception as fallback_err:
-                    err = fallback_err
+            if guarded and wants_fallback(err, share_url):
+                _direct.blocked()
+            return await self._recover(share_url, err)
+        if guarded:
+            _direct.reset()
+        return result
+
+    async def _without_direct(self, share_url: str) -> VideoInfo:
+        from ..convert import youtube_native
+
+        progress.emit("fallback", fallback=True)
+        try:
+            if youtube_native.enabled() and youtube_native.video_id(share_url):
+                return await self._race_fallbacks(share_url)
+            return await self._fallback_info(share_url)
+        except Exception as err:
+            # 备用出口自身出问题时，下一次请求重新试直连，不能一直绕开可能已恢复的默认出口。
+            if classify(err).reason in ("blocked", "parse", "empty", "timeout", "network"):
+                _direct.reset()
+            raise
+
+    async def _recover(self, share_url: str, err: Exception) -> VideoInfo:
+        from ..convert import youtube_native
+
+        # 图片帖会报 No video formats found 或 There is no video in this post；
+        # 空媒体响应也可能只是 yt-dlp 的接口没拿到，公开页面仍然有原图。
+        # 兜底失败不能盖掉原错误（例如本来是限龄，兜底却撞上网络超时）。
+        if instagram.post_code(share_url):
+            progress.emit("fallback", fallback=True)
+            with contextlib.suppress(Exception):
+                if post := await instagram.image_post(share_url):
+                    return post
+        if wants_fallback(err, share_url):
+            progress.emit("fallback", fallback=True)
             if youtube_native.should_try(err, share_url):
-                progress.emit("fallback", fallback=True)
-                return await self._native_info(share_url, err)
-            raise err
+                return await self._race_fallbacks(share_url)
+            try:
+                info = await run_ytdlp(self._extract, share_url, fallback_proxy())
+                return await self._usable_info(info, share_url, fallback=True)
+            except Exception as fallback_err:
+                err = fallback_err
+        if youtube_native.should_try(err, share_url):
+            progress.emit("fallback", fallback=True)
+            return await self._native_info(share_url, err)
+        raise err
 
     @staticmethod
     async def _native_info(share_url: str, err: Exception) -> VideoInfo:
@@ -173,7 +229,6 @@ def _definitive(err: Exception, share_url: str) -> bool:
     「已删除」不算：走到这一步，默认出口已经报了机器人验证，视频是在的；WARP 偶尔对正常视频
     回 Video unavailable（2026-10-22 iN1N8o3Miv4 被报成「已删除」，紧接着连试 15 次又全成功）。"""
     from ..convert import youtube_native
-    from .errors import classify
 
     return not youtube_native.should_try(err, share_url) and classify(err).reason != "deleted"
 

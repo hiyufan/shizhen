@@ -6,6 +6,8 @@ data/ 是挂进线上容器的目录，里面有真正的 secret.key，测试绝
 import os
 import tempfile
 
+import pytest
+
 os.environ["PARSE_VIDEO_DATA_DIR"] = tempfile.mkdtemp(prefix="shizhen-test-")
 os.environ["PARSE_VIDEO_SECRET"] = "test-secret"
 for _name in (
@@ -23,3 +25,13 @@ for _name in (
     "PARSE_VIDEO_SEARCH_BING_SITE",
 ):
     os.environ.pop(_name, None)
+
+
+@pytest.fixture(autouse=True)
+def _youtube_direct_breaker():
+    # 直连熔断是进程级状态；每个用例都从直连开始，前一个用例的拦截不能改变后面的路径。
+    from qiuyuantu.parser import ytdlp
+
+    ytdlp._direct.reset()
+    yield
+    ytdlp._direct.reset()

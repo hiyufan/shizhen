@@ -78,3 +78,72 @@ def test_other_errors_are_not_retried(warp, monkeypatch):
 
 def test_fallback_proxy_host_is_trusted_by_ssrf_guard(warp):
     assert "warp" in net._trusted_hosts()
+
+
+def _formats():
+    return {
+        "title": "t",
+        "duration": 3,
+        "formats": [
+            {"url": "https://rr1.googlevideo.com/a", "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4", "height": 360}
+        ],
+    }
+
+
+def _parse_many(count, url="https://www.youtube.com/watch?v=abc"):
+    async def run():
+        for _ in range(count):
+            await ytdlp.YtDlp().parse_share_url(url)
+
+    asyncio.run(run())
+
+
+def test_repeated_bot_checks_skip_direct_until_probe_window(warp, monkeypatch):
+    calls, direct_blocked = [], [True]
+
+    def extract(url, proxy=None):
+        calls.append(proxy)
+        if proxy is None and direct_blocked[0]:
+            raise RuntimeError(BOT)
+        return _formats()
+
+    monkeypatch.setattr(ytdlp.YtDlp, "_extract", staticmethod(extract))
+    _parse_many(3)
+    assert calls == [None, "http://warp:1080", None, "http://warp:1080", "http://warp:1080"]
+    # 到期后放一次直连试探；默认出口恢复就不再绕路。
+    calls.clear()
+    direct_blocked[0] = False
+    ytdlp._direct.until = 0
+    _parse_many(2)
+    assert calls == [None, None]
+
+
+def test_failing_fallback_while_skipping_retries_direct_next_time(warp, monkeypatch):
+    calls = []
+
+    def extract(url, proxy=None):
+        calls.append(proxy)
+        if proxy is None:
+            raise RuntimeError(BOT)
+        raise RuntimeError("Connection reset by peer")
+
+    monkeypatch.setattr(ytdlp.YtDlp, "_extract", staticmethod(extract))
+    ytdlp._direct.blocked()
+    ytdlp._direct.blocked()
+    with pytest.raises(RuntimeError):
+        _parse_many(1)
+    assert calls == ["http://warp:1080"] and not ytdlp._direct.skipping()
+
+
+def test_breaker_only_applies_to_youtube(warp, monkeypatch):
+    calls = []
+
+    def extract(url, proxy=None):
+        calls.append(proxy)
+        return _formats()
+
+    monkeypatch.setattr(ytdlp.YtDlp, "_extract", staticmethod(extract))
+    ytdlp._direct.blocked()
+    ytdlp._direct.blocked()
+    _parse_many(1, "https://vimeo.com/123")
+    assert calls == [None]
