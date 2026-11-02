@@ -108,6 +108,28 @@ def test_steam_requires_an_individual_reward(url):
         reward_id(url)
 
 
+@pytest.mark.parametrize(
+    ("url", "defid", "app"),
+    [
+        ("https://store.steampowered.com/points/shop/reward/100", "100", ""),
+        ("https://store.steampowered.com/points/shop/app/42/reward/100", "100", "42"),
+        ("https://store.steampowered.com/points/shop/c/summer-sale/reward/100", "100", ""),
+        # 个人点数页进入某个奖励：路径里是 steamid64，不是 appid
+        ("https://store.steampowered.com/points/profile/76561199629689243/reward/100", "100", ""),
+    ],
+)
+def test_steam_accepts_shop_and_profile_reward_links(url, defid, app):
+    assert reward_id(url) == (defid, app)
+
+
+async def test_steam_parses_a_profile_reward_link(public_http):
+    routes, _ = public_http
+    routes[STEAM_API] = {"response": {"definitions": [steam_item()]}}
+    url = "https://store.steampowered.com/points/profile/76561199629689243/reward/100"
+    info = await Steam().parse_share_url(url)
+    assert info.cover_url == f"{CDN}/42/animation.png"
+
+
 @pytest.mark.parametrize("name", ["../private", "https://evil.test/a", "/x.png", "a//b", "x?query", "a/./b"])
 def test_steam_rejects_untrusted_asset_paths(name):
     with pytest.raises(ParseError):

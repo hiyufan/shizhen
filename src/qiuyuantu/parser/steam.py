@@ -15,7 +15,12 @@ def reward_id(url: str) -> tuple[str, str]:
     parsed = urlparse(url)
     if parsed.scheme not in {"https", "http"} or parsed.hostname != "store.steampowered.com":
         raise ParseError("unsupported", "请使用 Steam 点数商店的单个物品链接")
-    match = re.fullmatch(r"/points/shop/(?:(?:app/([0-9]{1,12})|c/[a-z_-]+)/)?reward/([0-9]{1,12})/?", parsed.path)
+    # 点数商店从个人点数页进入某个奖励时地址是 /points/profile/<steamid64>/reward/<defid>，
+    # 其中的 steamid64 不是 appid，appid 仍由接口返回，这里捕获组保持空。
+    match = re.fullmatch(
+        r"/points/(?:shop/(?:(?:app/([0-9]{1,12})|c/[a-z_-]+)/)?|profile/[0-9]{1,20}/)reward/([0-9]{1,12})/?",
+        parsed.path,
+    )
     if not match:
         raise ParseError("unsupported", "请打开 Steam 点数商店里的单个物品，再复制地址栏链接")
     return match[2], match[1] or ""
