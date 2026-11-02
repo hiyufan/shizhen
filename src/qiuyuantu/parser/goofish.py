@@ -15,6 +15,20 @@ ENDPOINT = f"https://h5api.m.goofish.com/h5/{API}/1.0/"
 APP_KEY = "12574478"
 REFERER = "https://h5.m.goofish.com/"
 _ITEM_ID = re.compile(r"[0-9]{1,20}\Z")
+# 淘宝 / 天猫商品详情只对登录用户开放，没有匿名取法；
+# 直链和跳到这里的 m.tb.cn / e.tb.cn 短链都直接说明原因，不发请求、也不交给 yt-dlp 白跑一趟。
+TAOBAO_ITEM_HOSTS = (
+    "item.taobao.com",
+    "a.m.taobao.com",
+    "h5.m.taobao.com",
+    "main.m.taobao.com",
+    "detail.tmall.com",
+    "detail.m.tmall.com",
+    "detail.tmall.hk",
+)
+# 淘宝 App 分享出来的短链；闲鱼用 m.tb.cn，淘宝商品多为 e.tb.cn，落地页都是 var url = 跳转
+SHORT_HOSTS = ("m.tb.cn", "e.tb.cn")
+TAOBAO_LOGIN_ONLY = "淘宝和天猫商品要登录后才能查看，暂时取不到；闲鱼商品链接可以直接解析"
 _TOKEN_ERRORS = {"FAIL_SYS_TOKEN_EMPTY", "FAIL_SYS_TOKEN_EXOIRED", "FAIL_SYS_TOKEN_EXPIRED", "FAIL_SYS_ILLEGAL_ACCESS"}
 
 
@@ -26,6 +40,9 @@ def item_id(url: str) -> str:
         "h5.m.goofish.com": {"/item"},
         "2.taobao.com": {"/item.htm"},
     }
+    host = parsed.hostname or ""
+    if any(host == h or host.endswith("." + h) for h in TAOBAO_ITEM_HOSTS):
+        raise ParseError("unsupported", TAOBAO_LOGIN_ONLY)
     if parsed.scheme not in {"http", "https"} or parsed.path not in routes.get(parsed.hostname, set()):
         raise ParseError("unsupported", "请使用闲鱼商品链接；淘宝和天猫商品暂不支持")
     query = parse_qs(parsed.query)
@@ -92,15 +109,15 @@ def _check_response(reply: dict) -> dict:
 class Goofish(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         parsed = urlparse(share_url)
-        if parsed.hostname == "m.tb.cn":
+        if parsed.hostname in SHORT_HOSTS:
             if parsed.scheme not in {"http", "https"} or not re.fullmatch(r"/h\.[A-Za-z0-9]{1,40}/?", parsed.path):
-                raise ParseError("unsupported", "闲鱼分享短链无效")
+                raise ParseError("unsupported", "淘宝或闲鱼分享短链无效")
             response = await self.fetch("GET", share_url, follow_redirects=True)
             target = str(response.url)
-            if urlparse(target).hostname == "m.tb.cn":
+            if urlparse(target).hostname in SHORT_HOSTS:
                 match = re.search(r"\bvar\s+url\s*=\s*(['\"])(.*?)\1\s*;", response.text)
                 if not match:
-                    raise ParseError("unsupported", "分享短链已失效，请重新复制闲鱼商品链接")
+                    raise ParseError("unsupported", "分享短链已失效，请重新复制商品链接")
                 target = html.unescape(match[2].replace(r"\/", "/"))
             return await self.parse_video_id(item_id(target))
         return await self.parse_video_id(item_id(share_url))

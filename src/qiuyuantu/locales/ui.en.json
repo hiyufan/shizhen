@@ -447,6 +447,7 @@
   "网易云音乐": "NetEase Cloud Music",
   "闲鱼": "Goofish",
   "闲鱼公开图片可能自带水印，按平台提供的文件保存。": "Public Goofish images may include watermarks. Files are saved as provided by the platform.",
+  "淘宝和天猫商品要登录后才能查看，暂时取不到；闲鱼商品链接可以直接解析": "Taobao and Tmall listings can only be viewed after signing in, so they cannot be fetched yet. Goofish listing links work.",
   "音乐封面": "Music cover",
   "下载封面": "Download cover",
   "按图片原始格式保存，动态封面保留动效。": "Saved in its original image format. Animated covers keep their motion.",

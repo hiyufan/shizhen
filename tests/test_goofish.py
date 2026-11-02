@@ -72,6 +72,48 @@ def test_invalid_and_other_taobao_links_are_unsupported(url):
     assert exc.value.reason == "unsupported"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://item.taobao.com/item.htm?id=1",
+        "https://a.m.taobao.com/i1.htm",
+        "https://h5.m.taobao.com/awp/core/detail.htm?id=1",
+        "https://main.m.taobao.com/detail/index.html?id=1",
+        "https://detail.tmall.com/item.htm?id=1",
+        "https://chaoshi.detail.tmall.com/item.htm?id=1",
+        "https://detail.m.tmall.com/item.htm?id=1",
+        "https://detail.tmall.hk/hk/item.htm?id=1",
+    ],
+)
+async def test_taobao_and_tmall_items_explain_login_requirement_without_requests(goofish_http, url):
+    _, calls = goofish_http
+    # 不再交给 yt-dlp 白跑；也不发详情请求，直接说清楚为什么取不到
+    assert parser.detect_source(url) == VideoSource.Goofish
+    with pytest.raises(ParseError) as exc:
+        await Goofish().parse_share_url(url)
+    assert exc.value.reason == "unsupported" and "登录" in str(exc.value) and "闲鱼" in str(exc.value)
+    assert calls == []
+
+
+@pytest.mark.parametrize("short", [SHORT, "https://e.tb.cn/h.jhzG2UKuEBxIh8b?tk=share"])
+async def test_short_link_to_taobao_item_explains_login_requirement(goofish_http, short):
+    replies, calls = goofish_http
+    # 淘宝 App 分享的 e.tb.cn 落地页：跳到带分享签名的商品页，商品页本身仍要登录
+    page = "var url = 'https://item.taobao.com/item.htm?ut_sk=1.x&amp;id=1062159918625&amp;shareurl=true';"
+    replies.append(httpx.Response(200, text=page))
+    assert parser.detect_source(short) == VideoSource.Goofish and utils.is_cn_url(short)
+    with pytest.raises(ParseError) as exc:
+        await Goofish().parse_share_url(short)
+    assert "登录" in str(exc.value) and len(calls) == 1
+
+
+async def test_e_tb_cn_short_link_to_goofish_item_still_parses(goofish_http):
+    replies, _ = goofish_http
+    replies.extend([httpx.Response(200, text=f"var url = '{PAGE}';"), detail()])
+    info = await parser.parse_video_share_url("https://e.tb.cn/h.abc123")
+    assert info.source == "goofish" and [image.url for image in info.images] == [IMAGE]
+
+
 async def test_short_link_handshake_keeps_originals_and_cookie_isolation(goofish_http):
     replies, calls = goofish_http
     replies.extend(

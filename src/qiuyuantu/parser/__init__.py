@@ -19,7 +19,7 @@ from .doupai import DouPai
 from .douyin import DouYin
 from .emotes import BetterTTV, FrankerFaceZ, SevenTV
 from .errors import ParseError, classify
-from .goofish import Goofish
+from .goofish import SHORT_HOSTS, TAOBAO_ITEM_HOSTS, Goofish
 from .haokan import HaoKan
 from .hoyoplay import HoYoPlay
 from .huya import HuYa
@@ -60,7 +60,11 @@ logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
-    VideoSource.Goofish: {"domain_list": ["goofish.com", "m.tb.cn", "2.taobao.com"], "parser": Goofish},
+    # 淘宝 / 天猫商品没有匿名取法，接到闲鱼解析器只为直接说明原因（见 goofish.TAOBAO_ITEM_HOSTS）
+    VideoSource.Goofish: {
+        "domain_list": ["goofish.com", "2.taobao.com", *SHORT_HOSTS, *TAOBAO_ITEM_HOSTS],
+        "parser": Goofish,
+    },
     VideoSource.Animation: {"domain_list": [], "parser": Animation},
     VideoSource.Signal: {"domain_list": ["signal.art"], "parser": Signal},
     VideoSource.SevenTV: {"domain_list": ["7tv.app", "7tv.io"], "parser": SevenTV},

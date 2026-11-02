@@ -68,6 +68,7 @@ CN_HOST_KEYWORDS = (
     "y.gtimg.cn",
     "goofish.com",
     "m.tb.cn",
+    "e.tb.cn",
     "alicdn.com",
     "taobaocdn.com",
     "video.taobao.com",
