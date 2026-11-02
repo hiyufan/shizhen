@@ -13,7 +13,7 @@ import re
 from urllib.parse import urlparse
 
 from ..utils import create_async_client
-from .base import ImgInfo, VideoAuthor, VideoInfo
+from .base import ImgInfo, MediaAsset, VideoAuthor, VideoInfo
 from .quality import number
 
 _POST_PATH = re.compile(r"^/(?:[\w.]+/)?p/([\w-]+)")
@@ -83,17 +83,24 @@ def _find_key(obj, key: str):
 def to_video_info(post: dict, code: str) -> VideoInfo | None:
     items = post.get("carousel_media") or [post]
     images = [ImgInfo(url=url) for item in items if item.get("media_type") == 1 and (url := _original(item))]
-    # 图和视频混着的多图帖：结果里只放得下一个视频，取第一个
-    videos = [_largest(item.get("video_versions") or []) for item in items if item.get("media_type") == 2]
-    videos = [video for video in videos if video]
+    videos = [
+        (url, _original(item))
+        for item in items
+        if item.get("media_type") == 2 and (url := _largest(item.get("video_versions") or []))
+    ]
     if not images and not videos:
         return None
     user = post.get("user") or {}
+    # 只有一个视频时照常作为主视频；多个视频（含图视混排）逐个列为素材，避免只剩第一个
+    single = videos[0] if len(videos) == 1 else ("", "")
     return VideoInfo(
         title=((post.get("caption") or {}).get("text") or "").strip()[:80],
-        video_url=videos[0] if videos else "",
+        video_url=single[0],
         cover_url=images[0].url if images else _original(items[0]),
         images=images,
+        assets=[]
+        if single[0]
+        else [MediaAsset(url=url, cover_url=cover, kind="video", ext="mp4") for url, cover in videos],
         author=VideoAuthor(uid=str(user.get("pk") or ""), name=user.get("username") or "", avatar=""),
         source="instagram",
         page_url=f"https://www.instagram.com/p/{code}/",

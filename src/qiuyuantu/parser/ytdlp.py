@@ -49,6 +49,16 @@ class _DirectBreaker:
 _direct = _DirectBreaker()
 
 
+async def _whole_carousel(info: dict[str, Any], share_url: str) -> VideoInfo | None:
+    """全是视频的 Instagram 多图帖 yt-dlp 能成功，但只留得下第一条；页面里有整条帖子。
+    含图片的多图帖 yt-dlp 会直接报错，走 _recover 的同一条页面兜底。拿不到时仍用 yt-dlp 的结果。"""
+    if info.get("_entry_count", 1) < 2 or not instagram.post_code(share_url):
+        return None
+    with contextlib.suppress(Exception):
+        return await instagram.image_post(share_url)
+    return None
+
+
 class YtDlp(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         from ..convert import youtube_native
@@ -61,7 +71,7 @@ class YtDlp(BaseParser):
             return await self._without_direct(share_url)
         try:
             info = await run_ytdlp(self._extract, share_url)
-            result = await self._usable_info(info, share_url)
+            result = await _whole_carousel(info, share_url) or await self._usable_info(info, share_url)
         except Exception as err:
             if guarded and wants_fallback(err, share_url):
                 _direct.blocked()
@@ -192,15 +202,17 @@ class YtDlp(BaseParser):
         # yt-dlp 自己跟跳转、抓页面里嵌的地址；连内网由 net 里换掉的 getaddrinfo 拦
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
-        # 播放列表 / 多图帖只取第一条
+        # 播放列表 / 多图帖只取第一条；记下条数，Instagram 多视频帖由调用方改用页面里的整条帖子
+        count = 1
         while info and info.get("_type") in ("playlist", "multi_video") and info.get("entries"):
             entries = [e for e in info["entries"] if e]
             if not entries:
                 break
+            count = max(count, len(entries))
             info = entries[0]
         if not info:
             raise ValueError("yt-dlp 没有解析出内容")
-        return info
+        return {**info, "_entry_count": count} if count > 1 else info
 
     @staticmethod
     def _to_video_info(info: dict[str, Any], share_url: str) -> VideoInfo:
