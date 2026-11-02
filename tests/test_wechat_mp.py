@@ -103,6 +103,25 @@ def test_original_image(url, original):
     assert wechat_mp.original_image(url) == original
 
 
+@pytest.mark.parametrize(
+    ("url", "standard"),
+    [
+        (
+            "https://mp.weixin.qq.com/s?__biz=MzA%3D%3D&mid=22&idx=1&sn=abc&source=41&poc_token=HMx",
+            "https://mp.weixin.qq.com/s?__biz=MzA%3D%3D&mid=22&idx=1&sn=abc&chksm=1",
+        ),
+        (
+            "https://mp.weixin.qq.com/s?search_click_id=9&__biz=MzA==&mid=22&idx=2&sn=abc&chksm=e5f&scene=21#rd",
+            "https://mp.weixin.qq.com/s?__biz=MzA%3D%3D&mid=22&idx=2&sn=abc&chksm=e5f",
+        ),
+        ("https://mp.weixin.qq.com/s/AbCdEf", "https://mp.weixin.qq.com/s/AbCdEf"),
+        ("https://mp.weixin.qq.com/s?__biz=MzA==&mid=22", "https://mp.weixin.qq.com/s?__biz=MzA==&mid=22"),
+    ],
+)
+def test_old_style_links_are_requested_in_standard_form(url, standard):
+    assert wechat_mp.standard_url(url) == standard
+
+
 def test_picture_message_uses_original_pictures():
     info = wechat_mp.to_video_info(wechat_mp.page_data(PICTURE), "https://mp.weixin.qq.com/s/AbCdEf")
     # 水印图、分享封面不是正文图片
@@ -189,10 +208,17 @@ def test_challenge_is_retried_once_then_explained(monkeypatch):
     assert len(asyncio.run(WeChatMP().parse_share_url("https://mp.weixin.qq.com/s/A")).images) == 2
 
     blocked = httpx.Request("GET", "https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=1")
-    monkeypatch.setattr(WeChatMP, "fetch", lambda self, method, url, **kw: _response(blocked))
+    requested = []
+
+    def challenged(self, method, url, **kw):
+        requested.append(url)
+        return _response(blocked)
+
+    monkeypatch.setattr(WeChatMP, "fetch", challenged)
     with pytest.raises(ParseError) as exc:
-        asyncio.run(WeChatMP().parse_share_url("https://mp.weixin.qq.com/s?__biz=MzA==&mid=1&idx=1&sn=abc"))
+        asyncio.run(WeChatMP().parse_share_url("https://mp.weixin.qq.com/s?__biz=MzA==&mid=1&idx=1&sn=abc&poc_token=x"))
     assert exc.value.detail == wechat_mp.CAPTCHA_HINT
+    assert requested == ["https://mp.weixin.qq.com/s?__biz=MzA%3D%3D&mid=1&idx=1&sn=abc&chksm=1"] * 2
 
 
 async def _response(request):

@@ -8,9 +8,9 @@
   内嵌视频 <iframe data-mpvid> 对应 video_page_infos 里同 video_id 的档位。
   嵌入的视频号、音频不在这份数据里，结果里说明一句。
 
-请求用电脑浏览器 UA：带微信 UA 时只给「未知错误」页。公众号有时把请求转去人机验证页
-（wappoc_appmsgcaptcha，页面同样显示「未知错误」），从浏览器地址栏复制的老格式链接尤其常见；
-这里不绕验证，重试一次仍是验证页就请用户从微信里「复制链接」。
+请求用电脑浏览器 UA：带微信 UA 时只给「未知错误」页。从浏览器地址栏复制的老格式链接参数不全，
+请求前整理成微信「复制链接」给出的标准形式（见 standard_url）。仍被转去验证页
+（wappoc_appmsgcaptcha，页面同样显示「未知错误」）时重试一次，再不行就请用户从微信里复制链接。
 图片 CDN 见到别的站点的 Referer 会换成「未经允许不可引用」的占位图，所以下载时不能带 Referer
 （convert.net 的 Referer 表里故意没有 qpic.cn）。
 """
@@ -151,15 +151,30 @@ def to_video_info(data: dict, share_url: str) -> VideoInfo:
     return info
 
 
+_ARTICLE_KEYS = ("__biz", "mid", "idx", "sn")
+
+
+def standard_url(url: str) -> str:
+    """老格式 /s?__biz=&mid=&idx=&sn= 只留定位文章的参数，补齐 chksm；短链和其它地址原样返回。"""
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    if parsed.path.rstrip("/") != "/s" or not all(query.get(key) for key in _ARTICLE_KEYS):
+        return url
+    params = {key: query[key][0] for key in _ARTICLE_KEYS}
+    params["chksm"] = (query.get("chksm") or ["1"])[0]
+    return "https://mp.weixin.qq.com/s?" + urlencode(params)
+
+
 def _challenged(response) -> bool:
     return _CAPTCHA in str(response.url) or ("未知错误" in response.text and not _DATA.search(response.text))
 
 
 class WeChatMP(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        response = await self.fetch("GET", share_url, headers=_HEADERS, follow_redirects=True)
+        url = standard_url(share_url)
+        response = await self.fetch("GET", url, headers=_HEADERS, follow_redirects=True)
         if _challenged(response):
-            response = await self.fetch("GET", share_url, headers=_HEADERS, follow_redirects=True)
+            response = await self.fetch("GET", url, headers=_HEADERS, follow_redirects=True)
         data = page_data(response.text)
         if data is None:
             raise page_error(response.text, str(response.url))
