@@ -44,6 +44,7 @@ from .sixroom import SixRoom
 from .sohu import Sohu
 from .steam import Steam
 from .telegram import Telegram, is_sticker_page
+from .telegram_post import is_post_page as is_telegram_post
 from .twitter import Twitter
 from .wechat_channels import WeChatChannels, is_share_page
 from .weibo import WeiBo
@@ -266,7 +267,7 @@ def detect_source(share_url: str) -> VideoSource:
     try:
         if is_asset_page(share_url):
             return VideoSource.BiliAssets
-        if is_sticker_page(share_url):
+        if is_sticker_page(share_url) or is_telegram_post(share_url):
             return VideoSource.Telegram
         if is_discord_sticker(share_url):
             return VideoSource.Discord

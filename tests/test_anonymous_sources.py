@@ -10,7 +10,7 @@ from qiuyuantu.parser import base, bilibili
 from qiuyuantu.parser.base import VideoSource
 from qiuyuantu.parser.bilibili import BiliBili
 from qiuyuantu.parser.errors import ParseError
-from qiuyuantu.parser.telegram import CDN, Telegram, pack_name
+from qiuyuantu.parser.telegram import CDN, Telegram, is_sticker_page, pack_name
 from qiuyuantu.parser.wechat_channels import API, WeChatChannels, share_id
 
 IMAGE = "https://finder.video.qq.com/cover.jpg?token=keep"
@@ -67,7 +67,9 @@ async def test_telegram_archive_matches_pack_and_preserves_tgs_original(public_h
     assert info.assets[1].kind == "image"
     assert len(calls) == 1 and "cookie" not in calls[0].headers and "authorization" not in calls[0].headers
     assert "Stickers.wiki" in info.notice
-    assert parser.detect_source("https://t.me/public_channel/123") == VideoSource.YtDlp
+    # 频道帖子也归 Telegram，但走帖子嵌入页，不当成贴纸包（见 test_telegram_post.py）
+    assert parser.detect_source("https://t.me/public_channel/123") == VideoSource.Telegram
+    assert not is_sticker_page("https://t.me/public_channel/123")
 
 
 @pytest.mark.parametrize(

@@ -36,7 +36,8 @@ export function independentAssets(data, title) {
       actions.push(el('button', { class: 'btn sm', type: 'button', onclick: () => openConverter(request, 'gif') }, t('转 GIF')));
       actions.push(el('button', { class: 'btn sm quiet', type: 'button', onclick: () => openConverter(request, 'livephoto') }, t('做成实况照片')));
     }
-    const label = data.source === 'telegram' ? t('贴纸 {number}', { number: index + 1 })
+    // Telegram 的独立素材：贴纸包里是贴纸，频道帖子里是相册中的多个视频
+    const label = data.source === 'telegram' ? t(isVideo ? '视频 {number}' : '贴纸 {number}', { number: index + 1 })
       : (asset.label || title).split(' · ').map(part => t(part)).join(' · ');
     return el('div', { class: 'card asset-tile asset-item' },
       el('h3', {}, label), preview, el('div', { class: 'group' }, ...actions));

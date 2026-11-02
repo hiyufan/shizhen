@@ -8,6 +8,7 @@ from lxml import html
 
 from .base import BaseParser, MediaAsset, VideoAuthor, VideoInfo
 from .errors import ParseError
+from .telegram_post import TelegramPost, is_post_page
 
 CATALOG = "https://stickers.wiki/telegram/"
 CDN = "https://assets.stickers.wiki/img/"
@@ -52,6 +53,8 @@ def _assets(rows: list) -> list[MediaAsset]:
 
 class Telegram(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
+        if is_post_page(share_url):
+            return await TelegramPost().parse_share_url(share_url)
         return await self.parse_video_id(pack_name(share_url))
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
