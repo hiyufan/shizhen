@@ -11,6 +11,7 @@ import { contentSections } from './content.js';
 import { $, el, fmtClock, fmtSize, notice, safeName, sleep } from './dom.js';
 import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, imageButton, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
 import { jobCard } from './ui.js';
+import { rememberParsedLink } from './report-link.js';
 
 const PLATFORMS = {
   douyin: t('抖音'), redbook: t('小红书'), kuaishou: t('快手'), youtube: 'YouTube', twitter: 'X', bilibili: t('B站'), weibo: t('微博'),
@@ -64,11 +65,20 @@ export function renderResult(d) {
   const title = d.title || t('未命名');
   // notice：平台不给的那部分是什么（比如快手实况只有照片），说在前面免得用户以为是网站漏了
   const sourceNotice = d.notice ? el('p', { class: 'fine' }, serverMessage(d.notice, '平台仅提供部分媒体，请检查结果后下载。')) : null;
-  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), sourceNotice, ...resultContent(d, safeName(title) || 'video'));
   const box = $('#result');
+  const res = el('div', { class: 'res' }, resultHead(d), el('h2', {}, title), sourceNotice, ...resultContent(d, safeName(title) || 'video'),
+    reportLink(box.dataset.feedback));
   box.replaceChildren(res);
   box.hidden = false;
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// 意见反馈开着时（#result 带 data-feedback）在结果末尾放一行小字入口；点击时才记下刚才解析的链接
+function reportLink(href) {
+  if (!href) return null;
+  const link = el('a', { href: href + '?from=result' }, t('结果不对？告诉我们'));
+  link.addEventListener('click', () => rememberParsedLink($('#url')?.value));
+  return el('p', { class: 'res-report' }, link);
 }
 
 function resultContent(data, baseName) {

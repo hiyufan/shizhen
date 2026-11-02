@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block robots %}<meta name="robots" content="noindex,follow">{% endblock %}
+{% block content %}
+<section class="sec cold article">
+  <div class="wrap narrow">
+    <nav class="crumbs" aria-label="{{ t("位置") }}"><a href="/">{{ t("求原图") }}</a><span>/</span><span>{{ t("意见反馈") }}</span></nav>
+    <h1>{{ t("意见反馈") }}</h1>
+    <p class="intro">{{ t("页面异常、下载或转换不对，或者有什么建议，都可以写在这里。内容只发给站长，不会公开。") }}</p>
+
+    <form class="fb-page" id="feedback-form" data-token="{{ form_token }}" data-from-result="{{ '1' if from_result else '' }}" novalidate>
+      <fieldset class="fb-kinds">
+        <legend>{{ t("遇到了什么情况") }}</legend>
+        {% for key, label in kinds.items() %}
+        <label class="fb-kind"><input type="radio" name="kind" value="{{ key }}"{% if (from_result and key == 'result') or (not from_result and loop.first) %} checked{% endif %}><span>{{ label | t }}</span></label>
+        {% endfor %}
+      </fieldset>
+
+      <label class="fb-label" for="fb-body">{{ t("具体说说") }}</label>
+      <textarea id="fb-body" name="body" rows="6" maxlength="{{ body_max }}" required aria-describedby="fb-body-hint" placeholder="{{ t("比如：在哪个页面、做了什么、看到了什么") }}"></textarea>
+      <p class="fb-hint" id="fb-body-hint">{{ t("最多 {count} 字", count=body_max) }}</p>
+
+      <div class="fb-attach" id="fb-attach" hidden>
+        <label><input type="checkbox" name="attach" id="fb-attach-box"> {{ t("附上刚才解析的链接") }}</label>
+        <code id="fb-attach-link"></code>
+      </div>
+
+      <label class="fb-label" for="fb-email">{{ t("邮箱（选填）") }}</label>
+      <input id="fb-email" type="email" name="email" maxlength="254" autocomplete="email" aria-describedby="fb-email-hint">
+      <p class="fb-hint" id="fb-email-hint">{{ t("留了邮箱，站长可以直接回复你。邮箱加密保存，通知站长后即删除。") }}</p>
+
+      <p class="fb-err notice" id="fb-error" role="alert" hidden></p>
+      <button class="btn dark" type="submit">{{ t("提交反馈") }}</button>
+    </form>
+
+    <div class="fb-thanks" id="fb-thanks" tabindex="-1" hidden>
+      <h2>{{ t("收到了，谢谢") }}</h2>
+      <p id="fb-thanks-text">{{ t("站长会尽快查看。") }}</p>
+      <a class="btn" href="/">{{ t("回到首页") }}</a>
+    </div>
+
+    <p class="fb-alt">{{ t("解析失败时，结果下方的「反馈这个问题」会自动附上失败详情，修好后还能邮件通知你。") }}</p>
+  </div>
+</section>
+<section class="sec warm">
+  <div class="wrap">
+    {% include '_footer.html' %}
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ js_url('feedback-page.js') }}"></script>{% endblock %}

@@ -179,6 +179,7 @@ parse_upstream_global = RateLimit("parse-global", _env_int("PARSE_VIDEO_RL_PARSE
 job_limit = RateLimit("job", _env_int("PARSE_VIDEO_RL_JOB", 20), 600)  # 每 10 分钟 20 个任务
 upload_limit = RateLimit("upload", _env_int("PARSE_VIDEO_RL_UPLOAD", 10), 3600)  # 每小时 10 次上传
 feedback_limit = RateLimit("feedback", _env_int("PARSE_VIDEO_RL_FEEDBACK", 5), 3600)  # 每小时 5 次反馈
+message_limit = RateLimit("message", _env_int("PARSE_VIDEO_RL_MESSAGE", 5), 3600)  # 意见反馈，每小时 5 条
 # 每分钟 240 次代理请求（含 Range 分段、图文笔记的十几张图）
 proxy_limit = RateLimit("proxy", _env_int("PARSE_VIDEO_RL_PROXY", 240), 60)
 proxy_streams = Concurrency("下载", _env_int("PARSE_VIDEO_MAX_STREAMS_PER_IP", 4))

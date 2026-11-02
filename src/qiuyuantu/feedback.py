@@ -77,6 +77,10 @@ def mail_enabled() -> bool:
     return bool(SMTP_USER and SMTP_PASS)
 
 
+def can_encrypt() -> bool:
+    return bool(_KEY_B64)
+
+
 def enabled() -> bool:
     # 四样都齐才开：页面上答应了「修好发邮件」，发不了信就不该收邮箱
     return bool(REPO and GH_TOKEN and _KEY_B64) and mail_enabled()
@@ -328,10 +332,12 @@ async def _sync_issues(gh: GitHub) -> None:
 # --------------------------------------------------------------------------- 邮件
 
 
-def _send_mail(to: str, subject: str, text: str) -> None:
+def _send_mail(to: str, subject: str, text: str, *, reply_to: str = "") -> None:
     msg = EmailMessage()
     msg["From"] = formataddr(("求原图", SMTP_FROM))
     msg["To"] = to
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg["Subject"] = subject
     msg.set_content(text)
     with _smtp_connect() as s:

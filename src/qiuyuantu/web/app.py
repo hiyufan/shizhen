@@ -10,11 +10,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
-from .. import failures, feedback, search_reports, stats, status
+from .. import failures, feedback, search_reports, site_feedback, stats, status
 from ..convert import animation_uploads, config, jobs, net, relay, signal, store, updater
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
-from . import access_log, admin, audience, legacy_api, media, pages, parse, proxy
+from . import access_log, admin, audience, contact, legacy_api, media, pages, parse, proxy
 from .middleware import site_headers
 from .rendering import STATIC_DIR
 
@@ -76,6 +76,9 @@ def _background_jobs() -> list:
     if feedback.enabled():
         # 反馈：同步 GitHub issue、issue 关了先复测再发邮件
         coros.append(feedback.loop(_reparse))
+    if site_feedback.enabled():
+        # 意见反馈：发邮件通知站长，发不出去的稍后重试
+        coros.append(site_feedback.loop())
     return coros
 
 
@@ -123,7 +126,7 @@ def create_app() -> FastAPI:
     app.middleware("http")(site_headers)
     mcp = _mount_mcp(app)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    for module in (legacy_api, parse, proxy, media, admin, audience):
+    for module in (legacy_api, parse, proxy, media, admin, audience, contact):
         app.include_router(module.router)
     # 放在最后：/{slug} 是兜底路由，不能抢在 /robots.txt /sitemap.xml 前面
     app.include_router(pages.router)

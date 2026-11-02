@@ -11,5 +11,6 @@
     <footer class="foot">
       <span>{{ t("解析基于") }} <a href="https://github.com/wujunwei928/parse-video-py" target="_blank" rel="noopener">parse-video-py</a> {{ t("与") }} <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>{{ t("，转换用 ffmpeg 在服务器完成。") }}</span>
       <span>{{ t("仅供个人学习使用，请尊重创作者版权。") }}</span>
+      {% if feedback_enabled %}<span><a href="/feedback">{{ t("意见反馈") }}</a></span>{% endif %}
       <span><a href="https://github.com/hiyufan/shizhen" target="_blank" rel="noopener">GitHub</a></span>
     </footer>

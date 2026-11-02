@@ -31,7 +31,7 @@
     <p class="supports music-supports" data-reveal style="--i:4">{{ t('音乐封面也能取：') }}<a href="/qq-music-cover">{{ t('QQ 音乐封面') }}</a> · <a href="/netease-music-cover">{{ t('网易云音乐封面') }}</a>{{ t('。') }}{{ t('动态封面可保留原格式，或转成 GIF 与实况照片。') }}</p>
     <p class="supports music-supports" data-reveal style="--i:4"><a href="/steam-assets">{{ t('Steam 动态素材') }}</a> · <a href="/hoyoplay-wallpaper">{{ t('HoYoPlay 壁纸') }}</a> · <a href="/apple-music-cover">{{ t('Apple Music 封面') }}</a></p>
     <div id="notice" class="notice" aria-live="polite" hidden></div>
-    <div id="result" hidden></div>
+    <div id="result"{% if feedback_enabled %} data-feedback="/feedback"{% endif %} hidden></div>
     <div id="converter" hidden></div>
     {% if page.body %}
     <div class="page-body">

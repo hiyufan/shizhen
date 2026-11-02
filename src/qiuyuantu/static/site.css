@@ -571,6 +571,31 @@ img.failed { opacity: .35; cursor: pointer; }
 .fb-more p { margin: 6px 0 0; line-height: 1.65; color: var(--ink-2); }
 .fb-done { margin: 0; font-weight: 600; }
 
+/* ---------- 意见反馈页（/feedback）与解析结果末尾的入口 */
+.res-report { margin: 22px 0 0; font-size: 12px; text-align: right; }
+.res-report a { color: var(--ink-3); }
+.res-report a:hover { color: var(--ink-2); }
+.fb-page { display: flex; flex-direction: column; margin-top: 32px; }
+.fb-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; padding: 0; border: 0; }
+.fb-kinds legend { margin-bottom: 10px; padding: 0; font-size: 14px; font-weight: 600; }
+.fb-kind input { position: absolute; opacity: 0; pointer-events: none; }
+.fb-kind span { display: inline-block; padding: 8px 16px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface); font-size: 14px; cursor: pointer; }
+.fb-kind input:checked + span { border-color: var(--sky); background: rgba(107,175,223,.12); color: var(--ink); font-weight: 600; }
+.fb-kind input:focus-visible + span { outline: 2px solid var(--sky); outline-offset: 3px; }
+.fb-label { margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.fb-page textarea, .fb-page input[type="email"] { width: 100%; box-sizing: border-box; padding: 12px 16px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--surface); color: var(--ink); font: 15px/1.6 var(--sans); }
+.fb-page textarea { min-height: 150px; resize: vertical; }
+.fb-page textarea:focus, .fb-page input[type="email"]:focus { outline: none; border-color: var(--sky); box-shadow: 0 0 0 4px rgba(107,175,223,.18); }
+.article .fb-hint { margin: 6px 0 22px; font-size: 12px; line-height: 1.6; color: var(--ink-3); }
+.fb-attach { margin: -8px 0 22px; font-size: 14px; }
+.fb-attach code { display: block; margin-top: 6px; overflow-wrap: anywhere; font: 12px/1.6 var(--mono); color: var(--ink-3); }
+.fb-page .fb-err { margin: 0 0 16px; max-width: none; }
+.fb-page .btn { align-self: flex-start; }
+.fb-thanks { margin-top: 32px; }
+.fb-thanks:focus { outline: none; }
+.article .fb-thanks h2 { margin: 0 0 8px; }
+.article .fb-alt { margin-top: 40px; font-size: 13px; color: var(--ink-3); }
+
 /* ---------- 导航偏好：原生 details + radio，键盘和触屏均可操作 */
 .preferences { position: relative; flex: 0 0 auto; }
 .preferences-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 10px; color: var(--control-muted); cursor: pointer; list-style: none; }

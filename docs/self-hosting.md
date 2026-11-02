@@ -172,6 +172,7 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | 解析失败反馈：建 issue 的私有仓库、只给它 Issues 读写的 fine-grained token、加密反馈邮箱的 32 字节密钥（base64）。和下面的 SMTP 四样都填了才显示「反馈这个问题」 |
 | `PARSE_VIDEO_SMTP_USER` / `_PASS` / `_HOST` / `_PORT` | – / – / `smtp.qq.com` / `465` | 反馈修好后发通知邮件的发件邮箱和 SMTP 授权码 |
 | `PARSE_VIDEO_ALERT_TO` | – | 站长收告警的邮箱（用上面的 SMTP 发）。每小时自检后判断：一半以上平台连续两轮超时 / 连不上（多半是服务器自己断网了），或某个平台连续三轮解析失败（多半改版了），就发一封；恢复了再发一封，同一个问题不重复发 |
+| `PARSE_VIDEO_FEEDBACK_NOTIFY` | 同 `PARSE_VIDEO_ALERT_TO` | 页脚「意见反馈」表单的通知收件人。和 `PARSE_VIDEO_FEEDBACK_KEY`、SMTP 都配好才显示入口；反馈存在 `data/feedback.db` 的 messages 表，不建公开 issue；访客留的邮箱加密暂存，作为通知邮件的 Reply-To，通知发出后即删除。每 IP 每小时 5 条（`PARSE_VIDEO_RL_MESSAGE`） |
 | `PARSE_VIDEO_STATS_DAYS` | `90` | 明细保留天数 |
 
 数据在 `data/stats.db`（SQLite）。只记事件：成功的解析不记链接，IP 经密钥 HMAC 后只留 12 位，能数出人数还原不出是谁。解析失败的链接另存在 `data/failures.db`，只留 7 天，统计页上列出来方便排查（站长测试设备和服务器自己的请求不记）。`/api/stats?range=7d&token=…` 直接拿 JSON。

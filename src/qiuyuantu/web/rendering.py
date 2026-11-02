@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
-from .. import guides, seo, stats, status
+from .. import guides, seo, site_feedback, stats, status
 from . import notice
 from .preferences import UI_ENGLISH_PATH, preferences, t, translate_data, ui_english
 
@@ -139,6 +139,7 @@ def page_context(
         "site_verification": seo.SITE_VERIFICATION_HTML,
         "analytics": seo.ANALYTICS_HTML,
         "critical_css": _CRITICAL_CSS,
+        "feedback_enabled": site_feedback.enabled(),
     }
 
 
