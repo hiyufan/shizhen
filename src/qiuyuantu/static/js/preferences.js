@@ -10,7 +10,7 @@ function cookie(name) {
   return document.cookie.split('; ').find((item) => item.startsWith(name + '='))?.split('=')[1];
 }
 
-function save(name, value) {
+export function save(name, value) {
   try {
     document.cookie = name + '=' + value + '; Path=/; Max-Age=31536000; SameSite=Lax'
       + (location.protocol === 'https:' ? '; Secure' : '');

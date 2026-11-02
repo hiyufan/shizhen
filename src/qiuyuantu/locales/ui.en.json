@@ -723,5 +723,9 @@
   "事件数：真人 {human} · 不确定 {unknown} · 自动化 {machine}；同一 IP 可能出现在多个分类中。": "Events: likely human {human} · uncertain {unknown} · automated {machine}. An IP may appear in more than one class.",
   "排错列表保留全部分类，不随上方口径切换。只留 7 天，同一条链接只列一次。点链接用它重新解析一遍；鼠标停在原因上看报错原文。": "This diagnostic list includes all classes regardless of the filter above. Kept for 7 days, one row per link. Open a link to extract it again; hover over the reason for the original error.",
   "默认只看高可信真人；不确定与自动化单独保留。原始记录不删除，IP 去重不等于自然人数。": "Shows likely human traffic by default, with uncertain and automated traffic kept separately. Original events are retained. Unique IPs are not individual people.",
-  "分类结合会话、主动操作和自动化特征，不能保证完全准确；历史证据不足的记录保留为不确定。": "Classification combines sessions, interaction and automation signals and is not certain. Historical events without enough evidence remain uncertain."
+  "分类结合会话、主动操作和自动化特征，不能保证完全准确；历史证据不足的记录保留为不确定。": "Classification combines sessions, interaction and automation signals and is not certain. Historical events without enough evidence remain uncertain.",
+  "网站公告": "Site notice",
+  "公告": "Notice",
+  "了解详情": "Learn more",
+  "关闭公告": "Dismiss notice"
 }

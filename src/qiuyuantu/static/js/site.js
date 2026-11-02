@@ -1,5 +1,5 @@
-// 每个页面都有的：顶部阅读进度条、背景光晕视差、入场动画、数字滚动（都尊重 reduce-motion），测试模式标记
-import { restoreLanguageDraft } from './preferences.js';
+// 每个页面都有的：顶部阅读进度条、背景光晕视差、入场动画、数字滚动（都尊重 reduce-motion），测试模式标记，全站公告
+import { restoreLanguageDraft, save as saveCookie } from './preferences.js';
 import { initAudience } from './audience.js';
 
 initAudience();
@@ -14,6 +14,18 @@ if (/(^|;\s*)sz_t=1/.test(document.cookie)) {
   const badge = document.getElementById('test-badge');
   badge.href = '/test';
   badge.hidden = false;
+}
+
+// 关闭后记下公告编号，服务端之后不再渲染这条；Cookie 被禁用时只在本页隐藏
+function setupNotice() {
+  const notice = document.querySelector('[data-notice]');
+  if (!notice) return;
+  notice.querySelector('.site-notice-close').addEventListener('click', () => {
+    saveCookie('qyt_notice', notice.dataset.notice);
+    notice.remove();
+    // 焦点随按钮一起被移除时，交给导航第一项，键盘用户不会回到页面开头
+    document.querySelector('.nav .brand')?.focus();
+  });
 }
 
 function trackScroll() {
@@ -66,5 +78,6 @@ function revealOnScroll() {
   document.querySelectorAll('[data-reveal]').forEach((node) => io.observe(node));
 }
 
+setupNotice();
 trackScroll();
 revealOnScroll();

@@ -148,6 +148,18 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | `PARSE_VIDEO_SITE_VERIFICATION` | – | 站长平台验证 `<meta>` 片段，原样输出到 `<head>` |
 | `PARSE_VIDEO_ANALYTICS` | – | 统计代码片段（百度统计 / Umami / GA），输出到页面底部 |
 
+### 全站公告
+
+公告显示在所有页面的导航上方，随页面滚走。访客关闭后由 `qyt_notice` Cookie 记住，改了文案或链接就算新公告，会重新显示。
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `PARSE_VIDEO_NOTICE` | – | 中文公告正文，按纯文本输出；不填则不显示 |
+| `PARSE_VIDEO_NOTICE_EN` | – | 英文页面的公告正文；不填时英文页面不显示公告 |
+| `PARSE_VIDEO_NOTICE_LINK` | – | 可选的「了解详情」链接，只接受站内路径（`/` 开头）或 `https://` 地址 |
+| `PARSE_VIDEO_NOTICE_LEVEL` | `info` | `info` 为蓝色提示，`warn` 为橙色警示 |
+| `PARSE_VIDEO_NOTICE_UNTIL` | – | 到这个时间后自动隐藏，ISO 格式，例如 `2026-12-01T00:00`；不带时区按北京时间 |
+
 ### 使用统计
 
 | 变量 | 默认 | 说明 |

@@ -1,0 +1,8 @@
+{# 全站公告，位置与关闭方式见 web/notice.py；data-nosnippet 让搜索摘要不显示它 #}
+<aside class="site-notice" data-notice="{{ notice.id }}" data-level="{{ notice.level }}" aria-label="{{ t("网站公告") }}" data-nosnippet>
+  <div class="site-notice-inner">
+    <span class="pill">{{ t("公告") }}</span>
+    <p>{{ notice.text }}{% if notice.link %} <a href="{{ notice.link }}">{{ t("了解详情") }}</a>{% endif %}</p>
+    <button type="button" class="site-notice-close" aria-label="{{ t("关闭公告") }}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+  </div>
+</aside>

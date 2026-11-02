@@ -13,6 +13,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from .. import guides, seo, stats, status
+from . import notice
 from .preferences import UI_ENGLISH_PATH, preferences, t, translate_data, ui_english
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -144,6 +145,7 @@ def page_context(
 def render(request: Request, name: str, context: dict, **kwargs):
     prefs = preferences(request)
     context.update(prefs)
+    context["notice"] = notice.current(request, prefs["locale"])
     context["audience_enabled"] = (
         stats.enabled() and request.url.path in seo.all_paths() and kwargs.get("status_code", 200) == 200
     )

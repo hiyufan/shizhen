@@ -148,6 +148,18 @@ All configuration uses environment variables. Every variable is optional.
 | `PARSE_VIDEO_SITE_VERIFICATION` | – | Site verification `<meta>` markup, inserted unchanged into `<head>` |
 | `PARSE_VIDEO_ANALYTICS` | – | Analytics snippet, such as Baidu Analytics / Umami / GA, inserted at the bottom of pages |
 
+### Site notice
+
+The notice appears above the navigation on every page and scrolls away with the page. Dismissals are remembered in the `qyt_notice` cookie; changing the text or link counts as a new notice and shows it again.
+
+| Variable | Default | Description |
+|---|---|---|
+| `PARSE_VIDEO_NOTICE` | – | Chinese notice text, rendered as plain text; no notice when empty |
+| `PARSE_VIDEO_NOTICE_EN` | – | Notice text for English pages; English pages show no notice when empty |
+| `PARSE_VIDEO_NOTICE_LINK` | – | Optional "Learn more" link; only site paths starting with `/` or `https://` URLs are accepted |
+| `PARSE_VIDEO_NOTICE_LEVEL` | `info` | `info` shows a blue notice, `warn` an orange warning |
+| `PARSE_VIDEO_NOTICE_UNTIL` | – | Hide automatically after this time, in ISO format such as `2026-12-01T00:00`; times without a zone are read as Beijing time |
+
 ### Usage statistics
 
 | Variable | Default | Description |

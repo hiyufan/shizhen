@@ -126,6 +126,18 @@ h1 em, h2 em { font-family: 'Playfair Display', var(--serif); font-style: italic
   .nav-links a { flex: 0 0 auto; }
 }
 
+/* 全站公告：在吸顶导航之前、随页面滚走；配色沿用 .notice 的提示与警示色。 */
+.site-notice { background: rgba(107,175,223,.1); border-bottom: 1px solid rgba(107,175,223,.3); color: var(--ink); font-size: 13px; line-height: 1.6; }
+.site-notice[data-level="warn"] { background: rgba(232,112,42,.08); border-bottom-color: rgba(232,112,42,.25); color: var(--warning); }
+.site-notice-inner { display: flex; align-items: flex-start; gap: 12px; padding: 10px 48px; }
+.site-notice .pill { flex: none; margin-top: 1px; border-color: currentColor; color: inherit; }
+.site-notice p { flex: 1; min-width: 0; margin: 0; }
+.site-notice a { color: inherit; font-weight: 600; }
+.site-notice-close { flex: none; display: grid; place-items: center; width: 36px; height: 36px; margin: -7px -10px -7px 0; padding: 0; border: 0; border-radius: 10px; background: none; color: inherit; cursor: pointer; }
+.site-notice-close:hover { background: var(--line); }
+.site-notice-close svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+@media (max-width: 1100px) { .site-notice-inner { padding: 10px 16px; } }
+
 /* ---------- 按钮 */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 32px; border-radius: 999px; border: 1px solid var(--ink); background: transparent; color: var(--ink); font-weight: 600; font-size: 15px; line-height: 1.2; white-space: nowrap; text-decoration: none; transition: color .2s, background .2s, border-color .2s; }
 .btn:hover { border-color: var(--sky); color: var(--sky); }
