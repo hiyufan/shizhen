@@ -108,7 +108,7 @@ async def download(page_url: str, out_dir: Path, stem: str, report) -> Path:
                     "-vf",
                     # YUV420 需要偶数尺寸；只补边，不把奇数宽高的每一帧缩小重采样。
                     "pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0:color=black",
-                    "-vsync",
+                    "-fps_mode",
                     "vfr",
                     "-enc_time_base",
                     "1:1000",
