@@ -5,6 +5,8 @@ import time
 
 import httpx
 
+from ..utils import current_source
+
 API = "https://api.bugpk.com/api/wxsph"
 
 
@@ -22,7 +24,13 @@ class PublicResolver:
             # 运营方公布 QPS=1；请求拥堵或服务失败时仍可保留官方封面结果。
             await asyncio.sleep(max(0.0, self.next_call - time.monotonic()))
             self.next_call = time.monotonic() + 1.05
-            result = await parser.get_json(API, params={"url": share_url}, timeout=20)
+            # 公益接口不在国内平台之列，直连就行。沿用视频号的来源会走国内中继，它常要 5～10 秒才返回，
+            # 中继约 10 秒就回 504，结果一半的作品只剩封面
+            token = current_source.set("")
+            try:
+                result = await parser.get_json(API, params={"url": share_url}, timeout=20)
+            finally:
+                current_source.reset(token)
             return result if isinstance(result, dict) else {}
         except (httpx.HTTPError, ValueError, TypeError):
             return {}

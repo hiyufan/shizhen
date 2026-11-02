@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 
+from qiuyuantu import utils
 from qiuyuantu.parser import base, channels_public, wechat_channels
 
 SHARE = "https://weixin.qq.com/sph/PublicLink"
@@ -51,6 +52,24 @@ def public_result():
             ],
         },
     }
+
+
+async def test_public_resolver_is_called_directly_not_through_domestic_relay(public_http, monkeypatch):
+    replies, _ = public_http
+    replies["public"] = public_result()
+    sources = []
+    real = base.create_async_client
+
+    def recording(**kw):
+        sources.append(utils.current_source.get())
+        return real(**kw)
+
+    monkeypatch.setattr(base, "create_async_client", recording)
+    utils.current_source.set("wechat-channels")
+    info = await wechat_channels.WeChatChannels().parse_share_url(SHARE)
+    assert info.video_url == VIDEO
+    # 官方预览走视频号自己的线路；公益接口直连，回来后来源恢复
+    assert sources == ["wechat-channels", ""] and utils.current_source.get() == "wechat-channels"
 
 
 async def test_public_resolver_never_sends_account_credentials_or_trusts_quality(public_http):
