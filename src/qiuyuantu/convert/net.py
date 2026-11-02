@@ -55,6 +55,7 @@ _REFERERS = {
     "pipix.com": "https://h5.pipix.com/",
     "ixigua.com": "https://www.ixigua.com/",
     "tiktokcdn.com": "https://www.tiktok.com/",
+    "tiktokcdn-us.com": "https://www.tiktok.com/",
     "cdninstagram.com": "https://www.instagram.com/",
     "pinimg.com": "https://www.pinterest.com/",
     "music.126.net": "https://music.163.com/",

@@ -16,7 +16,7 @@ from ..convert import config as convert_config
 from ..convert import net
 from ..convert.ffmpeg import ffmpeg_dir
 from ..utils import fallback_proxy, is_youtube_url, proxy_for, run_ytdlp, wants_fallback, youtube_proxy
-from . import instagram
+from . import instagram, tiktok
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import classify
 from .quality import number, short_side
@@ -90,6 +90,12 @@ class YtDlp(BaseParser):
         # 图片帖会报 No video formats found 或 There is no video in this post；
         # 空媒体响应也可能只是 yt-dlp 的接口没拿到，公开页面仍然有原图。
         # 兜底失败不能盖掉原错误（例如本来是限龄，兜底却撞上网络超时）。
+        # TikTok 图文：yt-dlp 只认视频，报 Unsupported URL；短链要先跟到落地页才知道是不是图文
+        if tiktok.photo_post(share_url) or tiktok.is_short(share_url):
+            progress.emit("fallback", fallback=True)
+            with contextlib.suppress(Exception):
+                if post := await tiktok.image_post(share_url):
+                    return post
         if instagram.post_code(share_url):
             progress.emit("fallback", fallback=True)
             with contextlib.suppress(Exception):
