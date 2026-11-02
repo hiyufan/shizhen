@@ -6,7 +6,6 @@ import hashlib
 from fastapi.testclient import TestClient
 
 from qiuyuantu import web
-from qiuyuantu.web import ads
 from qiuyuantu.web.middleware import build_csp
 
 
@@ -16,7 +15,7 @@ def _directives(csp):
 
 def test_pages_forbid_inline_scripts():
     csp = TestClient(web.app).get("/").headers["content-security-policy"]
-    assert _directives(csp)["script-src"] == ["'self'", *ads.MULTITAG_SCRIPT_ORIGINS, *ads.MULTITAG_INLINE_HASHES]
+    assert _directives(csp)["script-src"] == ["'self'"]
     assert "'unsafe-inline'" not in _directives(csp)["script-src"]
 
 

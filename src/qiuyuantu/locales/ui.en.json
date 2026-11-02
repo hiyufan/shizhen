@@ -702,8 +702,6 @@
   "报表日期：{start} 至 {end}；最新记录：{latest}。": "Report dates: {start} to {end}; latest record: {latest}.",
   "搜索报表已更新。": "Search reports updated.",
   "搜索报表加载失败，请稍后重试。": "Search reports could not be loaded. Please try again later.",
-  "广告": "Advertisement",
-  "广告暂不可用": "No advertisement available",
   "统计口径": "Traffic classification",
   "高可信真人": "Likely human",
   "不确定": "Uncertain",
