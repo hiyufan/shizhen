@@ -62,6 +62,8 @@ def test_feedback_page_and_entries_follow_configuration(sent, monkeypatch):
     form = doc.xpath('//form[@id="feedback-form"]')[0]
     assert re.fullmatch(r"\d+\.[0-9a-f]{24}", form.get("data-token"))
     assert doc.xpath('//input[@name="kind"][@checked]/@value') == ["page"]
+    # 从结果进来时附链接默认勾选；没有链接时整块由脚本保持隐藏
+    assert doc.xpath('//div[@id="fb-attach"][@hidden]//input[@id="fb-attach-box"][@checked]')
     assert html.fromstring(client.get("/feedback?from=result").text).xpath(
         '//input[@name="kind"][@checked]/@value'
     ) == ["result"]
