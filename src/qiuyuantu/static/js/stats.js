@@ -27,6 +27,7 @@ const PLATFORMS = {
   pixiv: 'Pixiv', 'pixiv-sketch': 'Pixiv Sketch', telegram: 'Telegram',
   wutheringwaves: translate('鸣潮'), miyoushe: translate('米游社'),
   'bilibili-assets': translate('B站装扮与收藏集'), 'wechat-channels': translate('视频号'),
+  'wechat-mp': translate('公众号'),
 };
 const BLUE = '#4A94CC';
 const ORANGE = '#E8702A';

@@ -59,6 +59,7 @@ class VideoSource(Enum):
     Signal = "signal"
     Discord = "discord"  # Discord 官方公开目录中的贴纸
     WeChatChannels = "wechat-channels"  # 视频号匿名公开预览
+    WeChatMP = "wechat-mp"  # 微信公众号文章里的图片与视频
     AppleMusic = "applemusic"  # Apple Music 公开封面
     Pixiv = "pixiv"
     PixivSketch = "pixiv-sketch"

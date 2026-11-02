@@ -23,7 +23,7 @@ const PLATFORMS = {
   qqmusic: t('QQ 音乐'), netease: t('网易云音乐'), goofish: t('闲鱼'),
   steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', telegram: 'Telegram', discord: 'Discord',
   wutheringwaves: t('鸣潮'), miyoushe: t('米游社'), 'bilibili-assets': t('B站装扮与收藏集'),
-  'wechat-channels': t('视频号'),
+  'wechat-channels': t('视频号'), 'wechat-mp': t('公众号'),
   '7tv': '7TV', bttv: 'BetterTTV', ffz: 'FrankerFaceZ', line: 'LINE', signal: 'Signal',
   'noto-emoji': 'Noto Emoji', animation: t('特殊动画'),
   pixiv: 'Pixiv', 'pixiv-sketch': 'Pixiv Sketch',

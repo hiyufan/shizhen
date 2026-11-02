@@ -47,6 +47,7 @@ from .telegram import Telegram, is_sticker_page
 from .telegram_post import is_post_page as is_telegram_post
 from .twitter import Twitter
 from .wechat_channels import WeChatChannels, is_share_page
+from .wechat_mp import WeChatMP
 from .weibo import WeiBo
 from .weishi import WeiShi
 from .wutheringwaves import WutheringWaves
@@ -77,6 +78,7 @@ video_source_info_mapping = {
     VideoSource.Telegram: {"domain_list": [], "parser": Telegram},
     VideoSource.Discord: {"domain_list": [], "parser": Discord},
     VideoSource.WeChatChannels: {"domain_list": [], "parser": WeChatChannels},
+    VideoSource.WeChatMP: {"domain_list": ["mp.weixin.qq.com"], "parser": WeChatMP},
     VideoSource.AppleMusic: {"domain_list": ["music.apple.com"], "parser": AppleMusic},
     VideoSource.QQMusic: {
         "domain_list": ["y.qq.com"],
