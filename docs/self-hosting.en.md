@@ -86,6 +86,8 @@ Channels extraction first reads the official anonymous `shortUri` preview. When 
 
 `PARSE_VIDEO_CHANNELS_PUBLIC_FALLBACK=1` is the default; set it to `0` to use only the official preview. Calls are serialized per process with at least 1.05 seconds between starts. Congestion, throttling, identity mismatches and provider failures retain the official cover. Multi-process or multi-instance deployments must enforce the provider's published QPS=1 at a shared egress. The public service has no availability guarantee.
 
+`PARSE_VIDEO_CHANNELS_RESOLVERS` configures the resolver endpoints as a comma-separated list (`https://` only, at most 4), tried in order until one passes the identity check; when unset, a built-in default is used. Every result must still match the official preview's title and author and point at `video.qq.com` / `qpic.cn`, so swapping providers cannot inject a wrong video. Endpoints must return the same shape as the default (`code` / `data.url` / `data.video_backup`).
+
 ## Configuration
 
 All configuration uses environment variables. Every variable is optional.

@@ -118,11 +118,16 @@ class WeChatChannels(BaseParser):
         from ..progress import emit
 
         emit("fallback", fallback=True)
-        reply = await resolver.resolve(self, "https://weixin.qq.com/sph/" + ident)
-        if not same_post(data, reply):
-            return [], ""
-        try:
-            videos = _public_videos(reply["data"])
-        except (ValueError, TypeError, ParseError):
-            return [], ""
-        return videos, "视频通过 BugPk 公益接口匿名解析，封面与作者来自官方公开预览。" if videos else ""
+
+        def usable(reply: dict) -> bool:
+            # 只认身份一致、且真能取到合规直链的结果；否则换下一个公开服务
+            if not same_post(data, reply):
+                return False
+            try:
+                return bool(_public_videos(reply.get("data") or {}))
+            except (ValueError, TypeError, ParseError):
+                return False
+
+        reply = await resolver.resolve(self, "https://weixin.qq.com/sph/" + ident, usable)
+        videos = _public_videos(reply["data"]) if reply else []
+        return videos, "视频通过公开解析服务匿名解析，封面与作者来自官方公开预览。" if videos else ""

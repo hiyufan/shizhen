@@ -28,7 +28,10 @@ def public_http(monkeypatch):
 
     def handle(request):
         calls.append(request)
-        reply = OFFICIAL if request.url.host == "channels.weixin.qq.com" else replies["public"]
+        if request.url.host == "channels.weixin.qq.com":
+            reply = OFFICIAL
+        else:
+            reply = replies.get(request.url.host, replies.get("public"))
         return reply if isinstance(reply, httpx.Response) else httpx.Response(200, json=reply)
 
     monkeypatch.setattr(
@@ -79,10 +82,33 @@ async def test_public_resolver_never_sends_account_credentials_or_trusts_quality
     assert info.video_url == VIDEO and info.formats[0].codec == "H.265"
     assert info.images[0].url == OFFICIAL["data"]["feedInfo"]["coverUrl"]
     assert info.height == 0 and info.width == 0 and info.formats[0].height == 0
-    assert "BugPk" in info.notice
+    assert "公开解析服务" in info.notice
     assert dict(calls[1].url.params) == {"url": SHARE}
+    # 默认用内置公益服务；没配 PARSE_VIDEO_CHANNELS_RESOLVERS 时只它一个
     assert calls[1].url.host == "api.bugpk.com"
     assert all("authorization" not in r.headers and "cookie" not in r.headers for r in calls)
+
+
+async def test_tries_next_public_resolver_when_the_first_misses(public_http, monkeypatch):
+    replies, calls = public_http
+    monkeypatch.setenv("PARSE_VIDEO_CHANNELS_RESOLVERS", "https://first.example/x,https://second.example/y")
+    mismatched = public_result()
+    mismatched["data"]["title"] = "Different post"
+    replies["first.example"] = mismatched
+    replies["second.example"] = public_result()
+    info = await wechat_channels.WeChatChannels().parse_share_url(SHARE)
+    assert info.video_url == VIDEO
+    # 官方预览 → 第一个服务（身份对不上）→ 第二个服务（采用）
+    assert [c.url.host for c in calls] == ["channels.weixin.qq.com", "first.example", "second.example"]
+
+
+async def test_non_https_resolver_endpoints_are_ignored(public_http, monkeypatch):
+    replies, calls = public_http
+    monkeypatch.setenv("PARSE_VIDEO_CHANNELS_RESOLVERS", "http://insecure.example/x,https://ok.example/y")
+    replies["ok.example"] = public_result()
+    info = await wechat_channels.WeChatChannels().parse_share_url(SHARE)
+    assert info.video_url == VIDEO
+    assert [c.url.host for c in calls] == ["channels.weixin.qq.com", "ok.example"]
 
 
 @pytest.mark.parametrize("change", ["title", "author", "bad_host", "error", "unstructured"])
