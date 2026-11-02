@@ -58,6 +58,7 @@ def test_root_service_worker_serves_javascript_without_page_tracking(client, mon
     response = client.get("/sw.js", headers={"User-Agent": "Mozilla/5.0"})
     assert response.status_code == 200
     assert response.content == (STATIC_DIR / "sw.js").read_bytes()
+    assert b"importScripts" not in response.content and b"unregister()" in response.content
     assert response.headers["content-type"].startswith("application/javascript")
     assert response.headers["cache-control"] == "no-cache"
     assert response.headers["x-robots-tag"] == "noindex"

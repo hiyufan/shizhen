@@ -140,7 +140,7 @@ async def robots(request: Request):
 
 @page_route("/sw.js")
 async def service_worker():
-    """原样托管站长提供的文件；注册与第三方脚本权限不在此入口配置。"""
+    """返回自注销 Worker，清理访客浏览器中曾由推送广告注册的旧 Worker。"""
     return FileResponse(
         STATIC_DIR / "sw.js",
         media_type="application/javascript",
