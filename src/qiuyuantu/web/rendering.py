@@ -147,9 +147,10 @@ def render(request: Request, name: str, context: dict, **kwargs):
     prefs = preferences(request)
     context.update(prefs)
     context["notice"] = notice.current(request, prefs["locale"])
-    context["audience_enabled"] = (
-        stats.enabled() and request.url.path in seo.all_paths() and kwargs.get("status_code", 200) == 200
-    )
+    public = request.url.path in seo.all_paths() and kwargs.get("status_code", 200) == 200
+    context["audience_enabled"] = stats.enabled() and public
+    # 广告只放公开内容页；统计后台、测试、反馈和错误页不放
+    context["adsense_client"] = seo.ADSENSE_CLIENT if public else ""
     if context.get("json_ld") and prefs["locale"] == "en":
         data = translate_data(json.loads(context["json_ld"]), "en")
         context["json_ld"] = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")

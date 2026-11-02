@@ -42,6 +42,8 @@
 <style>{{ critical_css | safe }}</style>
 {% if locale == 'en' %}<link rel="modulepreload" href="{{ js_url('messages-en.js') }}">{% endif %}
 {% if site_verification %}{{ site_verification | safe }}{% endif %}
+{# Google AdSense 自动广告：外部脚本，CSP 按 ADSENSE_ORIGINS 放行；只在公开页面输出（见 rendering.render） #}
+{% if adsense_client %}<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={{ adsense_client }}" crossorigin="anonymous"></script>{% endif %}
 {% block head %}{% endblock %}
 </head>
 <body{% if audience_enabled %} data-audience{% endif %}{% block body_class %}{% endblock %}>

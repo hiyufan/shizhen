@@ -138,6 +138,14 @@ async def robots(request: Request):
     return _ROBOTS.format(sitemap=seo.absolute(base_url(request), "/sitemap.xml"))
 
 
+@page_route("/ads.txt", response_class=PlainTextResponse)
+async def ads_txt():
+    """AdSense 的授权卖方声明；没配发布商 ID 时不存在。f08c47fec0942fa0 是 Google 固定的认证 ID。"""
+    if not seo.ADSENSE_CLIENT:
+        raise HTTPException(404, "Not Found")
+    return f"google.com, {seo.ADSENSE_CLIENT.removeprefix('ca-')}, DIRECT, f08c47fec0942fa0\n"
+
+
 @page_route("/sw.js")
 async def service_worker():
     """返回自注销 Worker，清理访客浏览器中曾注册的第三方推送 Worker。"""

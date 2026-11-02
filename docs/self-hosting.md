@@ -149,6 +149,7 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | `PARSE_VIDEO_SSRF_DNS` | `1` | 设 `0` 关闭域名解析检查（仅本机开着 fake-ip 代理调试时） |
 | `PARSE_VIDEO_SITE_VERIFICATION` | – | 站长平台验证 `<meta>` 片段，原样输出到 `<head>` |
 | `PARSE_VIDEO_ANALYTICS` | – | 统计代码片段（百度统计 / Umami / GA），输出到页面底部 |
+| `PARSE_VIDEO_ADSENSE_CLIENT` | – | Google AdSense 发布商 ID（`ca-pub-…`）。配置后公开页面的 `<head>` 加载自动广告脚本，CSP 放行 Google 广告域名，并提供 `/ads.txt`；不配置则不放广告 |
 
 ### 全站公告
 
