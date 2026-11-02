@@ -98,7 +98,9 @@ video_source_info_mapping = {
         "parser": DouPai,
     },
     VideoSource.DouYin: {
-        "domain_list": ["v.douyin.com", "www.iesdouyin.com", "www.douyin.com"],
+        # douyin.com 连同所有子域名：搜索页 so.、无 www 的网页版、直播间 live. 都在这里给出明确答复，
+        # 不再落到 yt-dlp 兜底，被报成「要登录」或「不支持的格式」
+        "domain_list": ["douyin.com", "www.iesdouyin.com"],
         "parser": DouYin,
     },
     VideoSource.HaoKan: {
@@ -215,6 +217,7 @@ video_source_info_mapping = {
             "youtube.com",
             "youtu.be",
             "tiktok.com",
+            "tt.site",
             "instagram.com",
             "vimeo.com",
             "facebook.com",

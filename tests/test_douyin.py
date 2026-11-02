@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from qiuyuantu.parser import douyin
+from qiuyuantu.parser import VideoSource, detect_source, douyin
 from qiuyuantu.parser.base import FormatInfo, ImgInfo, VideoInfo
 from qiuyuantu.parser.douyin import DouYin
 from qiuyuantu.parser.errors import ParseError
@@ -221,12 +221,28 @@ def test_filtered_and_no_browser_keeps_original_error(monkeypatch):
         # 主页 / 搜索页不是作品：说清楚，别归成「已删除」
         ("https://www.douyin.com/user/abc", "不是单条作品的链接"),
         ("https://www.douyin.com/search/%E5%80%9F%E5%8F%B7", "不是单条作品的链接"),
-        ("https://other.douyin.cc/x", "Douyin not support this host"),
+        ("https://live.douyin.com/369324308707", "直播间"),
+        ("https://qishui.douyin.com/s/iXQkjGeP/", "汽水音乐"),
+        ("https://haha.douyin.com/x", "不是抖音作品的链接"),
     ],
 )
 def test_unusable_urls(url, message):
-    with pytest.raises(Exception, match=message):
+    with pytest.raises(ParseError, match=message) as exc:
         asyncio.run(DouYin().parse_share_url(url))
+    assert exc.value.reason == "unsupported"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://so.douyin.com/video/detail?aweme_id={VIDEO_ID}&awemeType=0&search_entrance=vivo",
+        f"https://douyin.com/video/{VIDEO_ID}",
+        f"https://m.douyin.com/share/video/{VIDEO_ID}/",
+    ],
+)
+def test_link_variants_reach_the_same_work(monkeypatch, url):
+    assert detect_source(url) == VideoSource.DouYin
+    assert _parse(monkeypatch, VIDEO_AWEME, url).title == "一条视频"
 
 
 @pytest.mark.parametrize(

@@ -474,7 +474,12 @@ _NOTE_DOM_EXTRACT = """
 """
 
 
-_PC_HOSTS = ("www.iesdouyin.com", "www.douyin.com")
+_PC_HOSTS = ("www.iesdouyin.com", "www.douyin.com", "douyin.com", "m.douyin.com", "so.douyin.com")
+# 同属 douyin.com、但不是作品的子域名：直接说清楚，免得用户以为作品被删了
+_OTHER_HOSTS = {
+    "live.douyin.com": "这是直播间链接，直播还不能下载；打开作品后再复制分享链接",
+    "qishui.douyin.com": "汽水音乐的链接还不支持",
+}
 _ROUTER_DATA = re.compile(r"window\._ROUTER_DATA\s*=\s*(.*?)</script>", re.DOTALL)
 _SSR_PAGE_KEYS = ("video_(id)/page", "note_(id)/page")
 # 页面上取不到正文时用的是 <meta name="description">，抖音在后面拼了一段 SEO 文字：
@@ -676,7 +681,7 @@ class DouYin(BaseParser):
             if video_id := await self._parse_app_share_url(share_url):
                 return video_id
             raise ValueError("Failed to parse video ID from app share URL")
-        raise ValueError(f"Douyin not support this host: {host}")
+        raise ParseError("unsupported", _OTHER_HOSTS.get(host, "这不是抖音作品的链接，打开作品后再复制分享链接"))
 
     async def _fetch_aweme(self, video_id: str) -> dict:
         # 优先通过专用接口获取视频 / 图集详情（同时返回 aweme_details）
@@ -811,9 +816,10 @@ class DouYin(BaseParser):
 
     @staticmethod
     def _parse_video_id_from_path(url: str) -> str:
-        """从地址里取作品 ID：精选页的 modal_id，或者路径里最靠后的一段纯数字。
+        """从地址里取作品 ID：精选页的 modal_id、搜索结果页的 aweme_id，或者路径里最靠后的一段纯数字。
 
         https://www.douyin.com/jingxuan?modal_id=7555093909760789812
+        https://so.douyin.com/video/detail?aweme_id=7139338537526136100&awemeType=0
         https://www.iesdouyin.com/share/video/7424432820954598707/?region=CN&mid=7424432976273869622
         https://www.douyin.com/video/xxxxxx  /  https://www.douyin.com/note/xxxxxx
 
@@ -827,8 +833,9 @@ class DouYin(BaseParser):
             parsed = urlparse(url)
         except ValueError:
             return ""
-        if modal_id := parse_qs(parsed.query).get("modal_id"):
-            return modal_id[0]
+        query = parse_qs(parsed.query)
+        if found := query.get("modal_id") or query.get("aweme_id"):
+            return found[0] if found[0].isdigit() else ""
         return next((part for part in reversed(parsed.path.split("/")) if part.isdigit()), "")
 
     async def _get_slides_info(self, video_id: str) -> dict:
