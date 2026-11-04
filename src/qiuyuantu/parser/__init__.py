@@ -74,7 +74,7 @@ video_source_info_mapping = {
     VideoSource.NotoEmoji: {"domain_list": ["fonts.gstatic.com"], "parser": NotoEmoji},
     VideoSource.PixivSketch: {"domain_list": ["sketch.pixiv.net"], "parser": PixivSketch},
     VideoSource.Pixiv: {"domain_list": ["pixiv.net", "pixiv.me", "i.pximg.net"], "parser": Pixiv},
-    VideoSource.Steam: {"domain_list": ["store.steampowered.com"], "parser": Steam},
+    VideoSource.Steam: {"domain_list": ["store.steampowered.com", "steamcommunity.com"], "parser": Steam},
     VideoSource.HoYoPlay: {"domain_list": ["hyp-api.mihoyo.com"], "parser": HoYoPlay},
     VideoSource.WutheringWaves: {"domain_list": ["prod-alicdn-gamestarter.kurogame.com"], "parser": WutheringWaves},
     VideoSource.MiYouShe: {"domain_list": ["miyoushe.com"], "parser": MiYouShe},

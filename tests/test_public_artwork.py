@@ -11,7 +11,8 @@ from qiuyuantu.parser.applemusic import AppleMusic, page_url
 from qiuyuantu.parser.base import VideoSource
 from qiuyuantu.parser.errors import ParseError
 from qiuyuantu.parser.hoyoplay import API, GAMES, HoYoPlay, game_from_url, game_url
-from qiuyuantu.parser.steam import CDN, Steam, asset_url, reward_id
+from qiuyuantu.parser.steam import CDN, Steam, asset_url, reward_id, shared_file_id
+from qiuyuantu.parser.ytdlp import YtDlp
 
 STEAM_PAGE = "https://store.steampowered.com/points/shop/app/42/reward/100"
 STEAM_API = "https://api.steampowered.com/ILoyaltyRewardsService/QueryRewardItems/v1/"
@@ -29,6 +30,8 @@ def public_http(monkeypatch):
     def handle(request):
         calls.append(request)
         reply = routes[str(request.url).split("?")[0]]
+        if isinstance(reply, httpx.Response):
+            return reply
         return httpx.Response(200, json=reply) if isinstance(reply, dict) else httpx.Response(200, text=reply)
 
     def client(**kwargs):
@@ -114,6 +117,7 @@ def test_steam_requires_an_individual_reward(url):
         ("https://store.steampowered.com/points/shop/reward/100", "100", ""),
         ("https://store.steampowered.com/points/shop/app/42/reward/100", "100", "42"),
         ("https://store.steampowered.com/points/shop/c/summer-sale/reward/100", "100", ""),
+        ("https://store.steampowered.com/points/shop/c/avatar/cluster/0/reward/100", "100", ""),
         # 个人点数页进入某个奖励：路径里是 steamid64，不是 appid
         ("https://store.steampowered.com/points/profile/76561199629689243/reward/100", "100", ""),
     ],
@@ -128,6 +132,98 @@ async def test_steam_parses_a_profile_reward_link(public_http):
     url = "https://store.steampowered.com/points/profile/76561199629689243/reward/100"
     info = await Steam().parse_share_url(url)
     assert info.cover_url == f"{CDN}/42/animation.png"
+
+
+STEAM_SHARED = "https://steamcommunity.com/sharedfiles/filedetails/"
+STEAM_FILE_API = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
+UGC = "https://images.steamusercontent.com/ugc/2038476557504705225/EC7AF268A714656525D17A4469D0199FD22713D8/"
+UGC_2 = "https://images.steamusercontent.com/ugc/2038476557504705226/AC7AF268A714656525D17A4469D0199FD22713D8/"
+STEAM_ARTWORK = f"""
+<div class="workshopItemTitle"> \t\u3164</div>
+<div class="friendBlockContent">
+\t\t\t\tHakuna &amp; Matata<br>
+<img id="ActualMedia" src="{UGC}?imw=5000&imh=5000&ima=fit&impolicy=Letterbox">
+<a href="{UGC}?imw=637&amp;imh=358"></a><img src="{UGC_2}?imw=512">
+"""
+
+
+@pytest.mark.parametrize(
+    ("url", "ident"),
+    [
+        ("https://steamcommunity.com/sharedfiles/filedetails/?id=2924226192", "2924226192"),
+        ("https://steamcommunity.com/workshop/filedetails/?id=42&searchtext=", "42"),
+        ("https://steamcommunity.com/sharedfiles/filedetails/?id=abc", ""),
+        ("https://steamcommunity.com/app/42/videos/", ""),
+        ("https://steamcommunity.com.evil.test/sharedfiles/filedetails/?id=42", ""),
+    ],
+)
+def test_steam_recognizes_community_item_pages(url, ident):
+    assert shared_file_id(url) == ident
+
+
+async def test_steam_artwork_returns_original_images_without_resize_parameters(public_http):
+    routes, calls = public_http
+    routes[STEAM_SHARED] = STEAM_ARTWORK
+    url = "https://steamcommunity.com/sharedfiles/filedetails/?id=2924226192"
+    assert parser.detect_source(url) == VideoSource.Steam
+    info = await Steam().parse_share_url(url)
+    assert [image.url for image in info.images] == [UGC, UGC_2]
+    assert info.cover_url == UGC and info.video_url == ""
+    assert info.title == "Steam" and info.author.name == "Hakuna & Matata"
+    assert calls[-1].headers["Accept-Language"]
+
+
+async def test_steam_missing_community_item_is_reported_as_deleted(public_http):
+    routes, _ = public_http
+    routes[STEAM_SHARED] = httpx.Response(500, text="error")
+    with pytest.raises(ParseError) as caught:
+        await Steam().parse_share_url("https://steamcommunity.com/sharedfiles/filedetails/?id=1")
+    assert caught.value.reason == "deleted"
+
+
+async def test_steam_rate_limited_workshop_item_uses_public_file_api(public_http):
+    routes, calls = public_http
+    routes[STEAM_SHARED] = httpx.Response(429)
+    detail = {"publishedfileid": "7", "result": 1, "title": "3.1", "preview_url": UGC}
+    routes[STEAM_FILE_API] = {"response": {"publishedfiledetails": [detail]}}
+    info = await Steam().parse_share_url("https://steamcommunity.com/sharedfiles/filedetails/?id=7")
+    assert [image.url for image in info.images] == [UGC] and info.title == "3.1"
+    assert calls[-1].method == "POST" and b"publishedfileids%5B0%5D=7" in calls[-1].content
+
+
+@pytest.mark.parametrize("detail", [{"publishedfileid": "7", "result": 9}, {"publishedfileid": "8", "result": 1}])
+async def test_steam_rate_limited_artwork_is_reported_as_blocked(public_http, detail):
+    routes, _ = public_http
+    routes[STEAM_SHARED] = httpx.Response(429)
+    routes[STEAM_FILE_API] = {"response": {"publishedfiledetails": [detail | {"preview_url": UGC}]}}
+    with pytest.raises(ParseError) as caught:
+        await Steam().parse_share_url("https://steamcommunity.com/sharedfiles/filedetails/?id=7")
+    assert caught.value.reason == "blocked"
+
+
+@pytest.mark.parametrize(
+    ("url", "handed"),
+    [
+        # 视频类作品是 YouTube 外链
+        (
+            "https://steamcommunity.com/sharedfiles/filedetails/?id=7",
+            "https://steamcommunity.com/sharedfiles/filedetails/?id=7",
+        ),
+        ("https://steamcommunity.com/broadcast/watch/1", "https://steamcommunity.com/broadcast/watch/1"),
+    ],
+)
+async def test_steam_community_videos_still_use_ytdlp(public_http, monkeypatch, url, handed):
+    routes, _ = public_http
+    routes[STEAM_SHARED] = "<div>no images</div>"
+    seen = []
+
+    async def ytdlp(self, share_url):
+        seen.append(share_url)
+        return base.VideoInfo("https://cdn.test/video.mp4", "")
+
+    monkeypatch.setattr(YtDlp, "parse_share_url", ytdlp)
+    info = await Steam().parse_share_url(url)
+    assert seen == [handed] and info.video_url == "https://cdn.test/video.mp4"
 
 
 @pytest.mark.parametrize("name", ["../private", "https://evil.test/a", "/x.png", "a//b", "x?query", "a/./b"])
