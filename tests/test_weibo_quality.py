@@ -7,6 +7,7 @@ import pytest
 
 from qiuyuantu.parser import base, weibo
 from qiuyuantu.parser.base import FormatInfo
+from qiuyuantu.parser.errors import ParseError
 from qiuyuantu.parser.quality import best_video_format
 
 
@@ -180,3 +181,30 @@ def test_html_post_does_not_drop_its_video_as_if_it_were_a_photo_only_post():
     html = "var $render_data = " + json.dumps([{"status": status}]) + "[0]"
     info = weibo.WeiBo._from_page(html)
     assert info.video_url == "https://cdn.test/video.mp4" and info.images == []
+
+
+async def test_post_link_ignores_characters_pasted_after_the_id(monkeypatch):
+    seen = []
+
+    async def parse_post(self, post_id, page_url):
+        seen.append(post_id)
+        return base.VideoInfo("", "")
+
+    monkeypatch.setattr(weibo.WeiBo, "parse_post", parse_post)
+    await weibo.WeiBo().parse_share_url("https://weibo.com/8016048326/5361270354346625=1.495177038e-06")
+    await weibo.WeiBo().parse_share_url("https://weibo.com/8016048326/Pxyz12345")
+    assert seen == ["5361270354346625", "Pxyz12345"]
+
+
+async def test_live_links_and_live_cards_say_live_is_unsupported(responses):
+    with pytest.raises(ParseError, match="直播"):
+        await weibo.WeiBo().parse_share_url("https://weibo.com/l/wblive/p/show/1022:2321324872324947247537")
+    # 直播卡片里的 stream_url 是播放页，不能当成视频文件返回
+    responses["https://weibo.com/ajax/statuses/show?id=post"] = {
+        "page_info": {
+            "object_type": "live",
+            "media_info": {"stream_url": "https://wblive-out.api.weibo.com/2/wblive/room/play?id=1022:1"},
+        }
+    }
+    with pytest.raises(ParseError, match="直播"):
+        await weibo.WeiBo().parse_post("post", "https://weibo.com/123/post")

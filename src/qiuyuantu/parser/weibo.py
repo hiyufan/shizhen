@@ -10,6 +10,7 @@ from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, json_
 from .errors import ParseError
 from .quality import apply_video_formats, direct_format, number
 
+LIVE_UNSUPPORTED = "微博直播和直播回放暂不支持下载"
 # 图片按从大到小找第一个有地址的尺寸
 _PIC_SIZES = ("original", "largest", "large", "bmiddle")
 
@@ -50,7 +51,11 @@ def _from_status(status: dict) -> VideoInfo:
     """普通微博也可以包含视频；不能把它们一律当作纯图集。"""
     user = status.get("user") or {}
     page = status.get("page_info") or {}
-    media = page.get("media_info") or {}
+    # 直播卡片的 stream_url 是播放页而不是视频文件，回放只有分段直播流
+    live = page.get("object_type") == "live"
+    if live and not status.get("pics") and not status.get("pic_ids"):
+        raise ParseError("unsupported", LIVE_UNSUPPORTED)
+    media = {} if live else page.get("media_info") or {}
     info = VideoInfo(
         video_url="",
         cover_url=_url(page.get("page_pic") or media.get("poster") or ""),
@@ -101,10 +106,13 @@ class WeiBo(BaseParser):
         path = urlparse(share_url).path
         if "/tv/show/" in path:
             return await self.parse_video_id(path.replace("/tv/show/", ""))
-        # 普通微博：weibo.com/<用户 ID>/<微博 ID>
+        if path.startswith("/l/wblive/"):
+            raise ParseError("unsupported", LIVE_UNSUPPORTED)
+        # 普通微博：weibo.com/<用户 ID>/<微博 ID>；有的分享会在 ID 后面粘上别的字符
         parts = path.strip("/").split("/")
-        if len(parts) >= 2:
-            return await self.parse_post(parts[-1], share_url)
+        post_id = re.match(r"[0-9A-Za-z]+", parts[-1]) if len(parts) >= 2 else None
+        if post_id:
+            return await self.parse_post(post_id[0], share_url)
         raise ParseError("unsupported", "不是微博视频或单条微博的链接")
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
