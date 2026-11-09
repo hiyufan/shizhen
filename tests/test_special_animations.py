@@ -272,8 +272,12 @@ async def test_renderer_reclaims_detached_browser_descendants():
         assert render_process._resident_bytes(process.pid) > 0
         render_process._kill(process)
         await asyncio.wait_for(process.wait(), 5)
-        state = Path("/proc") / str(child) / "stat"
-        assert not state.exists() or state.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+        # 子进程可能在检查 exists() 与读取之间被回收，读取时才报不存在，同样算已回收
+        try:
+            status = (Path("/proc") / str(child) / "stat").read_text().rsplit(")", 1)[1].split()[0]
+        except (FileNotFoundError, ProcessLookupError):
+            status = ""
+        assert status in {"", "Z"}
     finally:
         if process.returncode is None:
             render_process._kill(process)
