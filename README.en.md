@@ -41,7 +41,7 @@ Supports 30+ platforms. Available formats and quality depend on the source:
 
 | Media | Platforms |
 | --- | --- |
-| Videos and images | Douyin, Xiaohongshu, Kuaishou, YouTube, X, Bilibili, Instagram and more |
+| Videos and images | Douyin, Xiaohongshu, Kuaishou, YouTube, X, Bilibili, Instagram, Threads and more |
 | Still and animated artwork | [QQ Music](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [NetEase Cloud Music](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | Game assets | [Steam animated avatars, frames and backgrounds](https://ynvan.com/steam-assets?utm_source=github&utm_medium=referral&utm_campaign=readme), [HoYoPlay launcher wallpapers](https://ynvan.com/hoyoplay-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme), [Wuthering Waves international wallpaper](https://ynvan.com/wuthering-waves-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | Anonymous stickers & Channels | [Cataloged Telegram stickers](https://ynvan.com/telegram-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme) (TGS to transparent GIF / Live Photo), [Channels downloader](https://ynvan.com/wechat-channels?utm_source=github&utm_medium=referral&utm_campaign=readme) (public service supplies video for downloading and conversion) |

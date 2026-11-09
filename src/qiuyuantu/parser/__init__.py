@@ -46,6 +46,7 @@ from .sohu import Sohu
 from .steam import Steam
 from .telegram import Telegram, is_sticker_page
 from .telegram_post import is_post_page as is_telegram_post
+from .threads import Threads
 from .twitter import Twitter
 from .wechat_channels import WeChatChannels, is_share_page
 from .wechat_mp import WeChatMP
@@ -78,6 +79,7 @@ video_source_info_mapping = {
         "domain_list": ["pixiv.net", "pixiv.me", "i.pximg.net", "phixiv.net", "ppxiv.net", "pixiv.cat", "pixiv.re"],
         "parser": Pixiv,
     },
+    VideoSource.Threads: {"domain_list": ["threads.com", "threads.net"], "parser": Threads},
     VideoSource.Steam: {"domain_list": ["store.steampowered.com", "steamcommunity.com", "s.team"], "parser": Steam},
     VideoSource.HoYoPlay: {"domain_list": ["hyp-api.mihoyo.com"], "parser": HoYoPlay},
     VideoSource.WutheringWaves: {"domain_list": ["prod-alicdn-gamestarter.kurogame.com"], "parser": WutheringWaves},
@@ -240,8 +242,6 @@ video_source_info_mapping = {
             "pinterest.com",
             "pin.it",
             "dailymotion.com",
-            "threads.net",
-            "threads.com",
         ],
         "parser": YtDlp,
     },

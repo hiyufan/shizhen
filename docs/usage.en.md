@@ -47,6 +47,7 @@
 | X (Twitter) | ✅ | ✅ | – | Highest bitrate | fxtwitter fallback for sensitive posts |
 | Bilibili | ✅ | ✅ | ✅ | 480p direct URLs; server-side merging at 720p / 1080p | Supports b23.tv short links, images and Live Photos in dynamic posts; anime series and movies are not supported |
 | Instagram | ✅ | ✅ | – | Platform default | Original images from carousel posts, including posts mixing images and videos |
+| Threads | ✅ | ✅ | – | Platform default | Post links and `/share/` short links; the largest image of each carousel item |
 | QQ Music | – | Cover art | – | Album source file when verified; 1000px for playlists | Falls back to verified HD variants; cover art only |
 | NetEase Cloud Music | – | Cover art | – | Original dimensions supplied by the platform | Song, album and playlist share links; download animated covers in their original format or convert to GIF / Live Photo / Motion Photo |
 | Steam | ✅ | Original screenshots, GIF / APNG assets | – | Original assets supplied by Steam | Store game pages (screenshots and main trailer), Points Shop items and per-game item pages, Community items, profiles (avatar, frame, backgrounds); animated avatars, transparent frames, stickers and MP4 / WebM backgrounds; animations can be converted |

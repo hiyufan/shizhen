@@ -20,7 +20,7 @@ const REASONS = {
 const JOBS = { prepare: translate('准备原视频'), gif: 'GIF', livephoto: translate('实况照片'), motionphoto: translate('动态照片'), download: translate('高清下载'), live: translate('实况打包') };
 const PLATFORMS = {
   douyin: translate('抖音'), redbook: translate('小红书'), kuaishou: translate('快手'), youtube: 'YouTube', twitter: 'X', bilibili: translate('B站'), weibo: translate('微博'),
-  tiktok: 'TikTok', instagram: 'Instagram', xigua: translate('西瓜视频'), pipixia: translate('皮皮虾'), acfun: 'AcFun', ytdlp: translate('其它（yt-dlp）'),
+  tiktok: 'TikTok', instagram: 'Instagram', threads: 'Threads', xigua: translate('西瓜视频'), pipixia: translate('皮皮虾'), acfun: 'AcFun', ytdlp: translate('其它（yt-dlp）'),
   '': translate('未识别'),
   qqmusic: translate('QQ 音乐'), netease: translate('网易云音乐'), goofish: translate('闲鱼'),
   steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', discord: 'Discord',

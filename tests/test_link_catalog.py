@@ -45,6 +45,10 @@ CATALOG = [
     ("http://xhslink.com/m/1gJ5tOG6M1b", VideoSource.RedBook),
     ("https://haokan.baidu.com/v?vid=12336643112805995867", VideoSource.HaoKan),
     ("https://x.com/a/status/1", VideoSource.Twitter),
+    # Threads：帖子、旧版 /t/ 地址与 /share/ 分享短链（yt-dlp 没有 Threads 提取器）
+    ("https://www.threads.com/@huiunyz/post/Dfbw28jkon0?xmt=AQG0", VideoSource.Threads),
+    ("https://www.threads.net/t/Dfbw28jkon0", VideoSource.Threads),
+    ("https://www.threads.com/share/_qnW5t1Du", VideoSource.Threads),
     # TikTok 走 yt-dlp；图文帖和空用户名的短链落地页在 tiktok.py 里补救
     ("https://www.tiktok.com/@/photo/7375688490052275488", VideoSource.YtDlp),
 ]
