@@ -260,7 +260,7 @@ def _dom_summary(dom: dict | None) -> str:
 # 和页面渲染后播放器组件里的 awemeInfo 是同一份，签名过的图片 / 实况地址都能直接下载。
 # 2026-10-14 实测：HTML 1 秒左右就到了，等页面 JS 把 awemeInfo 渲染出来还要再 2 秒多（美国、杭州
 # 都是 ~3.1 秒，慢在页面自己，不在网络）。抖音的人机验证页只有 2KB，验证完页面才刷新成真的，
-# 那种情况和 HTML 里没找到数据的情况照旧等渲染（_extract_note_dom）
+# 那时接着读刷新后的 HTML（_note_from_documents）；HTML 里没找到数据的情况照旧等渲染（_extract_note_dom）
 _PACE_PUSH = re.compile(r'self\.__pace_f\.push\(\[1,\s*("(?:[^"\\]|\\.)*")\]\)')
 _MIN_NOTE_HTML = 50_000
 
@@ -332,16 +332,51 @@ def note_from_html(html: str, video_id: str) -> dict | None:
     return _dom_from_aweme(aweme) if aweme else None
 
 
-async def _note_from_response(resp, video_id: str) -> dict | None:
-    """页面导航的响应里直接读；验证页、读不到、解析不出都返回 None。1MB 的 HTML 解析要 ~60ms，放线程里"""
+async def _response_html(resp) -> str:
+    """导航响应的 HTML；页面已经跳走、响应体拿不到、超时都返回空串。"""
     if resp is None:
-        return None
+        return ""
     try:
         # 跨境下载偶尔卡住：卡太久就当没读到，交给等页面那条路
-        html = await asyncio.wait_for(resp.text(), 10)
+        return await asyncio.wait_for(resp.text(), 10)
     except Exception:  # noqa: BLE001 - 页面已经跳走 / 响应体拿不到 / 超时
+        return ""
+
+
+# 验证页自己验证完、重载出真页面的响应头，实测在它之后 0.5~0.7 秒到；等不到就照旧等页面渲染。
+_CHALLENGE_RELOAD_WAIT = 3.0
+
+
+def _watch_documents(page) -> asyncio.Queue:
+    """主框架每次导航拿到的文档响应（不含跳转的中间几跳），按到达顺序排队。"""
+    documents: asyncio.Queue = asyncio.Queue()
+
+    def on_response(response) -> None:
+        with contextlib.suppress(Exception):  # Service Worker 发出的响应没有所属框架
+            navigated = response.request.is_navigation_request() and response.frame == page.main_frame
+            if navigated and not 300 <= response.status < 400:
+                documents.put_nowait(response)
+
+    page.on("response", on_response)
+    return documents
+
+
+async def _note_from_documents(first, later: asyncio.Queue, video_id: str) -> dict | None:
+    """从导航响应的 HTML 里直接读；读不到、解析不出返回 None。1MB 的 HTML 解析要 ~60ms，放线程里。
+
+    验证通过的标记只管几分钟，过期后先到的是 2KB 的验证页，它验证完会自己重载。重载回来的那份
+    HTML 同样带整条数据，接着读它，不必等页面渲染完再去 DOM 里轮询（2026-11 实测 3.3 秒降到 2 秒左右）。
+    """
+    html = await _response_html(first)
+    if dom := await asyncio.to_thread(note_from_html, html, video_id):
+        return dom
+    if not 0 < len(html) < _MIN_NOTE_HTML:
+        return None  # 完整页面里没有数据（图文不存在、其实是视频）：等重载也不会有
+    try:
+        reloaded = await asyncio.wait_for(later.get(), _CHALLENGE_RELOAD_WAIT)
+    except asyncio.TimeoutError:
         return None
-    return await asyncio.to_thread(note_from_html, html, video_id)
+    return await asyncio.to_thread(note_from_html, await _response_html(reloaded), video_id)
 
 
 # 浏览器兜底给出定论后的提示：说清楚内容没有公开，不再暗示站长配置登录信息能解决。
@@ -992,10 +1027,13 @@ class DouYin(BaseParser):
                 timeout = 12000 if attempt == 0 else 25000
                 # HTML 一下载完就读（见 note_from_html），不等页面脚本跑完到 DOMContentLoaded：
                 # 2026-10-14 实测中位 1.59 秒降到 1.29 秒。服务器端的跳转在这之前已经跟完了
+                documents = _watch_documents(page)
                 resp = await page.goto(page_url, wait_until="commit", timeout=timeout)
-                if f"/note/{video_id}" in page.url and (dom := await _note_from_response(resp, video_id)):
+                while not documents.empty():
+                    documents.get_nowait()  # 这次导航自己的响应；之后再来的才是页面重载
+                if f"/note/{video_id}" in page.url and (dom := await _note_from_documents(resp, documents, video_id)):
                     return dom
-                # 人机验证页 / 读不出数据 / 跳走了：照旧等页面加载
+                # 验证后没有重载 / 读不出数据 / 跳走了：照旧等页面加载
                 await page.wait_for_load_state("domcontentloaded", timeout=timeout)
                 if f"/note/{video_id}" not in page.url:
                     if f"/video/{video_id}" in page.url:
