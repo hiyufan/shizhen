@@ -259,8 +259,12 @@ class BiliBili(BaseParser):
             for part in parsed_url.path.split("/"):
                 if part[:2] in ("BV", "bv") or (part[:2] in ("av", "AV") and part[2:].isdigit()):
                     return part, _page_number(parsed_url.query)
+            # 活动页（/festival/...）把正在播放的视频放在 bvid 参数里
+            bvid = (parse_qs(parsed_url.query).get("bvid") or [""])[0]
+            if re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
+                return bvid, _page_number(parsed_url.query)
 
-        raise ValueError("不是有效的B站视频链接")
+        raise ParseError("unsupported", "这不是单个 B 站视频或动态的链接，打开视频后再复制分享链接")
 
     async def _api(self, api_url: str) -> dict:
         """发送B站API请求"""

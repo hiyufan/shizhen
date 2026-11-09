@@ -584,6 +584,7 @@
   "TXT 保留 Pixiv 原文标记；封面、上传插图与引用作品分别列出。": "TXT keeps the original Pixiv markup. Covers, uploaded images and referenced works are listed separately.",
   "集合中的作品需要逐项解析；外部链接只提供原页面入口。": "Extract collection works individually. External links open the source page.",
   "这是单个图片文件；需要整篇作品时，请复制作品链接。": "This is one image file. To extract the complete work, copy its work link.",
+  "这不是单个 B 站视频或动态的链接，打开视频后再复制分享链接": "This isn't a link to a single Bilibili video or post. Open the video, then copy its share link",
   "微博说这条微博不存在": "Weibo says this post doesn't exist",
   "这条微博分享链接没有跳到微博内容": "This Weibo share link doesn't lead to a post",
   "这是缩略图地址，已换成整件作品的原图。": "This was a thumbnail link, so the work's original images are shown instead.",

@@ -243,6 +243,13 @@ class YtDlp(BaseParser):
         )
 
 
+def specific_extractor(url: str) -> str:
+    """yt-dlp 里专门认这个链接的提取器名；只有通用提取器认得时返回空串。会扫描全部提取器，放到线程里跑。"""
+    from yt_dlp.extractor import gen_extractor_classes
+
+    return next((ie.ie_key() for ie in gen_extractor_classes() if ie.ie_key() != "Generic" and ie.suitable(url)), "")
+
+
 def _definitive(err: Exception, share_url: str) -> bool:
     """备用出口的这个报错能不能直接定论、不用等原生兜底：限龄、要登录这类是视频本身的问题。
 

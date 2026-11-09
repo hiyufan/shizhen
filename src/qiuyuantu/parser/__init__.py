@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from .. import progress
 from ..convert.signal import public_url
 from ..utils import current_source
+from . import shortlinks
 from .acfun import AcFun
 from .animation import Animation, file_kind
 from .applemusic import AppleMusic
@@ -53,7 +54,7 @@ from .weishi import WeiShi
 from .wutheringwaves import WutheringWaves
 from .xigua import XiGua
 from .xinpianchang import XinPianChang
-from .ytdlp import YtDlp
+from .ytdlp import YtDlp, specific_extractor
 from .zuiyou import ZuiYou
 
 logger = logging.getLogger(__name__)
@@ -296,23 +297,34 @@ def detect_source(share_url: str) -> VideoSource:
 
 async def _run_parser(source: VideoSource, share_url: str) -> VideoInfo:
     parser = video_source_info_mapping[source]["parser"]()
-    if source not in _FALLBACK_TO_YTDLP:
-        return await parser.parse_share_url(share_url)
     try:
         return await parser.parse_share_url(share_url)
     except Exception as exc:  # noqa: BLE001
-        # 内容删了 / 链接不对 / 版权内容：换 yt-dlp 也是一样的结果，别让用户多等几秒
-        if classify(exc).reason in ("deleted", "unsupported", "copyright"):
+        if not await _worth_ytdlp(source, share_url, classify(exc).reason):
             raise
         extra = await _ytdlp_extra(share_url)
-        if extra is None or not (extra.formats or extra.video_url):
+        if extra is None or not (extra.formats or extra.video_url or extra.images):
             raise
         extra.source = source.value
         return extra
 
 
+async def _worth_ytdlp(source: VideoSource, share_url: str, reason: str) -> bool:
+    if source == VideoSource.YtDlp:
+        return False
+    if source in _FALLBACK_TO_YTDLP and reason not in ("deleted", "unsupported", "copyright"):
+        # 内容删了 / 链接不对 / 版权内容：换 yt-dlp 也是一样的结果，别让用户多等几秒
+        return True
+    # 专用解析器不认的链接格式，yt-dlp 若有专门认它的提取器就让它试一次，
+    # 免得平台新增的链接样式在补上之前一直失败；它也失败时仍报专用解析器的原因。
+    return reason == "unsupported" and bool(await asyncio.to_thread(specific_extractor, share_url))
+
+
 async def parse_video_share_url(share_url: str) -> VideoInfo:
     """解析分享链接，获取视频信息；失败时抛 ParseError（带 reason）。"""
+    if shortlinks.is_short(share_url):
+        # t.cn 之类的通用短链先跟到落地地址，才知道该交给哪个解析器
+        share_url = await shortlinks.expand(share_url)
     if not file_kind(share_url) and (direct := direct_media(share_url)):
         # 平台 CDN 上的图片 / 视频文件地址：不用解析（见 direct.py）
         direct.page_url = share_url

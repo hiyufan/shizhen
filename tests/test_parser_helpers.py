@@ -198,6 +198,11 @@ async def test_bili_opus_images_and_links():
     ):
         assert await BiliBili()._get_bvid_from_url(url) == "opus1257456486020284425"
     assert detect_source("https://t.bilibili.com/1257456486020284425") == VideoSource.BiliBili
+    festival = "https://www.bilibili.com/festival/2026bnj?bvid=BV1GJ411x7h7&spm_id_from=333"
+    assert await BiliBili()._get_bvid_from_url(festival) == "BV1GJ411x7h7"
+    with pytest.raises(ParseError) as caught:
+        await BiliBili()._get_bvid_from_url("https://www.bilibili.com/blackboard/era/abc.html?id=1")
+    assert caught.value.reason == "unsupported"
 
 
 @pytest.mark.parametrize(
@@ -318,3 +323,82 @@ async def test_bili_multi_part_uses_the_linked_part(monkeypatch, url, cid, title
         return
     info = await BiliBili().parse_share_url(url)
     assert played == [cid] and (info.title, info.page_url, info.duration) == (title, page_url, cid * 60)
+
+
+@pytest.fixture
+def unsupported_steam(monkeypatch):
+    from qiuyuantu.parser.steam import Steam
+
+    original = ParseError("unsupported", "Steam 专用提示")
+
+    async def parse(self, url):
+        raise original
+
+    monkeypatch.setattr(Steam, "parse_share_url", parse)
+    return original
+
+
+@pytest.mark.parametrize("extractor", ["SteamCommunityBroadcast", ""])
+async def test_unsupported_link_tries_ytdlp_only_when_it_has_a_specific_extractor(
+    monkeypatch, unsupported_steam, extractor
+):
+    calls = []
+
+    async def ytdlp(url):
+        calls.append(url)
+        return parser_pkg.VideoInfo("https://cdn.test/v.mp4", "")
+
+    monkeypatch.setattr(parser_pkg, "specific_extractor", lambda url: extractor)
+    monkeypatch.setattr(parser_pkg, "_ytdlp_extra", ytdlp)
+    url = "https://steamcommunity.com/broadcast/watch/1"
+    if not extractor:
+        with pytest.raises(ParseError, match="Steam 专用提示"):
+            await parser_pkg.parse_video_share_url(url)
+        assert calls == []
+        return
+    info = await parser_pkg.parse_video_share_url(url)
+    assert calls == [url] and info.video_url == "https://cdn.test/v.mp4" and info.source == "steam"
+
+
+async def test_ytdlp_failure_keeps_the_dedicated_parsers_reason(monkeypatch, unsupported_steam):
+    async def ytdlp(url):
+        return None
+
+    monkeypatch.setattr(parser_pkg, "specific_extractor", lambda url: "SteamCommunityBroadcast")
+    monkeypatch.setattr(parser_pkg, "_ytdlp_extra", ytdlp)
+    with pytest.raises(ParseError, match="Steam 专用提示"):
+        await parser_pkg.parse_video_share_url("https://steamcommunity.com/broadcast/watch/1")
+
+
+def test_specific_extractor_ignores_the_generic_one():
+    from qiuyuantu.parser.ytdlp import specific_extractor
+
+    assert specific_extractor("https://www.douyin.com/video/7300000000000000000") == "Douyin"
+    assert specific_extractor("https://example.com/a") == ""
+
+
+async def test_generic_short_link_is_expanded_before_choosing_a_parser(monkeypatch):
+    from qiuyuantu.parser import shortlinks
+    from qiuyuantu.parser.weibo import WeiBo
+
+    hops = {
+        "http://t.cn/A6RHfSQH": "http://bit.ly/x",
+        "http://bit.ly/x": "https://video.weibo.com/show?fid=1034:1",
+    }
+
+    def handle(request):
+        return httpx.Response(302, headers={"location": hops[str(request.url)]})
+
+    monkeypatch.setattr(
+        shortlinks, "create_async_client", lambda **kw: httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    )
+    seen = []
+
+    async def parse(self, url):
+        seen.append(url)
+        return parser_pkg.VideoInfo("https://cdn.test/v.mp4", "")
+
+    monkeypatch.setattr(WeiBo, "parse_share_url", parse)
+    info = await parser_pkg.parse_video_share_url("http://t.cn/A6RHfSQH")
+    assert seen == ["https://video.weibo.com/show?fid=1034:1"] and info.source == "weibo"
+    assert shortlinks.is_short("https://www.bit.ly/x") and not shortlinks.is_short("https://t.cn.evil.test/x")

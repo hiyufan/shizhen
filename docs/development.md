@@ -17,6 +17,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 - **规范**：Python 用 ruff 格式化和检查（规则在 `pyproject.toml`：行宽 120、圈复杂度 ≤ 10、import 排序、常见 bug 写法），前端脚本用 ESLint（`eslint.config.mjs`：复杂度 ≤ 10、嵌套 ≤ 4 层、函数 ≤ 80 行），CI 里任何一项不过就不部署。`pre-commit install` 后每次提交自动跑 ruff；前端提交前跑 `npx --yes eslint@10 src/qiuyuantu/static/js`。测试：`python -m pytest -q`，不碰外网。
 - **分层**：`parser/` 只管「链接 → VideoInfo」，不碰 HTTP 接口；`convert/` 是下载、转换、任务队列，不认识 FastAPI；`web/` 只做参数校验、鉴权、限流，把活交给前两层。前端脚本在 `static/js/`，按功能分模块，不往模板里写内联脚本。
 - **加平台**：在 `src/qiuyuantu/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
+- **补链接格式**：`python scripts/link_gaps.py` 只读 `data/failures.db`，把最近 7 天「不支持」和「页面结构变了」的失败按站点与路径样式汇总，并标出按当前代码会交给哪个解析器。补上一种样式后，把它加进 `tests/test_link_catalog.py`。专用解析器报不支持、而 yt-dlp 有专门认这个链接的提取器时，会让 yt-dlp 再试一次；t.cn 等通用短链先跟到落地地址再选解析器。
 - **改文案**：落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
 - **同步上游**：`parser/` 里的解析器都已按本项目的写法重写过（统一用 `BaseParser.get_json / get_text` 发请求、失败抛带原因的 `ParseError`），不能再拿上游文件直接覆盖；上游修了某个平台时对照着改，并补上 `tests/test_small_parsers.py` 里的离线用例。
 - **发起出站请求**：一律用 `utils.create_async_client()` 或 `convert.net.safe_client()`，它们带 SSRF 逐跳检查并复用连接池。不要直接 `httpx.AsyncClient()`。
