@@ -19,7 +19,8 @@
  *     PARSE_VIDEO_RELAY_CN=https://你的函数域名/relay
  *     PARSE_VIDEO_RELAY_TOKEN=和下面 TOKEN 一样的字符串
  *
- * 中继只用于解析请求（网页 / API，几十到一两百 KB）；视频本体给浏览器的那一路可以走 /media，服务器自己做转换要的原视频仍直连 CDN。
+ * 中继只用于解析请求（网页 / API，几十到一两百 KB），以及核对视频真实分辨率时按范围读的文件开头一小段（带 x-relay-max，最多 1 MiB）；
+ * 视频本体给浏览器的那一路可以走 /media，服务器自己做转换要的原视频仍直连 CDN。
  * Cloudflare Workers 也能原样跑这份代码（同样是 export default { fetch }），但它的出口在海外，B站 会 412，别用。
  */
 
@@ -88,10 +89,30 @@ async function relay(request, url) {
     "x-relay-status": String(resp.status),
     "x-relay-headers": b64e(JSON.stringify(pairs)),
   };
+  const max = Number(request.headers.get("x-relay-max")) || 0;
+  if (max > 0) return new Response(await readUpTo(resp, max), { status: 200, headers: out });
   const gzip = shouldGzip(request, resp);
   if (gzip) out["x-relay-encoding"] = "gzip";
   const body = gzip ? resp.body.pipeThrough(new CompressionStream("gzip")) : await resp.arrayBuffer();
   return new Response(body, { status: 200, headers: out });
+}
+
+// 求原图按范围取媒体片段（探测视频真实分辨率）时带 x-relay-max：正文读够这么多就停。
+// 这里要把正文收完才能回，源站不理会 Range 时不能把整个视频缓冲下来
+async function readUpTo(resp, max) {
+  const out = new Uint8Array(max);
+  let size = 0;
+  if (!resp.body) return out.subarray(0, 0);
+  const reader = resp.body.getReader();
+  while (size < max) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const part = value.subarray(0, max - size);
+    out.set(part, size);
+    size += part.length;
+  }
+  reader.cancel().catch(() => {});
+  return out.subarray(0, size);
 }
 
 // 回程压缩：fetch 拿到的是解压后的正文，原样回去要按原始大小跨一次太平洋（小红书笔记页 149KB，

@@ -125,8 +125,9 @@ def test_official_playback_can_recover_higher_quality_than_web_list(monkeypatch)
     def client(**kwargs):
         return httpx.AsyncClient(transport=httpx.MockTransport(response), **kwargs)
 
-    async def probe(url, headers):
-        assert "Cookie" not in headers
+    async def probe(url, headers, *, via_relay):
+        # 源站在国内：优先借中继那条常驻连接读片段
+        assert via_relay and "Cookie" not in headers
         width, height = (720, 1280) if "origin" in url else (1080, 1920)
         return FormatInfo(url=url, width=width, height=height, fps=30, label=f"{width}p")
 

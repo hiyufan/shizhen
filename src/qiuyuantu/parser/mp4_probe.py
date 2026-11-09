@@ -18,6 +18,8 @@ from .quality import short_side
 _FIRST_BYTES = 64 * 1024
 _HEAD_BYTES = 1024 * 1024
 _TAIL_BYTES = 512 * 1024
+# 中继那条连接是焐着的，探测通常几百毫秒读完；偶尔整条链路都慢，过了这个时间就同时直连，谁先读出来用谁。
+_RELAY_HEAD_START = 1.0
 _CONTENT_RANGE = re.compile(r"bytes ([0-9]+)-([0-9]+)/([0-9]+)\Z")
 
 
@@ -181,15 +183,26 @@ def _response_size(response: httpx.Response, start: int) -> int:
     return int(response.headers.get("content-length") or 0)
 
 
-async def _slice(url: str, start: int, limit: int, headers: dict[str, str]) -> tuple[bytes, int]:
+def _client(url: str, relayed: bool) -> httpx.AsyncClient:
+    if relayed:
+        return safe_client(transport=relay.shared_transport(), follow_redirects=True, timeout=5)
+    return safe_client(for_url=url, follow_redirects=True, timeout=5)
+
+
+async def _slice(url: str, start: int, limit: int, headers: dict[str, str], relayed: bool = False) -> tuple[bytes, int]:
     headers = headers | {"Range": f"bytes={start}-{start + limit - 1}", "Accept-Encoding": "identity"}
     async with (
-        safe_client(for_url=url, follow_redirects=True, timeout=5) as client,
-        client.stream("GET", url, headers=headers) as response,
+        _client(url, relayed) as client,
+        client.stream(
+            "GET", url, headers=headers, extensions={relay.MAX_BYTES: limit} if relayed else None
+        ) as response,
     ):
         response.raise_for_status()
         if response.headers.get("content-encoding", "identity") != "identity":
             raise ValueError("媒体探测不接受压缩响应")
+        if relayed and response.status_code != 206:
+            # 中继收完正文才返回，也不带回 Content-Length：源站不按范围给时拿不到文件大小，交回直连。
+            raise ValueError("中继探测需要范围响应")
         total = _response_size(response, start)
         if response.is_stream_consumed:
             return response.content[:limit], total
@@ -220,26 +233,26 @@ def _moov_end(data: bytes) -> int | None:
     return None
 
 
-async def _head(target: str, headers: dict[str, str]) -> tuple[bytes, int]:
-    data, total = await _slice(target, 0, _FIRST_BYTES, headers)
+async def _head(target: str, headers: dict[str, str], relayed: bool) -> tuple[bytes, int]:
+    data, total = await _slice(target, 0, _FIRST_BYTES, headers, relayed)
     end = _moov_end(data)
     if total <= len(data) or end == 0 or (end is not None and (end <= len(data) or end > _HEAD_BYTES)):
         return data, total
     stop = end or _HEAD_BYTES
     try:
-        rest, _ = await _slice(target, len(data), stop - len(data), headers)
+        rest, _ = await _slice(target, len(data), stop - len(data), headers, relayed)
     except ValueError:
         # 首次请求被当成整段响应时无法续读，退回从头读取有界片段。
-        return await _slice(target, 0, stop, headers)
+        return await _slice(target, 0, stop, headers, relayed)
     return data + rest, total
 
 
-async def _probe(url: str, headers: dict[str, str], request_url: str = "") -> FormatInfo | None:
+async def _probe(url: str, headers: dict[str, str], request_url: str = "", relayed: bool = False) -> FormatInfo | None:
     target = request_url or url
-    data, total = await _head(target, headers)
+    data, total = await _head(target, headers, relayed)
     info = metadata(data)
     if info is None and total > len(data):
-        tail, _ = await _slice(target, max(0, total - _TAIL_BYTES), _TAIL_BYTES, headers)
+        tail, _ = await _slice(target, max(0, total - _TAIL_BYTES), _TAIL_BYTES, headers, relayed)
         info = metadata(tail, tail=True)
     if info is None:
         return None
@@ -250,20 +263,57 @@ async def _probe(url: str, headers: dict[str, str], request_url: str = "") -> Fo
     return fmt
 
 
-async def _attempts(url: str, headers: dict[str, str]) -> FormatInfo | None:
+async def _direct(url: str, headers: dict[str, str]) -> FormatInfo | None:
     try:
         return await _probe(url, headers)
     except httpx.HTTPError:
         edge = relay.edge_media_url(url, 300) if relay.edge_media_enabled() else None
         if not edge:
             raise
-        # /relay 会缓冲完整响应；媒体探测只使用可中途关闭的流式 /media 备用入口。
+        # 直连不通时改走可中途关闭的流式 /media 入口。
         return await _probe(url, headers, edge)
 
 
-async def probe(url: str, headers: dict[str, str] | None = None) -> FormatInfo | None:
-    """每个入口最多读取 1.5 MiB、总耗时 8 秒；不虚构元数据，也不阻止既有解析路径。"""
+def _failed(attempt: asyncio.Future) -> bool:
+    return attempt.cancelled() or attempt.exception() is not None
+
+
+async def _relay_first(url: str, headers: dict[str, str]) -> FormatInfo | None:
+    """中继先读；读不出来或过了 _RELAY_HEAD_START 还没读完就加上直连，取先读出来的那一路。"""
+    relayed, direct = asyncio.ensure_future(_probe(url, headers, relayed=True)), None
     try:
-        return await asyncio.wait_for(_attempts(url, headers or {}), 8)
+        await asyncio.wait({relayed}, timeout=_RELAY_HEAD_START)
+        if relayed.done() and not _failed(relayed):
+            return relayed.result()
+        direct = asyncio.ensure_future(_direct(url, headers))
+        running = {direct} if relayed.done() else {direct, relayed}
+        while running:
+            done, running = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+            if finished := next((attempt for attempt in done if not _failed(attempt)), None):
+                return finished.result()
+        # 两路都没读出来：按直连的结果报，和不经中继时一致。
+        return direct.result()
+    finally:
+        attempts = [attempt for attempt in (relayed, direct) if attempt]
+        for attempt in attempts:
+            attempt.cancel()
+        # 等落选的一路收尾并取走它的异常，免得留下没人认领的任务。
+        await asyncio.gather(*attempts, return_exceptions=True)
+
+
+async def _attempts(url: str, headers: dict[str, str], via_relay: bool) -> FormatInfo | None:
+    if via_relay and relay.enabled():
+        return await _relay_first(url, headers)
+    return await _direct(url, headers)
+
+
+async def probe(url: str, headers: dict[str, str] | None = None, *, via_relay: bool = False) -> FormatInfo | None:
+    """每个入口最多读取 1.5 MiB、总耗时 8 秒；不虚构元数据，也不阻止既有解析路径。
+
+    via_relay 给源站在国内的调用方：先经中继那条常驻连接按范围读，省掉对 CDN 的跨境握手；
+    中继不可用、读得慢或源站不按范围返回时照常直连。
+    """
+    try:
+        return await asyncio.wait_for(_attempts(url, headers or {}, via_relay), 8)
     except (httpx.HTTPError, ValueError, asyncio.TimeoutError):
         return None

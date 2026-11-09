@@ -4,6 +4,7 @@
     POST {RELAY}?url=<目标地址>
     x-relay-token / x-relay-method / x-relay-headers(base64 JSON)   body = 原请求体
     x-relay-accept: gzip   回程可以压缩
+    x-relay-max: <字节数>  正文最多读这么多就回（按范围取媒体片段时用，老版本中继会忽略）
   ← 200, body = 目标响应体, x-relay-status = 目标状态码, x-relay-headers = base64 JSON [[k, v], ...]
     x-relay-encoding: gzip   body 是 gzip 过的（只对网页 / JSON 这类文本，老版本中继不会压）
 
@@ -30,6 +31,10 @@ RELAY_URL = os.environ.get("PARSE_VIDEO_RELAY_CN", "").strip()
 RELAY_TOKEN = os.environ.get("PARSE_VIDEO_RELAY_TOKEN", "").strip()
 
 _DROP = {"host", "content-length", "connection", "accept-encoding"}
+
+# 请求 extensions 里的键：这次请求最多要多少字节正文。中继要把正文收完才回，
+# 源站不理会 Range 时靠它让边缘节点及时停手，不把整个文件缓冲下来。
+MAX_BYTES = "relay_max_bytes"
 
 
 def enabled() -> bool:
@@ -148,6 +153,8 @@ class RelayTransport(httpx.AsyncBaseTransport):
             "x-relay-accept": "gzip",
             "content-type": "application/octet-stream",
         }
+        if limit := request.extensions.get(MAX_BYTES):
+            relay_headers["x-relay-max"] = str(int(limit))
         resp = await self._client.post(
             self.relay_url, params={"url": str(request.url)}, headers=relay_headers, content=body
         )

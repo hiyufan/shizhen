@@ -775,7 +775,7 @@ class DouYin(BaseParser):
             if not url:
                 return None
             # ratio=2160p 实际也可能返回 1080p；不能用请求参数给文件标画质。
-            return await mp4_probe.probe(url, headers)
+            return await mp4_probe.probe(url, headers, via_relay=True)
         except (httpx.HTTPError, asyncio.TimeoutError):
             return None
 

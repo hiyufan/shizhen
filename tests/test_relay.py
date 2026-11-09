@@ -49,6 +49,20 @@ async def test_old_relay_without_compression_still_works():
     assert resp.text == PAGE
 
 
+async def test_byte_cap_is_sent_only_when_the_caller_asks_for_it():
+    # 中继收完正文才回：按范围取媒体片段的调用方给出上限，源站不理会 Range 时边缘节点读够就停
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers.get("x-relay-max"))
+        return _relay_reply(b"ok")
+
+    async with httpx.AsyncClient(transport=_transport(handler)) as client:
+        await client.get("https://cdn.example.com/a.mp4", headers={"Range": "bytes=0-65535"})
+        await client.get("https://cdn.example.com/a.mp4", extensions={relay.MAX_BYTES: 65536})
+    assert seen == [None, "65536"]
+
+
 @pytest.mark.parametrize(
     "body",
     [
