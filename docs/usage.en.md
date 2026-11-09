@@ -49,7 +49,7 @@
 | Instagram | ✅ | ✅ | – | Platform default | Original images from carousel posts, including posts mixing images and videos |
 | QQ Music | – | Cover art | – | Album source file when verified; 1000px for playlists | Falls back to verified HD variants; cover art only |
 | NetEase Cloud Music | – | Cover art | – | Original dimensions supplied by the platform | Song, album and playlist share links; download animated covers in their original format or convert to GIF / Live Photo / Motion Photo |
-| Steam Points Shop | ✅ | GIF / APNG assets | – | Original assets supplied by Steam | Individual item links; animated avatars, transparent frames, stickers and MP4 / WebM backgrounds; animations can be converted |
+| Steam | ✅ | Original screenshots, GIF / APNG assets | – | Original assets supplied by Steam | Store game pages (screenshots and main trailer), Points Shop items and per-game item pages, Community items, profiles (avatar, frame, backgrounds); animated avatars, transparent frames, stickers and MP4 / WebM backgrounds; animations can be converted |
 | HoYoPlay | ✅ | Current launcher wallpapers | – | Original assets supplied by the platform | Choose one of four games for current China-launcher backgrounds; available videos can be converted; no historical archive |
 | Wuthering Waves | Current background video | First frame or still | – | Current international launcher assets | [Tool](https://ynvan.com/wuthering-waves-wallpaper); no historical archive; video converts to all three formats |
 | MiYouShe | – | Body images and GIFs | – | Platform-provided original files | [Tool](https://ynvan.com/miyoushe-images); single posts, excluding profiles, comments and HoYoLAB; GIF conversion available |
