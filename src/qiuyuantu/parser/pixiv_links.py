@@ -9,7 +9,11 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 from .errors import ParseError
 
 ROOT = "https://www.pixiv.net"
-HOSTS = {"pixiv.net", "www.pixiv.net", "touch.pixiv.net"}
+# phixiv / ppxiv 是社交软件里常见的 Pixiv 预览镜像，路径与主站一致
+MIRRORS = {"phixiv.net", "www.phixiv.net", "ppxiv.net", "www.ppxiv.net"}
+HOSTS = {"pixiv.net", "www.pixiv.net", "touch.pixiv.net"} | MIRRORS
+# pixiv.cat / pixiv.re 是按作品 ID 转发原图的代理：/<作品 ID>.png，多页作品是 /<作品 ID>-<页码>.png
+PROXIES = {"pixiv.cat", "pixiv.re"}
 ID = r"[1-9][0-9]{0,19}"
 
 
@@ -69,6 +73,10 @@ def classify_link(url: str) -> PixivLink:
         return PixivLink("redirect")
     if p.hostname == "i.pximg.net":
         return PixivLink("file")
+    if p.hostname in PROXIES:
+        if match := re.fullmatch(rf"/({ID})(?:-[0-9]{{1,3}})?\.(?:jpe?g|png|gif)", p.path, re.I):
+            return PixivLink("artwork", match[1])
+        raise ParseError("unsupported", "请复制 Pixiv 作品链接")
     if p.hostname not in HOSTS:
         raise ParseError("unsupported", "这个链接不是 Pixiv 主站内容")
     path = re.sub(r"^/[a-z]{2}(?:-[a-zA-Z]{2})?(?=/)", "", p.path)

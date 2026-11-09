@@ -40,11 +40,14 @@ def tiktok_site(monkeypatch):
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(str(request.url))
+        if request.url.host == "vt.tiktok.com" and request.url.path == "/empty/":
+            # 有的分享短链落到用户名为空的图文页
+            return httpx.Response(301, headers={"location": f"https://www.tiktok.com/@/photo/{POST_ID}?_r=1"})
         if request.url.host == "vt.tiktok.com":
             return httpx.Response(301, headers={"location": f"{PHOTO}?_r=1"})
         if request.url.host == "vm.tiktok.com":
             return httpx.Response(301, headers={"location": "https://www.tiktok.com/@sam/video/1"})
-        if request.url.path == f"/@sam/video/{POST_ID}":
+        if request.url.path in {f"/@sam/video/{POST_ID}", f"/@/video/{POST_ID}"}:
             return httpx.Response(200, text=page())
         return httpx.Response(404)
 
@@ -67,6 +70,17 @@ async def test_photo_post_recovers_from_unsupported_url(monkeypatch, tiktok_site
     assert (info.author.uid, info.author.name) == ("72", "Sam")
     assert info.page_url == PHOTO
     assert tiktok_site[-1] == f"https://www.tiktok.com/@sam/video/{POST_ID}"
+
+
+async def test_short_link_to_photo_without_username(monkeypatch, tiktok_site):
+    def extract(_url):
+        raise RuntimeError("ERROR: Unsupported URL: https://www.tiktok.com/@/photo/1")
+
+    monkeypatch.setattr(YtDlp, "_extract", staticmethod(extract))
+    info = await YtDlp().parse_share_url("https://vt.tiktok.com/empty/")
+    assert [image.url for image in info.images] == [IMAGE, "https://p16/2.jpeg"]
+    assert tiktok_site[-1] == f"https://www.tiktok.com/@/video/{POST_ID}"
+    assert info.page_url == PHOTO
 
 
 async def test_short_link_to_video_keeps_original_error(monkeypatch, tiktok_site):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -49,6 +50,14 @@ class Pixiv(PixivCatalog, BaseParser):
             return info
         if not safe_media(url) or not re.search(r"\.(?:jpe?g|png|gif|webp)$", path, re.I):
             raise ParseError("unsupported", "请复制 Pixiv 作品链接")
+        # 缩略图、详情页大图（img-master、custom-thumb 等）的文件名以作品 ID 开头，换成整件作品的原图；
+        # 作品读不到（如 R-18）时退回这张文件本身，它本来就是用户手里的地址。
+        thumb = re.match(r"([1-9][0-9]{0,19})(?:-[0-9a-zA-Z]+)?_p[0-9]+_", path.rsplit("/", 1)[-1])
+        if thumb and "/img-original/" not in path:
+            with contextlib.suppress(ParseError):
+                info = await self.parse_video_id(thumb[1])
+                info.notice = info.notice or "这是缩略图地址，已换成整件作品的原图。"
+                return info
         return VideoInfo(
             "",
             url,
@@ -67,7 +76,11 @@ class Pixiv(PixivCatalog, BaseParser):
         require_public(body)
         original = safe_media((body.get("urls") or {}).get("original"))
         if not original:
-            raise ParseError("restricted", "Pixiv 没有提供原始图片")
+            sensitive = str(body.get("sl") or "0").isdecimal() and int(body.get("sl") or 0) >= 6
+            raise ParseError(
+                "restricted",
+                "Pixiv 把这件作品标为敏感内容，只向登录的账号提供原图" if sensitive else "Pixiv 没有提供原始图片",
+            )
         page = ROOT + "/artworks/" + ("unlisted/" + link.ident if suffix else ident)
         info = VideoInfo(
             "",
@@ -152,8 +165,10 @@ class Pixiv(PixivCatalog, BaseParser):
 
 
 def require_public(body: dict) -> None:
-    if str(body.get("xRestrict", 0)) != "0" or str(body.get("restrict", 0)) != "0":
-        raise ParseError("restricted", "此内容无法匿名读取")
+    if str(body.get("xRestrict", 0)) != "0":
+        raise ParseError("restricted", "这是 R-18 内容，Pixiv 只向登录并开启成人内容显示的账号提供")
+    if str(body.get("restrict", 0)) != "0":
+        raise ParseError("restricted", "作者只向部分用户公开了这条内容")
 
 
 def author(body: dict) -> VideoAuthor:

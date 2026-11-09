@@ -14,7 +14,8 @@ from urllib.parse import urljoin, urlparse
 from ..utils import create_async_client
 from .base import ImgInfo, VideoAuthor, VideoInfo
 
-_PHOTO_PATH = re.compile(r"^/@([^/]+)/photo/(\d+)")
+# 部分短链落到用户名为空的 /@/photo/<id>，帖子页同样接受空用户名
+_PHOTO_PATH = re.compile(r"^/@([^/]*)/photo/(\d+)")
 _SHORT_HOSTS = ("vt.tiktok.com", "vm.tiktok.com", "tt.site")
 _DATA = re.compile(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', re.S)
 _MAX_HOPS = 3
@@ -103,6 +104,7 @@ def to_video_info(item: dict, user: str, post_id: str) -> VideoInfo | None:
     if not images:
         return None
     author = item.get("author") or {}
+    user = user or author.get("uniqueId") or ""
     return VideoInfo(
         title=(item.get("desc") or "").strip()[:80],
         video_url="",

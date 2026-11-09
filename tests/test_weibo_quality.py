@@ -5,8 +5,8 @@ import json
 import httpx
 import pytest
 
-from qiuyuantu.parser import base, weibo
-from qiuyuantu.parser.base import FormatInfo
+from qiuyuantu.parser import base, detect_source, weibo
+from qiuyuantu.parser.base import FormatInfo, VideoSource
 from qiuyuantu.parser.errors import ParseError
 from qiuyuantu.parser.quality import best_video_format
 
@@ -193,7 +193,37 @@ async def test_post_link_ignores_characters_pasted_after_the_id(monkeypatch):
     monkeypatch.setattr(weibo.WeiBo, "parse_post", parse_post)
     await weibo.WeiBo().parse_share_url("https://weibo.com/8016048326/5361270354346625=1.495177038e-06")
     await weibo.WeiBo().parse_share_url("https://weibo.com/8016048326/Pxyz12345")
-    assert seen == ["5361270354346625", "Pxyz12345"]
+    # t.cn 短链落到的卡片页：230444 后面是微博 mid
+    await weibo.WeiBo().parse_share_url("http://weibo.com/p/2304445075180649906180")
+    assert seen == ["5361270354346625", "Pxyz12345", "5075180649906180"]
+
+
+async def test_app_share_link_follows_redirect_to_the_post(monkeypatch):
+    seen = []
+
+    async def redirect(self, url, headers=None):
+        return "https://m.weibo.cn/status/5361595238580907"
+
+    async def parse_post(self, post_id, page_url):
+        seen.append(post_id)
+        return base.VideoInfo("", "")
+
+    monkeypatch.setattr(weibo.WeiBo, "redirect_target", redirect)
+    monkeypatch.setattr(weibo.WeiBo, "parse_post", parse_post)
+    url = "https://mapp.api.weibo.cn/fx/d9bee5964c58c2e307da2feaec849357.html"
+    await weibo.WeiBo().parse_share_url(url)
+    assert seen == ["5361595238580907"] and detect_source(url) == VideoSource.WeiBo
+
+
+async def test_missing_post_is_reported_as_deleted(responses):
+    responses["https://weibo.com/ajax/statuses/show?id=post"] = {
+        "ok": 0,
+        "message": "该微博不存在",
+        "error_code": 20101,
+    }
+    with pytest.raises(ParseError) as caught:
+        await weibo.WeiBo().parse_post("post", "https://weibo.com/123/post")
+    assert caught.value.reason == "deleted"
 
 
 async def test_live_links_and_live_cards_say_live_is_unsupported(responses):

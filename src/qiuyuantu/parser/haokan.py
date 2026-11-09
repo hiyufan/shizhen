@@ -22,12 +22,17 @@ class HaoKan(BaseParser):
         meta = body["data"]["apiData"]["curVideoMeta"]
         if meta.get("id") and str(meta["id"]) != video_id:
             raise ParseError("parse", "好看视频返回的作品编号与链接不一致")
-        user = meta["mth"]
+        # 部分作品（如转载自其他来源）没有 mth，作者只在顶层的 source_name / avatar 里
+        user = meta.get("mth") or {}
         info = VideoInfo(
             video_url="",
             cover_url=meta["poster"],
             title=meta["title"],
-            author=VideoAuthor(uid=user["mthid"], name=user["author_name"], avatar=user["author_photo"]),
+            author=VideoAuthor(
+                uid=str(user.get("mthid") or meta.get("siteAccountId") or ""),
+                name=user.get("author_name") or meta.get("source_name") or "",
+                avatar=user.get("author_photo") or meta.get("avatar") or "",
+            ),
             duration=number(meta.get("duration")),
         )
         return apply_video_formats(info, await video_formats(meta, "https://haokan.baidu.com/"))

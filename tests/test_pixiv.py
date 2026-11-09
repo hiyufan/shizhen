@@ -71,6 +71,23 @@ def test_public_url_types(path, kind, ident):
 @pytest.mark.parametrize(
     "url",
     [
+        "https://www.phixiv.net/en/artworks/42",
+        "https://ppxiv.net/artworks/42",
+        "https://pixiv.cat/42.png",
+        "https://pixiv.re/42-2.jpg",
+    ],
+)
+def test_preview_mirrors_and_proxies_map_to_the_artwork(url):
+    link = classify_link(url)
+    assert (link.kind, link.ident) == ("artwork", "42")
+    assert detect_source(url) == VideoSource.Pixiv
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://pixiv.cat/",
+        "https://pixiv.cat/42.zip",
         "https://pixiv.net.evil.example/artworks/42",
         "https://user@www.pixiv.net/artworks/42",
         "https://www.pixiv.net:444/artworks/42",
@@ -105,6 +122,41 @@ async def test_wrong_identity_or_restricted_work_is_not_success(public_http, cha
     routes["/ajax/illust/42"] = artwork(**changes)
     with pytest.raises(ParseError):
         await parse_video_share_url(ROOT + "/artworks/42")
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [({"xRestrict": 1}, "R-18"), ({"restrict": 2}, "部分用户"), ({"sl": 6, "urls": {"original": None}}, "敏感")],
+)
+async def test_restricted_work_explains_why(public_http, changes, message):
+    routes, _ = public_http
+    routes["/ajax/illust/42"] = artwork(**changes)
+    with pytest.raises(ParseError, match=message) as caught:
+        await parse_video_share_url(ROOT + "/artworks/42")
+    assert caught.value.reason == "restricted"
+
+
+@pytest.mark.parametrize(
+    "thumb",
+    [
+        "https://i.pximg.net/c/250x250_80_a2/img-master/img/2026/01/01/00/00/00/42_p0_square1200.jpg",
+        "https://i.pximg.net/img-master/img/2026/01/01/00/00/00/42-ab12cd_p3_master1200.jpg",
+        "https://i.pximg.net/c/360x360_70/custom-thumb/img/2026/01/01/00/00/00/42_p0_custom1200.jpg",
+    ],
+)
+async def test_thumbnail_link_returns_the_works_originals(public_http, thumb):
+    routes, _ = public_http
+    routes["/ajax/illust/42"] = artwork()
+    info = await parse_video_share_url(thumb)
+    assert [image.url for image in info.images] == [IMAGE] and "原图" in info.notice
+
+
+async def test_thumbnail_of_restricted_work_keeps_the_file(public_http):
+    routes, _ = public_http
+    routes["/ajax/illust/42"] = artwork(xRestrict=1)
+    thumb = "https://i.pximg.net/img-master/img/2026/01/01/00/00/00/42_p0_master1200.jpg"
+    info = await parse_video_share_url(thumb)
+    assert [image.url for image in info.images] == [thumb] and "单个图片文件" in info.notice
 
 
 async def test_ugoira_is_server_composed_format_and_independent_zip(public_http):

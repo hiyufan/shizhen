@@ -73,7 +73,10 @@ video_source_info_mapping = {
     VideoSource.Line: {"domain_list": ["store.line.me", "line.me"], "parser": Line},
     VideoSource.NotoEmoji: {"domain_list": ["fonts.gstatic.com"], "parser": NotoEmoji},
     VideoSource.PixivSketch: {"domain_list": ["sketch.pixiv.net"], "parser": PixivSketch},
-    VideoSource.Pixiv: {"domain_list": ["pixiv.net", "pixiv.me", "i.pximg.net"], "parser": Pixiv},
+    VideoSource.Pixiv: {
+        "domain_list": ["pixiv.net", "pixiv.me", "i.pximg.net", "phixiv.net", "ppxiv.net", "pixiv.cat", "pixiv.re"],
+        "parser": Pixiv,
+    },
     VideoSource.Steam: {"domain_list": ["store.steampowered.com", "steamcommunity.com", "s.team"], "parser": Steam},
     VideoSource.HoYoPlay: {"domain_list": ["hyp-api.mihoyo.com"], "parser": HoYoPlay},
     VideoSource.WutheringWaves: {"domain_list": ["prod-alicdn-gamestarter.kurogame.com"], "parser": WutheringWaves},
@@ -177,6 +180,8 @@ video_source_info_mapping = {
             "weibo.com",
             # m.weibo.cn 的微博手机链接（以前绿洲登记的是整个 weibo.cn，把它们抢走了；绿洲已停运）
             "m.weibo.cn",
+            # App 分享出来的 mapp.api.weibo.cn/fx/<编号>.html，302 到 m.weibo.cn/status/<mid>
+            "mapp.api.weibo.cn",
         ],
         "parser": WeiBo,
     },

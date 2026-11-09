@@ -133,6 +133,13 @@ def test_haokan(http):
     assert (info.video_url, info.title, info.author.uid) == ("v.mp4", "好看", "m1")
 
 
+def test_haokan_without_mth_uses_top_level_author(http):
+    meta = {"playurl": "v.mp4", "poster": "c.jpg", "title": "好看", "source_name": "来源", "siteAccountId": "s1"}
+    http({"https://haokan.baidu.com/v?_format=json&vid=9": {"errno": 0, "data": {"apiData": {"curVideoMeta": meta}}}})
+    info = run(HaoKan().parse_share_url("https://haokan.baidu.com/v?vid=9"))
+    assert (info.video_url, info.author.uid, info.author.name) == ("v.mp4", "s1", "来源")
+
+
 def test_haokan_error_message_is_kept_for_classification(http):
     http({"https://haokan.baidu.com/v?_format=json&vid=9": {"errno": 1, "error": "视频不存在"}})
     with pytest.raises(Exception, match="视频不存在") as exc:

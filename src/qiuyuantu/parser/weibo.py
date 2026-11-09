@@ -1,6 +1,6 @@
 import json
 import re
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 import httpx
 
@@ -10,6 +10,7 @@ from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, json_
 from .errors import ParseError
 from .quality import apply_video_formats, direct_format, number
 
+APP_SHARE_HOST = "mapp.api.weibo.cn"
 LIVE_UNSUPPORTED = "微博直播和直播回放暂不支持下载"
 # 图片按从大到小找第一个有地址的尺寸
 _PIC_SIZES = ("original", "largest", "large", "bmiddle")
@@ -101,6 +102,11 @@ class WeiBo(BaseParser):
     """微博视频、普通微博中的视频与图集。"""
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
+        if urlparse(share_url).hostname == APP_SHARE_HOST:
+            target = urljoin(share_url, await self.redirect_target(share_url))
+            if urlparse(target).hostname in {None, APP_SHARE_HOST}:
+                raise ParseError("unsupported", "这条微博分享链接没有跳到微博内容")
+            return await self.parse_share_url(target)
         if "show?fid=" in share_url:
             return await self.parse_video_id(get_val_from_url_by_query_key(share_url, "fid"))
         path = urlparse(share_url).path
@@ -108,6 +114,9 @@ class WeiBo(BaseParser):
             return await self.parse_video_id(path.replace("/tv/show/", ""))
         if path.startswith("/l/wblive/"):
             raise ParseError("unsupported", LIVE_UNSUPPORTED)
+        # t.cn 短链有时落到 weibo.com/p/230444<微博 mid>，是这条微博的卡片页
+        if card := re.fullmatch(r"/p/230444([0-9]{16})/?", path):
+            return await self.parse_post(card[1], share_url)
         # 普通微博：weibo.com/<用户 ID>/<微博 ID>；有的分享会在 ID 后面粘上别的字符
         parts = path.strip("/").split("/")
         post_id = re.match(r"[0-9A-Za-z]+", parts[-1]) if len(parts) >= 2 else None
@@ -215,7 +224,7 @@ class WeiBo(BaseParser):
 
     async def parse_post(self, post_id: str, page_url: str) -> VideoInfo:
         """桌面接口提供完整播放档位；手机接口与内嵌数据留作访问失败时的备用。"""
-        desktop = await self._desktop_status(post_id)
+        desktop = await self._desktop_status(post_id, missing_is_final=True)
         if desktop and (desktop.video_url or desktop.formats or desktop.images):
             return await _verify_video(desktop)
         try:
@@ -238,11 +247,15 @@ class WeiBo(BaseParser):
         )
         return await _verify_video(info)
 
-    async def _desktop_status(self, post_id: str) -> VideoInfo | None:
+    async def _desktop_status(self, post_id: str, *, missing_is_final: bool = False) -> VideoInfo | None:
         try:
             body = await self._weibo_json(f"https://weibo.com/ajax/statuses/show?id={post_id}")
         except (httpx.HTTPError, ValueError):
             return None
+        if missing_is_final and isinstance(body, dict) and str(body.get("error_code")) == "20101":
+            # 删除或不存在的微博；手机接口与页面同样拿不到，不再往下试。
+            # 视频页的播放信息还在时仍可下载，所以只在按微博解析时这样处理。
+            raise ParseError("deleted", "微博说这条微博不存在")
         if not isinstance(body, dict) or not any(key in body for key in ("page_info", "pic_infos", "pics")):
             return None
         return _from_status(body)
