@@ -591,6 +591,8 @@
   "这个 Threads 分享链接没有跳到帖子": "This Threads share link doesn't lead to a post",
   "Threads 没有公开这条帖子，可能已删除或仅部分人可见": "Threads doesn't show this post publicly. It may be deleted or visible only to some people",
   "这条 Threads 帖子没有图片或视频": "This Threads post has no images or videos",
+  "小红书暂时拦下了这次访问，也可能是笔记已删除或设为私密；笔记还在的话，隔一段时间再试一般能打开。短时间内连续打开同一作者的很多篇笔记时更容易遇到": "Xiaohongshu temporarily blocked this request, or the note was deleted or made private. If the note still exists, trying again later usually works. This happens more often when opening many notes by the same creator in a short time",
+  "链接里没有 xsec_token，小红书通常不让未登录打开；请在 App 里点「分享」→「复制链接」，粘贴完整的分享文字": "This link has no xsec_token, so Xiaohongshu usually won't open it without signing in. In the app, tap Share → Copy link and paste the full share text",
   "这是缩略图地址，已换成整件作品的原图。": "This was a thumbnail link, so the work's original images are shown instead.",
   "这是 R-18 内容，Pixiv 只向登录并开启成人内容显示的账号提供": "This is R-18 content. Pixiv only shows it to signed-in accounts with adult content enabled",
   "作者只向部分用户公开了这条内容": "The creator has shared this only with certain users",

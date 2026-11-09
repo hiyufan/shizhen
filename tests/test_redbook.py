@@ -187,8 +187,30 @@ def test_security_redirect_remains_unknown_instead_of_claiming_deleted(monkeypat
     pages = _Pages(mobile=[SECURITY_PAGE, SECURITY_PAGE])
     with pytest.raises(ParseError) as exc:
         _parse(monkeypatch, pages, mobile_first=True)
-    assert exc.value.reason == "restricted" and "无法确认" in exc.value.detail
+    assert exc.value.reason == "restricted" and "隔一段时间再试" in exc.value.detail
     assert pages.calls == ["mobile", "mobile"]
+
+
+@pytest.mark.parametrize(
+    ("share", "hint"),
+    [
+        # 没有 xsec_token 的长链接：提示重新复制分享链接
+        ("https://www.xiaohongshu.com/explore/6a43eefe0000000011019a27", "xsec_token"),
+        # 带 xsec_token 的链接：多半是临时拦截，提示稍后再试
+        (
+            "https://www.xiaohongshu.com/explore/6a43eefe0000000011019a27?xsec_token=AB1&xsec_source=pc_user",
+            "隔一段时间",
+        ),
+    ],
+)
+def test_security_redirect_hint_depends_on_the_token(monkeypatch, share, hint):
+    pages = _Pages(mobile=[SECURITY_PAGE, SECURITY_PAGE])
+    monkeypatch.setattr(redbook, "create_async_client", pages.client)
+    monkeypatch.setattr(RedBook, "_prefer_mobile", False)
+    monkeypatch.setattr(RedBook, "_mobile_first", staticmethod(lambda: True))
+    with pytest.raises(ParseError) as exc:
+        asyncio.run(RedBook().parse_share_url(share))
+    assert exc.value.reason == "restricted" and hint in exc.value.detail
 
 
 def test_security_redirect_takes_priority_over_another_route_404(monkeypatch):

@@ -89,9 +89,17 @@ class RedBook(BaseParser):
             if mode == "mobile" and queue == ["desktop"] and (RedBook._prefer_mobile or mobile_first):
                 # 这个出口上桌面页只会是登录墙, 白跑一趟不如把手机页再请求一次
                 queue = ["mobile"]
-        raise (last_error if isinstance(last_error, ParseError) else expired or last_error) or ValueError(
+        raise self._final_error(share_url, expired, last_error)
+
+    def _final_error(self, share_url: str, expired: Exception | None, last_error: Exception | None) -> Exception:
+        err = (last_error if isinstance(last_error, ParseError) else expired or last_error) or ValueError(
             "小红书解析失败"
         )
+        note_url = self._resolved_note_url or share_url
+        if isinstance(err, _SecRedirect) and _note_id(note_url) and not _has_token(note_url):
+            # 没有 xsec_token 的长链接匿名打开基本都是安全跳转，重新复制分享链接才有用
+            return ParseError("restricted", NO_TOKEN)
+        return err
 
     def _log_failure(self, mode: str, err: Exception) -> None:
         final_url, title = self._last_page
@@ -243,8 +251,9 @@ class RedBook(BaseParser):
         if code := _security_limit(final_url, html):
             return _SecurityLimit(code)
         if path.startswith("/404/sec_"):
-            # 相同跳转既可能是无效链接，也可能是 300013 安全拦截，不能据此断言作品已删除。
-            return ParseError("restricted", "小红书返回安全跳转，无法确认笔记已删除或链接过期")
+            # 相同跳转既可能是无效链接，也可能是临时的安全拦截，不能据此断言作品已删除。
+            # 实测同一批链接几小时后再解析全部成功，所以提示可以稍后重试。
+            return _SecRedirect()
         if _is_404(final_url) or "页面不见了" in title_text:
             return _Expired("链接过期或笔记不存在 (小红书跳到了 404)")
         if path == "/login" or path.startswith(("/login/", "/website-login/")):
@@ -404,6 +413,22 @@ class _SecurityLimit(ParseError):
     def __init__(self, code: str = "300013") -> None:
         cause = "IP 存在风险" if code == "300012" else "访问频繁"
         super().__init__("blocked", f"小红书安全限制：{cause}，错误码 {code}")
+
+
+SEC_REDIRECT = (
+    "小红书暂时拦下了这次访问，也可能是笔记已删除或设为私密；笔记还在的话，隔一段时间再试一般能打开。"
+    "短时间内连续打开同一作者的很多篇笔记时更容易遇到"
+)
+NO_TOKEN = "链接里没有 xsec_token，小红书通常不让未登录打开；请在 App 里点「分享」→「复制链接」，粘贴完整的分享文字"
+
+
+class _SecRedirect(ParseError):
+    def __init__(self) -> None:
+        super().__init__("restricted", SEC_REDIRECT)
+
+
+def _has_token(url: str) -> bool:
+    return bool((parse_qs(urlparse(url).query).get("xsec_token") or [""])[0])
 
 
 class _WrongNote(ParseError):
