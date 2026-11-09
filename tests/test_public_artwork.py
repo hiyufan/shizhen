@@ -12,6 +12,7 @@ from qiuyuantu.parser.base import VideoSource
 from qiuyuantu.parser.errors import ParseError
 from qiuyuantu.parser.hoyoplay import API, GAMES, HoYoPlay, game_from_url, game_url
 from qiuyuantu.parser.steam import CDN, Steam, asset_url, reward_id, shared_file_id
+from qiuyuantu.parser.steam_links import classify_link
 from qiuyuantu.parser.ytdlp import YtDlp
 
 STEAM_PAGE = "https://store.steampowered.com/points/shop/app/42/reward/100"
@@ -230,6 +231,195 @@ async def test_steam_community_videos_still_use_ytdlp(public_http, monkeypatch, 
 def test_steam_rejects_untrusted_asset_paths(name):
     with pytest.raises(ParseError):
         asset_url(42, name)
+
+
+@pytest.mark.parametrize(
+    ("url", "kind", "ident"),
+    [
+        ("https://store.steampowered.com/app/730/CounterStrike_2/", "app", "730"),
+        ("https://store.steampowered.com/app/1245620/ELDEN_RING/?snr=1_7_15__13", "app", "1245620"),
+        ("https://store.steampowered.com/agecheck/app/292030/", "app", "292030"),
+        ("http://store.steampowered.com/app/730", "app", "730"),
+        ("https://store.steampowered.com/points/shop/app/3339420", "points_app", "3339420"),
+        ("https://store.steampowered.com/points/shop/app/42/reward/100", "reward", "100"),
+        ("https://store.steampowered.com/points/profile/76561199629689243", "profile", "profiles/76561199629689243"),
+        ("https://steamcommunity.com/id/gabelogannewell/", "profile", "id/gabelogannewell"),
+        ("https://steamcommunity.com/profiles/76561199629689243", "profile", "profiles/76561199629689243"),
+        ("https://www.steamcommunity.com/sharedfiles/filedetails/?id=42", "shared", "42"),
+        ("https://steamcommunity.com/app/730/videos/", "community", ""),
+        ("https://steamcommunity.com/broadcast/watch/1", "community", ""),
+        ("https://s.team/a/730", "short", ""),
+    ],
+)
+def test_steam_classifies_store_points_and_community_links(url, kind, ident):
+    link = classify_link(url)
+    assert (link.kind, link.ident) == (kind, ident)
+    assert parser.detect_source(url) == VideoSource.Steam
+
+
+@pytest.mark.parametrize(
+    ("url", "hint"),
+    [
+        ("https://store.steampowered.com/points/shop/", "点数商店"),
+        ("https://store.steampowered.com/points/shop/c/avatar", "点数商店"),
+        ("https://store.steampowered.com/bundle/232/", "游戏商店页"),
+        ("https://store.steampowered.com/search/?term=x", "游戏商店页"),
+        ("https://steamcommunity.com/id/someone/inventory/", "库存"),
+        ("https://steamcommunity.com/market/listings/730/AK-47", "市场"),
+        ("https://store.steampowered.com.evil.test/app/730", "游戏商店页"),
+        ("https://store.steampowered.com:8443/app/730", "完整"),
+        ("ftp://store.steampowered.com/app/730", "完整"),
+    ],
+)
+def test_steam_explains_pages_without_downloadable_media(url, hint):
+    with pytest.raises(ParseError, match=hint) as caught:
+        classify_link(url)
+    assert caught.value.reason == "unsupported"
+
+
+STORE_API = "https://store.steampowered.com/api/appdetails"
+SHOT = "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/730/ss_" + "a" * 40
+TRAILER = "https://video.fastly.steamstatic.com/store_trailers/730/1/abc/hls_264_master.m3u8"
+TRAILER_MASTER = """#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,FRAME-RATE=30,CODECS="avc1.640028"
+1080/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,FRAME-RATE=30,CODECS="avc1.64001f"
+720/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2100000,RESOLUTION=1280x720,FRAME-RATE=30,CODECS="avc1.64001f"
+720b/index.m3u8
+"""
+
+
+def store_app(**data):
+    return {"730": {"success": True, "data": {"name": "Counter-Strike 2", "developers": ["Valve"]} | data}}
+
+
+async def test_steam_store_page_returns_original_screenshots_and_main_trailer(public_http):
+    routes, calls = public_http
+    routes[STORE_API] = store_app(
+        header_image="https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/730/header.jpg?t=1",
+        screenshots=[
+            {"path_full": SHOT + ".1920x1080.jpg?t=1"},
+            {"path_full": "https://evil.test/ss_" + "b" * 40 + ".jpg"},
+        ],
+        movies=[{"hls_h264": TRAILER.replace("/1/", "/2/")}, {"highlight": True, "hls_h264": TRAILER + "?t=1"}],
+    )
+    routes[TRAILER] = TRAILER_MASTER
+    info = await Steam().parse_share_url("https://store.steampowered.com/app/730/CounterStrike_2/")
+    assert [image.url for image in info.images] == [SHOT + ".jpg"]
+    assert info.cover_url.endswith("/730/header.jpg") and info.author.name == "Valve"
+    # 只给主预告片；整页交给 yt-dlp 会把全部预告片都下载
+    assert info.page_url == TRAILER + "?t=1" and info.notice
+    assert [fmt.height for fmt in info.formats] == [1080, 720]
+    assert all(not fmt.url and "[height=" in fmt.format_spec for fmt in info.formats)
+    assert calls[0].url.params["appids"] == "730" and "cookie" not in calls[0].headers
+
+
+async def test_steam_store_page_without_trailer_keeps_store_url(public_http):
+    routes, _ = public_http
+    routes[STORE_API] = store_app(screenshots=[{"path_full": SHOT + ".600x338.jpg"}])
+    info = await Steam().parse_share_url("https://store.steampowered.com/agecheck/app/730/")
+    assert info.formats == [] and not info.notice
+    assert info.page_url == "https://store.steampowered.com/app/730/" and info.cover_url == SHOT + ".jpg"
+
+
+@pytest.mark.parametrize(
+    ("reply", "reason"),
+    [({"730": {"success": False}}, "deleted"), (store_app(screenshots=[], movies=[]), "empty")],
+)
+async def test_steam_store_page_reports_missing_games(public_http, reply, reason):
+    routes, _ = public_http
+    routes[STORE_API] = reply
+    with pytest.raises(ParseError) as caught:
+        await Steam().parse_share_url("https://store.steampowered.com/app/730/")
+    assert caught.value.reason == reason
+
+
+async def test_steam_points_app_lists_rewards_as_a_directory(public_http):
+    routes, calls = public_http
+    other = steam_item() | {"appid": 7, "defid": 101}
+    routes[STEAM_API] = {"response": {"total_count": 12, "definitions": [steam_item(), other]}}
+    info = await Steam().parse_share_url("https://store.steampowered.com/points/shop/app/42/")
+    assert info.content_kind == "directory" and info.entry_total == 12
+    assert [(entry.url, entry.kind) for entry in info.entries] == [
+        ("https://store.steampowered.com/points/shop/app/42/reward/100", "reward")
+    ]
+    assert info.cover_url == f"{CDN}/42/animation.png"
+    assert json.loads(calls[0].url.params["input_json"])["appids"] == [42]
+
+
+PROFILE_XML = """<?xml version="1.0"?><profile><steamID64>76561199629689243</steamID64>
+<steamID><![CDATA[Example &amp; Co]]></steamID>
+<avatarFull><![CDATA[https://avatars.fastly.steamstatic.com/{sha}_full.jpg]]></avatarFull></profile>""".replace(
+    "{sha}", "c" * 40
+)
+EQUIPPED_API = "https://api.steampowered.com/IPlayerService/GetProfileItemsEquipped/v1/"
+ITEM = "items/42/" + "d" * 40
+
+
+async def test_steam_profile_returns_avatar_and_equipped_items(public_http):
+    routes, calls = public_http
+    routes["https://steamcommunity.com/id/example/"] = PROFILE_XML
+    routes[EQUIPPED_API] = {
+        "response": {
+            "animated_avatar": {"image_small": ITEM + ".gif", "image_large": ITEM + ".png"},
+            "avatar_frame": {"image_small": "../evil.png"},
+            "profile_background": {"image_large": ITEM + ".jpg", "movie_webm": ITEM + ".webm"},
+            "mini_profile_background": {"image_large": ITEM + ".png"},
+        }
+    }
+    info = await Steam().parse_share_url("https://steamcommunity.com/id/example")
+    images = "https://shared.fastly.steamstatic.com/community_assets/images/"
+    assert [(asset.label, asset.kind, asset.url) for asset in info.assets] == [
+        ("头像", "image", f"https://avatars.fastly.steamstatic.com/{'c' * 40}_full.jpg"),
+        ("动态头像", "animation", images + ITEM + ".gif"),
+        ("个人资料背景", "video", images + ITEM + ".webm"),
+        ("迷你资料背景", "image", images + ITEM + ".png"),
+    ]
+    assert info.assets[2].cover_url == images + ITEM + ".jpg" and info.assets[2].ext == "webm"
+    assert info.title == "Example & Co" and info.page_url == "https://steamcommunity.com/profiles/76561199629689243/"
+    assert calls[0].url.params["xml"] == "1" and calls[0].headers["Accept-Language"]
+    assert calls[1].url.params["steamid"] == "76561199629689243"
+
+
+async def test_steam_profile_keeps_avatar_when_item_api_fails(public_http):
+    routes, _ = public_http
+    routes["https://steamcommunity.com/profiles/76561199629689243/"] = PROFILE_XML
+    routes[EQUIPPED_API] = httpx.Response(503)
+    info = await Steam().parse_share_url("https://store.steampowered.com/points/profile/76561199629689243/")
+    assert [asset.label for asset in info.assets] == ["头像"]
+
+
+async def test_steam_missing_profile_is_reported_as_deleted(public_http):
+    routes, _ = public_http
+    routes["https://steamcommunity.com/id/nobody/"] = (
+        "<response><error>The specified profile could not be found.</error>"
+    )
+    with pytest.raises(ParseError) as caught:
+        await Steam().parse_share_url("https://steamcommunity.com/id/nobody/")
+    assert caught.value.reason == "deleted"
+
+
+async def test_steam_short_link_follows_redirect_before_classifying(public_http, monkeypatch):
+    routes, _ = public_http
+    routes[STORE_API] = store_app(screenshots=[{"path_full": SHOT + ".jpg"}])
+
+    async def redirect(self, url, headers=None):
+        return "https://store.steampowered.com/app/730/"
+
+    monkeypatch.setattr(Steam, "redirect_target", redirect)
+    info = await Steam().parse_share_url("https://s.team/a/730")
+    assert info.cover_url == SHOT + ".jpg"
+
+
+async def test_steam_unknown_community_pages_get_a_hint(public_http, monkeypatch):
+    async def ytdlp(self, share_url):
+        raise ParseError("unsupported", "Unsupported URL")
+
+    monkeypatch.setattr(YtDlp, "parse_share_url", ytdlp)
+    with pytest.raises(ParseError, match="Steam 社区里的单个作品") as caught:
+        await Steam().parse_share_url("https://steamcommunity.com/discussions/")
+    assert caught.value.reason == "unsupported"
 
 
 def hoyo_response(*, video=True):

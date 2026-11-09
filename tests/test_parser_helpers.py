@@ -214,6 +214,11 @@ async def test_bili_opus_images_and_links():
         ("https://v.douyin.com/u3knSHnayKo/", None, None),  # 分享链接照常解析
         ("https://x.com/a/status/1", None, None),
         ("https://example.com/a.jpg", None, None),  # 不认识的站点不管，交给 yt-dlp
+        ("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/730/header.jpg", "image", "steam"),
+        ("https://images.steamusercontent.com/ugc/1/EC7AF268A714656525D17A4469D0199FD22713D8/", "image", "steam"),
+        # 分段流清单不是单个文件，交给 yt-dlp 合并
+        ("https://video.fastly.steamstatic.com/store_trailers/730/1/abc/hls_264_master.m3u8", None, None),
+        ("https://video.twimg.com/amplify_video/1/pl/master.m3u8", None, None),
     ],
 )
 def test_direct_media_links(url, kind, source):

@@ -27,10 +27,14 @@ _CDN_SOURCES = {
     "yximgs.com": "kuaishou",
     "kwimgs.com": "kuaishou",
     "kwaicdn.com": "kuaishou",
+    "steamstatic.com": "steam",
+    "steamusercontent.com": "steam",
 }
 # 这些域名上的是视频；其余 CDN 上没有扩展名的地址（小红书、抖音图片常这样）当图片
 _VIDEO_HOSTS = ("douyinvod.com", "bilivideo.com", "bilivideo.cn", "video.twimg.com", "weibocdn.com", "kwaicdn.com")
 _VIDEO_EXT = re.compile(r"\.(mp4|mov|m4v|webm)$", re.I)
+# 分段流清单要按清单合并，不是能原样下载的单个文件
+_STREAM_EXT = re.compile(r"\.(m3u8|mpd)$", re.I)
 _NOTICE = (
     "这是{kind}文件的地址，下载的就是这一个（多半是网页上压缩过的版本）；"
     "想要原图和整条作品，复制作品的分享链接再来解析。"
@@ -49,7 +53,7 @@ def direct_media(url: str) -> VideoInfo | None:
         return None
     host = (parsed.hostname or "").lower()
     source = _cdn_source(host)
-    if not source:
+    if not source or _STREAM_EXT.search(parsed.path):
         return None
     is_video = bool(_VIDEO_EXT.search(parsed.path)) or any(host == h or host.endswith("." + h) for h in _VIDEO_HOSTS)
     if is_video:
