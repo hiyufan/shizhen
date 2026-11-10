@@ -1,6 +1,6 @@
 """通过边缘函数中继请求（阿里云 ESA / 腾讯 EdgeOne 等）——给没有国内 HTTP 代理的海外服务器用。
 
-协议（和 scripts/esa-relay.js 对应）：
+协议（和 esa-relay 分支的 relay.js 对应，两边先后上线，新旧版本要能混着跑）：
     POST {RELAY}?url=<目标地址>
     x-relay-token / x-relay-method / x-relay-headers(base64 JSON)   body = 原请求体
     x-relay-accept: gzip   回程可以压缩
@@ -45,10 +45,10 @@ def enabled() -> bool:
 
 # 服务器在海外时, 图片走 /api/proxy 要 国内 CDN -> 海外 -> 国内 跨两次太平洋。
 # 中继的边缘节点本来就在国内, 让它给浏览器直接送图, 两段都在国内。
-# 默认关: esa-relay.js 要先部署带 /img 的新版, 否则只会白白多一次失败再回退
+# 默认关: 中继脚本（esa-relay 分支）要先部署带 /img 的新版, 否则只会白白多一次失败再回退
 EDGE_IMG = os.environ.get("PARSE_VIDEO_EDGE_IMG", "0") == "1"
 
-# 和 esa-relay.js 的 IMG_REFERERS 保持一致
+# 和中继脚本的 IMG_REFERERS 保持一致
 _EDGE_IMG_HOSTS = ("xhscdn.com", "xiaohongshu.com", "douyinpic.com", "yximgs.com", "hdslb.com", "sinaimg.cn")
 
 
@@ -57,10 +57,10 @@ def edge_img_enabled() -> bool:
 
 
 # 视频 / 音频也让浏览器直接找国内边缘节点（/media）：以前经服务器转发，国内 CDN -> 海外 -> 国内跨两次太平洋，
-# 是全站流量的六成。同样默认关：esa-relay.js 要先部署带 /media 的新版
+# 是全站流量的六成。同样默认关：中继脚本要先部署带 /media 的新版
 EDGE_MEDIA = os.environ.get("PARSE_VIDEO_EDGE_MEDIA", "0") == "1"
 
-# 和 esa-relay.js 的 MEDIA_REFERERS 保持一致
+# 和中继脚本的 MEDIA_REFERERS 保持一致
 _EDGE_MEDIA_HOSTS = (
     "douyinvod.com",
     "365yg.com",
@@ -180,7 +180,7 @@ class RelayTransport(httpx.AsyncBaseTransport):
     async def ping(self) -> None:
         """戳一下中继本身，不产生任何出站请求。
 
-        带 token 但不带 url 的请求会被中继直接 400 回来（见 esa-relay.js 的
+        带 token 但不带 url 的请求会被中继直接 400 回来（见中继脚本的
         relay()），只走一个到边缘节点的往返，是最省的保活方式。
         """
         await self._client.post(

@@ -40,7 +40,7 @@ YouTube and other platforms still connect directly. Only extraction requests, wh
 
 **2. Edge function relay** (if you have no machine in mainland China)
 
-Deploy `scripts/esa-relay.js` to Alibaba Cloud ESA Edge Functions and change its `TOKEN`. Extraction requests to Chinese platforms will then originate from mainland edge nodes:
+Deploy `relay.js` from the [`esa-relay` branch](https://github.com/hiyufan/shizhen/tree/esa-relay) to Alibaba Cloud ESA and keep the token in the ESA project variable `RELAY_TOKEN`. Extraction requests to Chinese platforms will then originate from mainland edge nodes:
 
 ```bash
 PARSE_VIDEO_RELAY_CN=https://<function-domain>/relay
@@ -111,9 +111,9 @@ All configuration uses environment variables. Every variable is optional.
 | `PARSE_VIDEO_PROXY_YOUTUBE` | – | Dedicated HTTP proxy for YouTube pages, videos, and images; takes priority over the general proxy, and the PO Token plugin uses the same outbound connection |
 | `PARSE_VIDEO_PROXY_CN` | – | Extraction proxy only for Chinese platforms: Douyin, Xiaohongshu, Kuaishou, Bilibili, Weibo, etc.; important when hosting overseas |
 | `PARSE_VIDEO_PROXY_CN_MEDIA` | `0` | Set to `1` to proxy video / image transfers through `PROXY_CN` as well; needed only if the CDN returns 403, and consumes proxy bandwidth |
-| `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | Edge relay URL and token; see `scripts/esa-relay.js` |
-| `PARSE_VIDEO_EDGE_IMG` | `0` | Set to `1` so browsers fetch images from Chinese platforms directly through edge nodes; requires `esa-relay.js` with `/img` support |
-| `PARSE_VIDEO_EDGE_MEDIA` | `0` | Set to `1` so browsers fetch video / audio from Chinese platforms directly through edge nodes; requires `esa-relay.js` with `/media` support, and traffic counts toward ESA usage |
+| `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | Edge relay URL and token; see `relay.js` on the `esa-relay` branch |
+| `PARSE_VIDEO_EDGE_IMG` | `0` | Set to `1` so browsers fetch images from Chinese platforms directly through edge nodes; requires a relay script with `/img` support |
+| `PARSE_VIDEO_EDGE_MEDIA` | `0` | Set to `1` so browsers fetch video / audio from Chinese platforms directly through edge nodes; requires a relay script with `/media` support, and traffic counts toward ESA usage |
 | `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` / `PARSE_VIDEO_DOUYIN_COOKIE` | – | Login cookie strings for Xiaohongshu / Bilibili / Douyin, useful when overseas requests are blocked; Douyin has an incognito browser fallback without cookies, but image posts need cookies to retrieve Live Photo videos |
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | Netscape-format cookie file for yt-dlp |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | Read cookies directly from a browser: `firefox` / `edge` / `chrome` |

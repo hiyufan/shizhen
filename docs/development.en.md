@@ -91,7 +91,6 @@ src/qiuyuantu/
   static/js/                     ES modules: app, result, converter, trimmer, save, api, ui, dom,
                                  site animations, stats. Directory served under /js/<content-hash>/
 scripts/push_urls.py             Baidu URL submission and sitemap ping
-scripts/esa-relay.js             Alibaba Cloud ESA edge function: /probe outbound checks, /relay for Chinese platforms
 scripts/subset_fonts.py          Rebuild serif font subsets after copy changes
 docker/youtube/worker.py         Native YouTube session downloads and media validation in an isolated interpreter
 docker-compose.yml · Caddyfile   HTTPS deployment on a single machine

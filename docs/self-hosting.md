@@ -40,7 +40,7 @@ YouTube 等仍然直连。只有解析请求（流量很小）走它，视频本
 
 **2. 边缘函数中继**（没有国内机器时）
 
-把 `scripts/esa-relay.js` 部署到阿里云 ESA 边缘函数（改掉里面的 `TOKEN`），国内平台的解析请求就从国内边缘节点发出：
+把 [`esa-relay` 分支](https://github.com/hiyufan/shizhen/tree/esa-relay)的 `relay.js` 部署到阿里云 ESA（口令放在 ESA 项目变量 `RELAY_TOKEN` 里），国内平台的解析请求就从国内边缘节点发出：
 
 ```bash
 PARSE_VIDEO_RELAY_CN=https://<函数域名>/relay
@@ -111,9 +111,9 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | `PARSE_VIDEO_PROXY_YOUTUBE` | – | YouTube 页面、视频和图片的专用 HTTP 代理；优先于通用代理，PO Token 插件会使用同一个出口 |
 | `PARSE_VIDEO_PROXY_CN` | – | 只给国内平台（抖音 / 小红书 / 快手 / B站 / 微博…）的解析用的代理，海外服务器必备 |
 | `PARSE_VIDEO_PROXY_CN_MEDIA` | `0` | 设 `1` 时视频 / 图片本体的转发也走 `PROXY_CN`（CDN 被 403 时才需要，会吃代理带宽） |
-| `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | 边缘函数中继地址与口令（`scripts/esa-relay.js`） |
-| `PARSE_VIDEO_EDGE_IMG` | `0` | 设 `1` 时国内平台的图片由浏览器直接从中继边缘节点取（需部署带 `/img` 的 `esa-relay.js`） |
-| `PARSE_VIDEO_EDGE_MEDIA` | `0` | 设 `1` 时国内平台的视频 / 音频由浏览器直接从中继边缘节点取（需部署带 `/media` 的 `esa-relay.js`；流量算在 ESA 上） |
+| `PARSE_VIDEO_RELAY_CN` + `PARSE_VIDEO_RELAY_TOKEN` | – | 边缘函数中继地址与口令（`esa-relay` 分支的 `relay.js`） |
+| `PARSE_VIDEO_EDGE_IMG` | `0` | 设 `1` 时国内平台的图片由浏览器直接从中继边缘节点取（需部署带 `/img` 的中继脚本） |
+| `PARSE_VIDEO_EDGE_MEDIA` | `0` | 设 `1` 时国内平台的视频 / 音频由浏览器直接从中继边缘节点取（需部署带 `/media` 的中继脚本；流量算在 ESA 上） |
 | `PARSE_VIDEO_XHS_COOKIE` / `PARSE_VIDEO_BILI_COOKIE` / `PARSE_VIDEO_DOUYIN_COOKIE` | – | 小红书 / B站 / 抖音 的登录 Cookie 字符串，海外服务器被拦时用；抖音不配也有无痕浏览器兜底，配了图文才有实况视频 |
 | `PARSE_VIDEO_COOKIES_FILE` | `./cookies.txt` | yt-dlp 用的 Netscape 格式 cookies |
 | `PARSE_VIDEO_COOKIES_BROWSER` | – | 直接从浏览器读 cookies：`firefox` / `edge` / `chrome` |
