@@ -1,16 +1,23 @@
-"""音乐封面公开响应的离线回放；不请求歌曲、不依赖账号 Cookie。"""
+"""音乐封面公开响应的离线回放；不请求歌曲、不依赖账号 Cookie（网易云游客身份也是替身）。"""
+
+import asyncio
+import base64
 
 import httpx
 import pytest
 
 from qiuyuantu import parser, utils
 from qiuyuantu.convert import net
-from qiuyuantu.parser import base
-from qiuyuantu.parser.base import VideoSource
+from qiuyuantu.parser import base, netease_guest
+from qiuyuantu.parser.base import FormatInfo, VideoSource
 from qiuyuantu.parser.errors import ParseError
 from qiuyuantu.parser.music import NetEaseMusic, QQMusic, netease_cover, netease_target, qq_cover, qq_target
+from qiuyuantu.parser.quality import best_video_format
 
 NET_COVER = "https://p1.music.126.net/hash/123.jpg"
+NET_REGISTER = "https://music.163.com/weapi/register/anonimous"
+NET_DYNAMIC = "https://music.163.com/api/songplay/dynamic-cover"
+DCOVER = "http://dcover.music.126.net/a/b/c/cover.mp4?wsSecret=sig&wsTime=1"
 QQ_COVER = "https://y.qq.com/music/photo_new/T002R300x300M000albumMID_1.jpg?max_age=2592000"
 
 
@@ -23,6 +30,8 @@ def music_http(monkeypatch):
         calls.append(request)
         assert url in routes, f"意外的外网请求：{url}"
         reply = routes[url]
+        if callable(reply):
+            return reply(request)
         if isinstance(reply, dict):
             return httpx.Response(200, json=reply)
         if isinstance(reply, tuple):
@@ -33,7 +42,44 @@ def music_http(monkeypatch):
         return httpx.AsyncClient(transport=httpx.MockTransport(handle), **kwargs)
 
     monkeypatch.setattr(base, "create_async_client", client)
+    # 游客身份是进程级缓存，每个用例从头领；默认这首歌没有动态封面
+    monkeypatch.setitem(netease_guest._guest_state, "cookie", "")
+    routes[NET_REGISTER] = _guest_reply("guest-1")
+    routes[NET_DYNAMIC] = {"code": 200, "data": {}}
     return routes, calls
+
+
+def _guest_reply(value: str, code: int = 200):
+    def reply(request):
+        form = dict(httpx.QueryParams(request.content.decode()))
+        assert set(form) == {"params", "encSecKey"} and len(form["encSecKey"]) == 256  # 网页端加密格式，不是明文
+        cookie = f"MUSIC_A={value}; Max-Age=2147483647; Path=/; Domain=.music.163.com; HTTPOnly"
+        return httpx.Response(200, json={"code": code}, headers={"Set-Cookie": cookie})
+
+    return reply
+
+
+def test_guest_device_ids_avoid_checksums_the_platform_rejects():
+    # 校验串里带 + 或 / 的设备号平台一律回 code 400（2026-11 实测 4/4 说中）
+    for _ in range(200):
+        device = netease_guest._device()
+        assert len(device) == 52 and not {"+", "/"} & set(netease_guest._digest(device))
+        name = base64.b64decode(netease_guest._username(device)).decode()
+        assert name == f"{device} {netease_guest._digest(device)}"
+
+
+def _dynamic_reply(seen: list, covers: dict[str, str], *, stale: str = ""):
+    """按 songId 回动态封面；带着 stale 这个游客身份来问时按失效（301）处理。"""
+
+    def reply(request):
+        song = dict(httpx.QueryParams(request.content.decode()))["songId"]
+        seen.append((song, request.headers.get("cookie")))
+        if stale and request.headers.get("cookie") == stale:
+            return httpx.Response(200, json={"code": 301, "message": "系统错误"})
+        url = covers.get(song)
+        return httpx.Response(200, json={"code": 200, "data": {"videoPlayUrl": url} if url else {}})
+
+    return reply
 
 
 @pytest.mark.parametrize(
@@ -121,8 +167,93 @@ async def test_netease_returns_one_cover_and_never_song_audio(music_http, kind):
     assert len(info.images) == 1 and info.source == "netease"
     assert not info.video_url and not info.music_url and not info.formats
     assert info.page_url == f"https://music.163.com/{kind}?id=42"
-    assert len(calls) == 1 and calls[0].headers["referer"] == "https://music.163.com/"
+    assert calls[0].headers["referer"] == "https://music.163.com/"
     assert not calls[0].headers.get("cookie")
+    # 歌曲另查动态封面（这首没有）；歌单没有动态封面，不领游客身份
+    assert [str(c.url) for c in calls[1:]] == ([NET_REGISTER, NET_DYNAMIC] if kind == "song" else [])
+
+
+async def test_netease_dynamic_cover_becomes_a_server_side_download(music_http):
+    routes, calls = music_http
+    seen = []
+    routes["https://music.163.com/api/v1/album/42"] = {
+        "code": 200,
+        "album": {"name": "故事商铺", "picUrl": NET_COVER},
+        "songs": [{"id": 7}, {"id": 8}],
+    }
+    routes[NET_DYNAMIC] = _dynamic_reply(seen, {"7": DCOVER})
+    for _ in range(2):
+        info = await parser.parse_video_share_url("https://music.163.com/album?id=42")
+        # 地址签名很快过期，结果又会被缓存：只给服务端档位，下载时重新取
+        assert info.formats == [FormatInfo(label="动态封面", format_spec="netease-artwork", ext="mp4")]
+        assert info.images[0].url == NET_COVER and not info.video_url
+        assert best_video_format(info) is None
+    # 专辑问第一首歌；游客身份整个进程领一次，只带给动态封面接口
+    assert seen == [("7", "MUSIC_A=guest-1")] * 2
+    assert [str(c.url) for c in calls].count(NET_REGISTER) == 1
+    assert not any(c.headers.get("cookie") for c in calls if str(c.url) != NET_DYNAMIC)
+
+
+async def test_netease_renews_a_rejected_guest_identity_once(music_http):
+    routes, calls = music_http
+    seen = []
+    netease_guest._guest_state["cookie"] = "MUSIC_A=old"
+    routes[NET_REGISTER] = _guest_reply("guest-2")
+    routes[NET_DYNAMIC] = _dynamic_reply(seen, {"42": DCOVER}, stale="MUSIC_A=old")
+    assert await netease_guest.dynamic_cover(NetEaseMusic(), "42") == DCOVER
+    assert seen == [("42", "MUSIC_A=old"), ("42", "MUSIC_A=guest-2")]
+    assert netease_guest._guest_state["cookie"] == "MUSIC_A=guest-2"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        {NET_REGISTER: _guest_reply("", code=400)},
+        {NET_DYNAMIC: (500, {})},
+        {NET_DYNAMIC: {"code": 200, "data": {"videoPlayUrl": "https://evil.test/a.mp4"}}},
+        {NET_DYNAMIC: {"code": -460}},
+    ],
+    ids=["no-guest", "server-error", "foreign-url", "refused"],
+)
+async def test_netease_dynamic_cover_problems_still_return_the_static_cover(music_http, failure):
+    routes, _ = music_http
+    routes["https://music.163.com/api/song/detail?ids=%5B42%5D"] = {
+        "code": 200,
+        "songs": [{"name": "歌", "album": {"picUrl": NET_COVER}}],
+    }
+    routes.update(failure)
+    info = await NetEaseMusic().parse_share_url("https://music.163.com/song?id=42")
+    assert info.images[0].url == NET_COVER and not info.formats
+
+
+async def test_netease_slow_dynamic_cover_does_not_hold_the_parse(music_http, monkeypatch):
+    routes, _ = music_http
+    routes["https://music.163.com/api/song/detail?ids=%5B42%5D"] = {
+        "code": 200,
+        "songs": [{"name": "歌", "album": {"picUrl": NET_COVER}}],
+    }
+
+    async def stuck(_parser, _song):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(netease_guest, "dynamic_cover", stuck)
+    monkeypatch.setattr("qiuyuantu.parser.music._DYNAMIC_TIMEOUT", 0.01)
+    info = await NetEaseMusic().parse_share_url("https://music.163.com/song?id=42")
+    assert info.images[0].url == NET_COVER and not info.formats
+
+
+async def test_netease_download_reads_the_dynamic_cover_again(music_http):
+    routes, _ = music_http
+    seen = []
+    routes["https://music.163.com/api/v1/album/42"] = {
+        "code": 200,
+        "album": {"picUrl": NET_COVER},
+        "songs": [{"id": 9}],
+    }
+    routes[NET_DYNAMIC] = _dynamic_reply(seen, {"9": DCOVER})
+    assert await NetEaseMusic().dynamic_cover("https://music.163.com/album?id=42") == DCOVER
+    assert await NetEaseMusic().dynamic_cover("https://music.163.com/playlist?id=42") == ""
+    assert seen == [("9", "MUSIC_A=guest-1")]
 
 
 @pytest.mark.parametrize(("code", "reason"), [(404, "deleted"), (301, "login"), (-462, "blocked"), (500, "parse")])

@@ -128,9 +128,15 @@ function coverSection(image, baseName, data) {
       el('p', { class: 'label' }, t('音乐封面')),
       el('div', { class: 'group' }, ...coverActions(proxy(image.url, name, true), name),
         data.formats.length ? formatMenu(data, baseName, jobsBox, false) : null),
-      el('p', { class: 'hint' }, t(data.source === 'applemusic'
-        ? '静态封面与动态视频分开下载；动态封面以当前公开版本为准。' : '按图片原始格式保存，动态封面保留动效。')),
+      el('p', { class: 'hint' }, t(coverHint(data))),
       data.source === 'applemusic' && !data.formats.length ? null : coverConversions(image.url, baseName, data), jobsBox));
+}
+
+// 网易云的动态封面是另一段视频（有才给档位）；歌单封面本身可能就是动图，按原格式保存就保留动效
+function coverHint(data) {
+  if (data.source === 'applemusic') return '静态封面与动态视频分开下载；动态封面以当前公开版本为准。';
+  return data.formats.length ? '静态封面直接下载原图；动态封面是一段无声视频，可单独下载或继续转换。'
+    : '按图片原始格式保存，动态封面保留动效。';
 }
 
 function coverConversions(url, title, data) {
@@ -254,7 +260,7 @@ function formatMenu(d, baseName, jobsBox, compact) {
   }
   const toggleClass = compact ? 'btn sm quiet' : 'btn' + (d.video_url ? '' : ' dark');
   const toggle = el('button', { class: toggleClass, type: 'button', onclick: () => { list.hidden = !list.hidden; } },
-    d.video_url ? t('其他清晰度 ▾') : t(d.source === 'applemusic' ? '下载动态封面 ▾' : '下载视频 ▾'));
+    d.video_url ? t('其他清晰度 ▾') : t(['applemusic', 'netease'].includes(d.source) ? '下载动态封面 ▾' : '下载视频 ▾'));
   return el('div', { class: 'menu' }, toggle, list);
 }
 

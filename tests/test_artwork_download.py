@@ -183,3 +183,67 @@ async def test_variable_rate_output_is_validated_using_the_hls_peak(tmp_path, mo
 
     monkeypatch.setattr(artwork, "local_metadata", measured)
     await artwork._validate_output(tmp_path / "output.mp4", FormatInfo(width=2160, height=2160, fps=60))
+
+
+NETEASE_PAGE = "https://music.163.com/album?id=42"
+DCOVER = "http://dcover.music.126.net/a/b/c/cover.mp4?wsSecret=sig&wsTime=1"
+
+
+async def test_netease_dynamic_cover_is_fetched_again_and_remuxed_locally(tmp_path, monkeypatch):
+    from qiuyuantu.utils import current_source
+
+    async def dynamic(_self, page):
+        # 下载任务不在解析上下文里：要标上来源，接口才会走国内中继
+        assert page == NETEASE_PAGE and current_source.get() == "netease"
+        return DCOVER
+
+    async def fetch(url, path, **_kw):
+        assert url == DCOVER
+        path.write_bytes(b"source")
+
+    async def copy(args):
+        source = args[args.index("-i") + 1]
+        assert not source.startswith("http") and args[args.index("-c") + 1] == "copy" and "-an" in args
+        Path(args[-1]).write_bytes(b"mp4")
+
+    monkeypatch.setattr(artwork.NetEaseMusic, "dynamic_cover", dynamic)
+    monkeypatch.setattr(artwork, "fetch_bytes", fetch)
+    monkeypatch.setattr(ffmpeg, "run", copy)
+    monkeypatch.setattr(artwork, "local_metadata", lambda _path, **_kw: (FormatInfo(width=1200, height=1200), 5.6))
+    job = jobs.Job(id="netease", type="prepare")
+    result = await tasks._ytdlp(job, NETEASE_PAGE, "netease-artwork", tmp_path, "out")
+    assert result.read_bytes() == b"mp4" and list(tmp_path.iterdir()) == [result]
+    assert current_source.get() == ""
+
+
+@pytest.mark.parametrize(
+    ("dynamic", "measured", "message"),
+    [
+        ("", None, "这首歌当前没有动态封面"),
+        (ValueError("网易云音乐没有发放游客身份"), None, "请稍后再试"),
+        (httpx.ConnectError("boom"), None, "请稍后再试"),
+        (DCOVER, None, "有效的 MP4"),
+        (DCOVER, (FormatInfo(width=1200, height=1200), 600), "有效的 MP4"),
+    ],
+    ids=["no-cover", "no-guest", "network", "not-mp4", "too-long"],
+)
+async def test_netease_dynamic_cover_failures_clean_up_and_explain(tmp_path, monkeypatch, dynamic, measured, message):
+    async def lookup(_self, _page):
+        if isinstance(dynamic, Exception):
+            raise dynamic
+        return dynamic
+
+    async def fetch(_url, path, **_kw):
+        path.write_bytes(b"source")
+
+    async def copy(args):
+        Path(args[-1]).write_bytes(b"mp4")
+
+    monkeypatch.setattr(artwork.NetEaseMusic, "dynamic_cover", lookup)
+    monkeypatch.setattr(artwork, "fetch_bytes", fetch)
+    monkeypatch.setattr(ffmpeg, "run", copy)
+    monkeypatch.setattr(artwork, "local_metadata", lambda _path, **_kw: measured)
+    with pytest.raises(ValueError, match=message) as error:
+        await artwork.download(NETEASE_PAGE, "netease-artwork", tmp_path, "out", lambda *_: None)
+    assert "游客" not in str(error.value)  # 内部原因不给用户看
+    assert not list(tmp_path.iterdir())

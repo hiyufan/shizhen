@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import logging
 import re
 from urllib.parse import parse_qs, urljoin, urlparse, urlunparse
 
 import httpx
 from parsel import Selector
 
-from .base import BaseParser, ImgInfo, VideoAuthor, VideoInfo
+from . import netease_guest
+from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
+
+logger = logging.getLogger(__name__)
 
 _KINDS = {"song", "album", "playlist"}
 _QQ_PATHS = {"song": "songDetail", "album": "albumDetail", "playlist": "playlist"}
 _SHORT_HOPS = 4
+# 动态封面是附加项：首次领游客身份经中继约 5 秒，再慢就先给静态封面，不拖住整次解析
+_DYNAMIC_TIMEOUT = 12.0
 
 
 def _host_in(host: str, domains: tuple[str, ...]) -> bool:
@@ -109,22 +116,53 @@ def _netease_detail(data: dict, kind: str) -> tuple[str, str, VideoAuthor]:
     return detail.get("name") or "", cover, author
 
 
+def _cover_song(kind: str, ident: str, data: dict) -> str:
+    """动态封面挂在歌曲上，专辑里的歌共用专辑那一段，取第一首去问；歌单没有动态封面。"""
+    if kind == "song":
+        return ident
+    songs = data.get("songs") if kind == "album" else None
+    return str(songs[0].get("id") or "") if songs and isinstance(songs[0], dict) else ""
+
+
 class NetEaseMusic(BaseParser):
-    """网易云音乐公开信息接口：歌曲用专辑封面，歌单只取自身封面。"""
+    """网易云音乐公开信息接口：歌曲用专辑封面，歌单只取自身封面；歌曲和专辑另查动态封面。"""
 
     def get_default_headers(self) -> dict[str, str]:
         return {"User-Agent": self.ua("windows"), "Referer": "https://music.163.com/"}
 
-    async def parse_share_url(self, share_url: str) -> VideoInfo:
-        kind, ident = await _short_target(self, share_url, ("163cn.tv",), netease_target)
+    async def _detail(self, kind: str, ident: str) -> dict:
         paths = {
             "song": f"/api/song/detail?ids=%5B{ident}%5D",
             "album": f"/api/v1/album/{ident}",
             "playlist": f"/api/v6/playlist/detail?id={ident}&n=0",
         }
-        data = await self.get_json("https://music.163.com" + paths[kind])
+        return await self.get_json("https://music.163.com" + paths[kind])
+
+    async def parse_share_url(self, share_url: str) -> VideoInfo:
+        kind, ident = await _short_target(self, share_url, ("163cn.tv",), netease_target)
+        data = await self._detail(kind, ident)
         title, cover, author = _netease_detail(data, kind)
-        return _cover_info(title, netease_cover(cover), author, f"https://music.163.com/{kind}?id={ident}")
+        info = _cover_info(title, netease_cover(cover), author, f"https://music.163.com/{kind}?id={ident}")
+        if song := _cover_song(kind, ident, data):
+            info.formats = await self._dynamic_formats(song)
+        return info
+
+    async def _dynamic_formats(self, song: str) -> list[FormatInfo]:
+        # 视频地址的签名几十分钟就过期，结果又会被缓存，所以只给服务端档位，下载时重新取（见 convert/artwork.py）
+        try:
+            url = await asyncio.wait_for(netease_guest.dynamic_cover(self, song), _DYNAMIC_TIMEOUT)
+        except (httpx.HTTPError, ValueError, TypeError, asyncio.TimeoutError) as err:
+            logger.info("网易云动态封面没取到，只给静态封面：%s", type(err).__name__)
+            return []
+        return [FormatInfo(label="动态封面", format_spec="netease-artwork", ext="mp4")] if url else []
+
+    async def dynamic_cover(self, page_url: str) -> str:
+        """下载时用：按作品页重新取一次动态封面地址，没有返回空串。"""
+        kind, ident = netease_target(page_url)
+        if kind == "playlist":
+            return ""
+        song = ident if kind == "song" else _cover_song(kind, ident, await self._detail(kind, ident))
+        return await netease_guest.dynamic_cover(self, song) if song else ""
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         kind, ident = _legacy_id(video_id)

@@ -9,11 +9,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import urljoin, urlparse
 
+import httpx
+
 from ..parser.applemusic import AppleMusic, _media, artwork_variants
 from ..parser.base import FormatInfo
 from ..parser.hoyoplay import HoYoPlay
 from ..parser.mp4_probe import local_metadata
+from ..parser.music import NetEaseMusic
 from ..parser.quality import frame_rate, number, short_side
+from ..utils import current_source
 from . import config, ffmpeg
 from .fetch import TooLarge, fetch_bytes
 from .net import headers_for, safe_client
@@ -22,7 +26,7 @@ Report = Callable[[float, str], None]
 
 
 def handles(url: str) -> bool:
-    return urlparse(url).hostname in {"music.apple.com", "hyp-api.mihoyo.com"}
+    return urlparse(url).hostname in {"music.apple.com", "music.163.com", "hyp-api.mihoyo.com"}
 
 
 def _attributes(text: str) -> dict[str, str]:
@@ -155,6 +159,36 @@ async def _apple_source(page: str, spec: str, directory: Path, report: Report) -
     return source, stream
 
 
+async def _netease_source(page: str, directory: Path, report: Report) -> Path:
+    # 下载任务不在解析上下文里，要自己标上来源，网易云的接口才会照解析时一样走国内中继
+    token = current_source.set("netease")
+    try:
+        url = await NetEaseMusic().dynamic_cover(page)
+    except (httpx.HTTPError, ValueError, TypeError) as err:
+        # 原因（游客身份、接口格式）只记在异常链里，用户看到的是能照着做的说法
+        raise ValueError("网易云音乐暂时没有返回动态封面，请稍后再试") from err
+    finally:
+        current_source.reset(token)
+    if not url:
+        raise ValueError("这首歌当前没有动态封面")
+    source = directory / "source.mp4"
+    await fetch_bytes(url, source, limit=config.MAX_SOURCE_BYTES)
+    report(0.9, "正在准备动态封面")
+    return source
+
+
+async def _remux(source: Path, destination: Path) -> None:
+    """只换封装：去掉音轨、把索引挪到文件头，画面原样保留。"""
+    args = ["-i", str(source), "-map", "0:v:0", "-c", "copy", "-an", "-avoid_negative_ts", "make_zero"]
+    await ffmpeg.run([*args, "-movflags", "+faststart", str(destination)])
+
+
+async def _validate_netease(path: Path) -> None:
+    measured = await asyncio.to_thread(local_metadata, path)
+    if not measured or not measured[0].width or not 0 < measured[1] <= 120:
+        raise ValueError("动态封面没有返回有效的 MP4 视频")
+
+
 async def _validate_output(path: Path, expected: FormatInfo) -> None:
     # HLS FRAME-RATE 是峰值；变帧率素材不能用平均值判断是否降档。
     measured = await asyncio.to_thread(local_metadata, path, peak_fps=True)
@@ -170,25 +204,14 @@ async def download(page: str, spec: str, out_dir: Path, stem: str, report: Repor
     with TemporaryDirectory(prefix=f"{stem}-artwork-", dir=out_dir) as temporary:
         directory = Path(temporary)
         try:
-            if urlparse(page).hostname == "music.apple.com":
+            host = urlparse(page).hostname
+            if host == "music.apple.com":
                 source, expected = await _apple_source(page, spec, directory, report)
-                await ffmpeg.run(
-                    [
-                        "-i",
-                        str(source),
-                        "-map",
-                        "0:v:0",
-                        "-c",
-                        "copy",
-                        "-an",
-                        "-avoid_negative_ts",
-                        "make_zero",
-                        "-movflags",
-                        "+faststart",
-                        str(destination),
-                    ]
-                )
+                await _remux(source, destination)
                 await _validate_output(destination, expected)
+            elif host == "music.163.com":
+                await _remux(await _netease_source(page, directory, report), destination)
+                await _validate_netease(destination)
             else:
                 info = await HoYoPlay().parse_share_url(page)
                 if not info.video_url:
