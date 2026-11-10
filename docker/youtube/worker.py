@@ -153,6 +153,44 @@ def size_guard(limit: int):
     return hook
 
 
+def _codec(f: dict) -> str:
+    match = re.search(r'codecs="([^"]+)"', f.get("mimeType", ""))
+    return match[1] if match else ""
+
+
+def _short_side(f: dict) -> int:
+    h, w = int(f.get("height") or 0), int(f.get("width") or 0)
+    return min(h, w) if h and w else h
+
+
+def _tier_ok(f: dict) -> bool:
+    """1080p 以内只要 H.264，按短边算（竖屏视频高 1920 也是 1080p）；规则同应用里的 youtube_native.tiers。"""
+    return _short_side(f) > 1080 or _codec(f).startswith("avc1")
+
+
+def tiers(response: dict) -> list[list]:
+    """[高度, 短边, 编码]：更高的只有 VP9 / AV1，优先 VP9，和 download 里的格式串一致。"""
+    found: dict[int, list] = {}
+    for f in response.get("streamingData", {}).get("adaptiveFormats", []):
+        h = int(f.get("height") or 0)
+        if not h or not f.get("mimeType", "").startswith("video/") or not _tier_ok(f):
+            continue
+        if h not in found or (_codec(f).startswith("vp9") and not found[h][2].startswith("vp9")):
+            found[h] = [h, _short_side(f), _codec(f)]
+    return sorted(found.values(), reverse=True)
+
+
+def codec_filter(response: dict, height: int) -> str:
+    """下载这一档时的编码条件：1080p 以内 H.264，更高的用 tiers 标出的编码（yt-dlp 默认会挑 AV1）。"""
+    tier = next((t for t in tiers(response) if t[0] == height), None)
+    if tier is None:
+        return ""
+    if tier[1] <= 1080:
+        return "[vcodec^=avc1]"
+    # 锁定标出的那一路：只写 vp 的话 yt-dlp 会优先挑 HDR 的 VP9.2
+    return f"[vcodec={tier[2]}]" if re.fullmatch(r"[\w.]+", tier[2]) else ""
+
+
 def plan(response: dict, height: int, max_bytes: int, duration: float, *, fit: bool) -> tuple[int, int]:
     """按 player 响应里的大小估算 (清晰度, 字节数)。fit=True 时放不下就往低一档退。"""
     formats = response.get("streamingData", {}).get("adaptiveFormats", [])
@@ -166,7 +204,7 @@ def plan(response: dict, height: int, max_bytes: int, duration: float, *, fit: b
     by_height: dict[int, int] = {}
     for f in formats:
         h, mime = int(f.get("height") or 0), f.get("mimeType", "")
-        if not h or not mime.startswith("video/") or (h <= 1080 and "avc1" not in mime):
+        if not h or not mime.startswith("video/") or not _tier_ok(f):
             continue
         by_height[h] = max(by_height.get(h, 0), size(f) + audio)
     candidates = sorted((h for h in by_height if h <= height), reverse=True)
@@ -485,8 +523,8 @@ async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
                         return super().urlopen(req)
 
                 def download():
-                    # 1080p 以内优先 H.264；更高分辨率通常只有 VP9 / AV1，不能悄悄降到 1080p。
-                    codec = "[vcodec^=avc1]" if height <= 1080 else ""
+                    # 1080p 以内 H.264；更高分辨率通常只有 VP9 / AV1，不能悄悄降到 1080p。
+                    codec = codec_filter(response, height)
                     opts = {
                         "logger": Logger(),
                         "quiet": True,
@@ -526,13 +564,7 @@ async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
                         "author": details.get("author") or "",
                         "channel_id": details.get("channelId") or "",
                         "thumbnail": thumbnails[-1].get("url", "") if thumbnails else "",
-                        "heights": sorted(
-                            {
-                                int(f["height"])
-                                for f in response.get("streamingData", {}).get("adaptiveFormats", [])
-                                if f.get("height")
-                            }
-                        ),
+                        "tiers": tiers(response),
                     }
 
                 result = await asyncio.to_thread(download)

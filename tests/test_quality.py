@@ -90,7 +90,8 @@ def test_ytdlp_lists_real_8k_and_nonstandard_resolutions_without_fake_tiers():
     assert [f.height for f in info.formats] == [4320, 1440, 900]
     assert best_video_format(info).height == 4320
     assert (
-        info.formats[0].format_spec == "bv[height=4320]+ba[ext=m4a]/bv[height=4320]+ba/b[height=4320]/bv[height=4320]"
+        info.formats[0].format_spec == "bv[height=4320][vcodec=av01]+ba[ext=m4a]/bv[height=4320][vcodec=av01]+ba/"
+        "bv[height=4320]+ba[ext=m4a]/bv[height=4320]+ba/b[height=4320]/bv[height=4320]"
     )
 
 

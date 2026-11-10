@@ -193,7 +193,26 @@ const isPortrait = (d) => (d.width && d.height ? d.height > d.width : !['steam',
 
 const videoExtension = (data) => /\.webm(?:[?#]|$)/.test(data.video_url) ? 'webm' : (data.video_ext || 'mp4');
 
-const defaultDownload = (data) => data.download_format || previewDownload(data);
+const defaultDownload = (data) => (PHOTOS && albumDownload(data)) || data.download_format || previewDownload(data);
+
+// 照片 App 稳妥能收的是 H.264 / HEVC。YouTube 的 2K、4K 只有 AV1 / VP9，多数 iPhone 存不进相册；
+// 编码不明的档位照旧当作能存，避免把其他平台的正常档位误挡掉
+const ALBUM_MENU_HINT = '标了 AV1 / VP9 的档位（多是 2K、4K）多数 iPhone 存不进相册，下载后在「文件」App 里看；要存相册选没有标记的档位。';
+const ALBUM_JOB_HINT = '这一档是 {codec} 编码，多数 iPhone 存不进相册，点「保存」会存到「文件」App；要存相册请换没有标记的档位。';
+const ALBUM_UNSAFE = /^(av01|av1|vp0?8|vp0?9)/i;
+const albumSafe = (codec) => !ALBUM_UNSAFE.test(codec || '');
+const codecMark = (codec) => (/^av0?1/i.test(codec) ? 'AV1' : /^vp0?8/i.test(codec) ? 'VP8' : 'VP9');
+const tierRank = (f) => [Math.min(f.width || f.height, f.height || f.width), f.fps || 0, f.bitrate || 0];
+const byRank = (a, b) => tierRank(b).reduce((diff, value, i) => diff || value - tierRank(a)[i], 0);
+
+/** iPhone 的主下载：最高档存不进相册时，换成存得进的最高一档；更高的仍在「其他清晰度」里 */
+function albumDownload(data) {
+  const best = data.download_format;
+  if (!best || albumSafe(best.codec)) return null;
+  const safe = data.formats.filter((f) => f.height && ['mp4', 'mov'].includes(f.ext) && albumSafe(f.codec));
+  if (safe.length) return safe.sort(byRank)[0];
+  return albumSafe(data.video_codec) ? previewDownload(data) : null;
+}
 
 function previewDownload(data) {
   if (!data.video_url || videoExtension(data) === 'm3u8') return null;
@@ -243,21 +262,31 @@ function downloadFormats(data) {
   return formats;
 }
 
-/** 「其他清晰度 ▾」：有直链的直接下载，要服务端合并的起一个下载任务 */
+/** 菜单里的一档：有直链的直接下载，要服务端合并的起一个下载任务。iPhone 上给存不进相册的档位标出编码 */
+function formatItem(f, d, baseName, jobsBox, close) {
+  const size = f.filesize ? fmtSize(f.filesize) : f.ext;
+  const meta = [el('span', {}, t(f.label)), el('small', {}, PHOTOS && !albumSafe(f.codec) ? size + ' · ' + codecMark(f.codec) : size)];
+  const filename = baseName + '_' + f.label.replace(/\s+/g, '') + '.' + (f.ext || 'mp4');
+  return f.url
+    ? el('a', { href: mediaDownload(f.url, filename), download: '', onclick: (e) => { close(); saveDirect(e, f.url, filename); } }, ...meta)
+    : el('button', { type: 'button', onclick: () => { close(); startDownload(f, d, baseName, jobsBox); } }, ...meta);
+}
+
+function formatHints(formats) {
+  const hints = [];
+  if (PHOTOS && formats.some((f) => f.height && !albumSafe(f.codec))) hints.push(t(ALBUM_MENU_HINT));
+  if (formats.some((f) => /H\.265|hevc|hvc1|hev1/i.test(f.codec || ''))) {
+    hints.push(t('H.265 通常体积更小，播放兼容性因设备而异；画质取决于来源。'));
+  }
+  return hints.map((text) => el('p', { class: 'hint', style: 'padding:6px 10px 4px' }, text));
+}
+
+/** 「其他清晰度 ▾」 */
 function formatMenu(d, baseName, jobsBox, compact) {
   const list = el('div', { class: 'menu-list', hidden: true });
   const close = () => { list.hidden = true; };
-  for (const f of downloadFormats(d)) {
-    const meta = [el('span', {}, t(f.label)), el('small', {}, f.filesize ? fmtSize(f.filesize) : f.ext)];
-    const filename = baseName + '_' + f.label.replace(/\s+/g, '') + '.' + (f.ext || 'mp4');
-    list.append(f.url
-      ? el('a', { href: mediaDownload(f.url, filename), download: '', onclick: (e) => { close(); saveDirect(e, f.url, filename); } }, ...meta)
-      : el('button', { type: 'button', onclick: () => { close(); startDownload(f, d, baseName, jobsBox); } }, ...meta));
-  }
-  if (d.formats.some((f) => /H\.265|hevc|hvc1|hev1/i.test(f.codec || ''))) {
-    list.append(el('p', { class: 'hint', style: 'padding:6px 10px 4px' },
-      t('H.265 通常体积更小，播放兼容性因设备而异；画质取决于来源。')));
-  }
+  for (const f of downloadFormats(d)) list.append(formatItem(f, d, baseName, jobsBox, close));
+  list.append(...formatHints(d.formats));
   const toggleClass = compact ? 'btn sm quiet' : 'btn' + (d.video_url ? '' : ' dark');
   const toggle = el('button', { class: toggleClass, type: 'button', onclick: () => { list.hidden = !list.hidden; } },
     d.video_url ? t('其他清晰度 ▾') : t(['applemusic', 'netease'].includes(d.source) ? '下载动态封面 ▾' : '下载视频 ▾'));
@@ -303,6 +332,12 @@ function sourceRequest(d, title) {
   return request;
 }
 
+// 照片 App 只认 mp4 / mov 里的 H.264 / HEVC；webm、音频、AV1 / VP9 还是走下载
+function jobPhotosButton(f, done, file, baseName) {
+  if (!PHOTOS || !/\.mp4$/i.test(done.filename || '') || !albumSafe(f.codec)) return null;
+  return photosButton(t('存到相册'), oneFile(file + '?inline=1', baseName + '_' + f.label.replace(/\s+/g, ''), 'video/mp4'), 'btn sm dark');
+}
+
 async function startDownload(f, d, baseName, jobsBox) {
   const card = jobCard(jobsBox, t('下载 ') + t(f.label));
   const page = d.page_url || d.share_url;
@@ -312,11 +347,9 @@ async function startDownload(f, d, baseName, jobsBox) {
     });
     const done = await watchJob(job, card.update);
     const file = '/api/jobs/' + done.id + '/file';
-    // 照片 App 只认 mp4 / mov；webm、音频还是走下载
-    const photos = PHOTOS && /\.mp4$/i.test(done.filename || '')
-      ? photosButton(t('存到相册'), oneFile(file + '?inline=1', baseName + '_' + f.label.replace(/\s+/g, ''), 'video/mp4'), 'btn sm dark')
-      : null;
+    const photos = jobPhotosButton(f, done, file, baseName);
     card.done((photos ? t('下载 ') : t('保存 ')) + (done.filesize ? fmtSize(done.filesize) : ''), file, done.filename, photos);
+    if (PHOTOS && !albumSafe(f.codec)) card.card.append(el('p', { class: 'hint' }, t(ALBUM_JOB_HINT, { codec: codecMark(f.codec) })));
   } catch (e) {
     card.fail(e.message);
   }

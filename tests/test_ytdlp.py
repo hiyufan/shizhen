@@ -95,8 +95,9 @@ def _selected(spec, formats):
     import yt_dlp
 
     with yt_dlp.YoutubeDL({"quiet": True, "merge_output_format": "mp4"}) as ydl:
-        ctx = {"formats": [{**f, "format": f["format_id"]} for f in formats], "incomplete_formats": False}
-        chosen = next(ydl.build_format_selector(spec)(ctx))
+        info = {"formats": [{**f, "format": f["format_id"]} for f in formats]}
+        ydl.sort_formats(info)  # 真实下载时 yt-dlp 先按自己的规则排好，选择器取排在最后的
+        chosen = next(ydl.build_format_selector(spec)({**info, "incomplete_formats": False}))
     return [f["format_id"] for f in chosen.get("requested_formats") or [chosen]]
 
 
@@ -108,13 +109,27 @@ def test_photos_compatible_h264_and_aac_are_merged_for_the_listed_tier():
     assert _selected(tier.format_spec, _SHORTS) == ["137", "140"]
 
 
-def test_higher_framerate_is_kept_when_only_vp9_has_it():
+def test_tiers_up_to_1080p_are_h264_when_the_source_has_it():
+    """和 HLS 兜底一样：1080p 以内宁可少 60 帧，也不列多数设备放不了的 VP9 / AV1 档位。"""
     formats = [
-        _fmt(format_id="137", ext="mp4", vcodec="avc1.640028", height=1080, width=1920, fps=30, tbr=4300),
-        _fmt(format_id="303", ext="webm", vcodec="vp9", height=1080, width=1920, fps=60, tbr=4000),
+        *_SHORTS,
+        _fmt(format_id="303", ext="webm", vcodec="vp9", height=1920, width=1080, fps=60, tbr=4000),
+        _fmt(format_id="397", ext="mp4", vcodec="av01.0.05M.08", height=1080, width=608, fps=30, tbr=900),
+    ]
+    tiers = YtDlp._to_video_info({"formats": formats}, "https://www.youtube.com/shorts/1").formats
+    assert [(f.label, f.codec[:4]) for f in tiers] == [("1080p", "avc1"), ("仅音频", "")]
+    assert _selected(tiers[0].format_spec, formats) == ["137", "140"]
+
+
+def test_2k_and_above_keep_framerate_and_download_the_labelled_codec():
+    formats = [
+        _fmt(format_id="18", ext="mp4", vcodec="avc1.42001E", acodec="mp4a.40.2", height=360, width=640, tbr=600),
+        _fmt(format_id="308", ext="webm", vcodec="vp9", height=1440, width=2560, fps=60, tbr=13000),
+        _fmt(format_id="400", ext="mp4", vcodec="av01.0.12M.08", height=1440, width=2560, fps=60, tbr=11000),
+        _fmt(format_id="271", ext="webm", vcodec="vp9", height=1440, width=2560, fps=30, tbr=9000),
         _fmt(format_id="140", ext="m4a", acodec="mp4a.40.2", abr=129),
         _fmt(format_id="251", ext="webm", acodec="opus", abr=140),
     ]
     tier = YtDlp._to_video_info({"formats": formats}, "https://www.youtube.com/watch?v=1").formats[0]
-    assert (tier.label, tier.codec) == ("1080p60", "vp9")
-    assert _selected(tier.format_spec, formats) == ["303", "140"]
+    assert (tier.label, tier.codec) == ("1440p60", "vp9")
+    assert _selected(tier.format_spec, formats) == ["308", "140"]  # 标的是 VP9，就不能下成 AV1

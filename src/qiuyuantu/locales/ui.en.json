@@ -222,6 +222,8 @@
   "存到相册": "Save to Photos",
   "下载视频": "Download video",
   "H.265 通常体积更小，播放兼容性因设备而异；画质取决于来源。": "H.265 usually produces smaller files. Playback support varies by device; quality depends on the source.",
+  "标了 AV1 / VP9 的档位（多是 2K、4K）多数 iPhone 存不进相册，下载后在「文件」App 里看；要存相册选没有标记的档位。": "Most iPhones can't save tiers marked AV1 / VP9 (usually 2K and 4K) to Photos. Download them and open them in the Files app, or pick an unmarked tier to save to Photos.",
+  "这一档是 {codec} 编码，多数 iPhone 存不进相册，点「保存」会存到「文件」App；要存相册请换没有标记的档位。": "This tier uses {codec}, which most iPhones can't save to Photos. Tap Save to keep it in the Files app, or pick an unmarked tier to save to Photos.",
   "其他清晰度 ▾": "More resolutions ▾",
   "已找到更高画质：{label}": "Higher quality found: {label}",
   "下载视频 ▾": "Download video ▾",

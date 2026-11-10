@@ -7,6 +7,7 @@ YouTube / TikTok / Instagram 以及其它没有专用解析器的站点, 统一�
 
 import asyncio
 import contextlib
+import re
 import time
 from http.cookies import CookieError, SimpleCookie
 from typing import Any
@@ -315,10 +316,11 @@ def _merge_options(formats: list[dict[str, Any]], primary: dict[str, Any]) -> li
     videos = [f for f in formats if _is_video(f)]
     options = []
     heights = sorted({int(number(f.get("height"))) for f in videos}, reverse=True)
+    any_h264 = any(_is_h264(f) for f in videos)
     for h in heights:
-        candidates, h264 = _tier_candidates([f for f in videos if number(f.get("height")) == h])
-        best = max(candidates, key=lambda f: number(f.get("tbr")))
-        if not h or _video_rank(best) <= _video_rank(primary):
+        candidates, h264 = _tier_candidates([f for f in videos if number(f.get("height")) == h], any_h264)
+        best = max(candidates, key=lambda f: number(f.get("tbr")), default=None)
+        if not h or best is None or _video_rank(best) <= _video_rank(primary):
             continue
         width = int(number(best.get("width")))
         approx = max((f.get("filesize") or f.get("filesize_approx") or 0 for f in candidates), default=0)
@@ -326,7 +328,7 @@ def _merge_options(formats: list[dict[str, Any]], primary: dict[str, Any]) -> li
             FormatInfo(
                 label=f"{short_side(width, h)}p"
                 + (str(round(number(best.get("fps")))) if number(best.get("fps")) > 45 else ""),
-                format_spec=_tier_spec(h, h264),
+                format_spec=_tier_spec(h, _codec_filter(best, h264)),
                 ext="mp4",
                 height=h,
                 filesize=int(approx),
@@ -341,22 +343,41 @@ def _merge_options(formats: list[dict[str, Any]], primary: dict[str, Any]) -> li
     return options
 
 
-def _tier_candidates(same_height: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
-    """同一清晰度里实际会下的那几路，和是否限定 H.264。先保帧率，同帧率有 H.264 就只用它。
+def _is_h264(f: dict[str, Any]) -> bool:
+    return str(f.get("vcodec") or "").startswith("avc1")
+
+
+def _tier_candidates(same_height: list[dict[str, Any]], any_h264: bool) -> tuple[list[dict[str, Any]], bool]:
+    """同一清晰度里实际会下的那几路，和是否限定 H.264；返回空列表表示这一档不列。
 
     yt-dlp 默认把 AV1 / VP9 排在 H.264 前面，音轨也偏好 Opus：YouTube 1080p 会合成 AV1 + Opus 的 MP4，
-    iPhone 的照片 App 存不进去，很多播放器也放不了。HLS 和浏览器兜底在 1080p 以内同样只取 H.264。"""
-    top = max(number(f.get("fps")) for f in same_height)
-    fastest = [f for f in same_height if number(f.get("fps")) == top]
-    h264 = [f for f in fastest if str(f.get("vcodec") or "").startswith("avc1")]
-    return (h264, True) if h264 else (fastest, False)
+    iPhone 的照片 App 存不进去，很多播放器也放不了。所以和 HLS、浏览器兜底一样，来源有 H.264 时
+    1080p 以内只列 H.264：宁可少一档 60 帧，也不给 HDR 视频的 VP9.2 低档位、Shorts 里只有 VP9 的
+    608p 这类多数设备放不了的文件。更高的 2K / 4K 来源只有 AV1 / VP9，先保帧率，同帧率有 H.264 才用它。"""
+    sample = same_height[0]
+    pool = same_height
+    if any_h264 and short_side(int(number(sample.get("width"))), int(number(sample.get("height")))) <= 1080:
+        pool = [f for f in same_height if _is_h264(f)]
+    top = max((number(f.get("fps")) for f in pool), default=0)
+    fastest = [f for f in pool if number(f.get("fps")) == top]
+    preferred = [f for f in fastest if _is_h264(f)]
+    return (preferred, True) if preferred else (fastest, False)
 
 
-def _tier_spec(h: int, h264: bool) -> str:
-    """优先 AAC 音轨（m4a）；限定 H.264 时先按它挑，挑不到再退回原来的不限编码写法。"""
+def _codec_filter(best: dict[str, Any], h264: bool) -> str:
+    """把档位上标的编码写进格式串：H.264 不分档次；2K / 4K 锁定标出的那一路（不锁的话 yt-dlp 会换成 AV1）。
+    编码名里只有字母、数字和点，原样放进 yt-dlp 的过滤条件。"""
+    vcodec = str(best.get("vcodec") or "")
+    if h264:
+        return "[vcodec^=avc1]"
+    return f"[vcodec={vcodec}]" if re.fullmatch(r"[\w.]+", vcodec) else ""
+
+
+def _tier_spec(h: int, codec: str) -> str:
+    """优先 AAC 音轨（m4a）；按编码挑不到时退回不限编码的写法。"""
     pick = f"[height={h}]"
-    codec = f"bv{pick}[vcodec^=avc1]+ba[ext=m4a]/bv{pick}[vcodec^=avc1]+ba/" if h264 else ""
-    return f"{codec}bv{pick}+ba[ext=m4a]/bv{pick}+ba/b{pick}/bv{pick}"
+    prefer = f"bv{pick}{codec}+ba[ext=m4a]/bv{pick}{codec}+ba/" if codec else ""
+    return f"{prefer}bv{pick}+ba[ext=m4a]/bv{pick}+ba/b{pick}/bv{pick}"
 
 
 def _video_rank(fmt: dict) -> tuple[float, float, float]:

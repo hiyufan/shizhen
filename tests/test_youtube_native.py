@@ -717,3 +717,73 @@ async def test_hls_timeout_stops_the_download_thread(monkeypatch, tmp_path):
     with pytest.raises(asyncio.TimeoutError):
         await _REAL_HLS(VIDEO_ID, 720, tmp_path, "", timeout=0.3)
     assert finished.is_set() and asyncio.get_running_loop().time() - started < 5
+
+
+# --------------------------------------------------------------------------- 档位与编码（iPhone 相册只收 H.264 / HEVC）
+
+_PORTRAIT = [
+    {"format_id": "137", "height": 1920, "width": 1080, "vcodec": "avc1.640028", "acodec": "none"},
+    {"format_id": "399", "height": 1920, "width": 1080, "vcodec": "av01.0.08M.08", "acodec": "none"},
+    {"format_id": "397", "height": 1080, "width": 608, "vcodec": "vp9", "acodec": "none"},  # Shorts 里只有 VP9 的一档
+    {"format_id": "315", "height": 2160, "width": 3840, "vcodec": "av01.0.12M.08", "acodec": "none"},
+    {"format_id": "313", "height": 2160, "width": 3840, "vcodec": "vp9", "acodec": "none"},
+]
+
+
+def test_tiers_use_short_side_and_keep_h264_up_to_1080p():
+    """竖屏高 1920 也是 1080p：只列 H.264；2K 以上只有 VP9 / AV1，标 VP9（下载时同样优先它）。"""
+    assert native.tiers(_PORTRAIT) == [[2160, 2160, "vp9"], [1920, 1080, "avc1.640028"]]
+
+
+def test_hls_picks_h264_for_portrait_1080p_and_vp9_above():
+    hls = [
+        _fmt("234", acodec=None, tbr=None),
+        _fmt("614", 1920, "vp09.00.40.08", tbr=5000) | {"width": 1080},
+        _fmt("270", 1920, "avc1.640028", tbr=4500) | {"width": 1080},
+        _fmt("701", 2160, "av01.0.12M.08", tbr=20000) | {"width": 3840},
+        _fmt("625", 2160, "vp09.00.51.08", tbr=18000) | {"width": 3840},
+    ]
+    _, videos = native._hls_formats(hls, 4320)
+    assert {h: f["format_id"] for h, f in videos.items()} == {1920: "270", 2160: "625"}
+
+
+@pytest.mark.asyncio
+async def test_parse_labels_tiers_by_short_side_with_codec(worker, monkeypatch):
+    original = native._worker
+
+    async def with_tiers(*args, **kwargs):
+        return await original(*args, **kwargs) | {"tiers": native.tiers(_PORTRAIT)}
+
+    monkeypatch.setattr(native, "_worker", with_tiers)
+    info = await native.parse(PAGE)
+    assert [(f.label, f.codec, f.format_spec) for f in info.formats][:2] == [
+        ("2160p", "vp9", "youtube-native:2160"),
+        ("1080p", "avc1.640028", "youtube-native:1920"),
+    ]
+
+
+def _load_worker(monkeypatch):
+    """浏览器下载器是独立脚本，测试环境没有 deno / playwright，用替身模块只测它的选档逻辑。"""
+    import importlib.util
+    import types
+
+    monkeypatch.setitem(sys.modules, "deno", types.SimpleNamespace(find_deno_bin=lambda: "deno"))
+    monkeypatch.setitem(sys.modules, "playwright", types.ModuleType("playwright"))
+    monkeypatch.setitem(sys.modules, "playwright.async_api", types.SimpleNamespace(async_playwright=None))
+    path = Path(__file__).parents[1] / "docker/youtube/worker.py"
+    spec = importlib.util.spec_from_file_location("youtube_worker_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_browser_worker_follows_the_same_tier_rules(monkeypatch):
+    worker_script = _load_worker(monkeypatch)
+    mime = {"avc1.640028": 'video/mp4; codecs="avc1.640028"', "vp9": 'video/webm; codecs="vp9"'}
+    mime["av01.0.12M.08"] = 'video/mp4; codecs="av01.0.12M.08"'
+    mime["av01.0.08M.08"] = 'video/mp4; codecs="av01.0.08M.08"'
+    adaptive = [{"height": f["height"], "width": f["width"], "mimeType": mime[f["vcodec"]]} for f in _PORTRAIT]
+    response = {"streamingData": {"adaptiveFormats": adaptive}}
+    assert worker_script.tiers(response) == native.tiers(_PORTRAIT)
+    assert worker_script.codec_filter(response, 1920) == "[vcodec^=avc1]"
+    assert worker_script.codec_filter(response, 2160) == "[vcodec=vp9]"

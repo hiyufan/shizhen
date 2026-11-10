@@ -347,8 +347,23 @@ def _audio_kbps(f: dict) -> float:
     return f.get("tbr") or f.get("abr") or _HLS_AUDIO_KBPS.get(str(f.get("format_id")), 0)
 
 
+def _short_side(f: dict) -> int:
+    h, w = int(f.get("height") or 0), int(f.get("width") or 0)
+    return min(h, w) if h and w else h
+
+
+def _tier_codec_ok(f: dict) -> bool:
+    """1080p 以内只要 H.264（照片 App 和多数播放器都收）；按短边算，竖屏视频高 1920 也是 1080p。"""
+    return _short_side(f) > 1080 or str(f.get("vcodec") or "").startswith("avc1")
+
+
+def _is_vp9(f: dict) -> bool:
+    return str(f.get("vcodec") or "").startswith(("vp9", "vp09"))
+
+
 def _hls_formats(formats: list[dict], height: int) -> tuple[dict | None, dict[int, dict]]:
-    """(码率最高的 HLS 音轨, {清晰度: 该清晰度码率最高的 HLS 画面})。1080p 以内只要 H.264，和浏览器路径一致。"""
+    """(码率最高的 HLS 音轨, {清晰度: 该清晰度要下的 HLS 画面})。1080p 以内只要 H.264，和浏览器路径一致；
+    更高的只有 VP9 / AV1，优先 VP9，和解析时标给用户的编码一致（见 tiers）。"""
     hls = [f for f in formats if f.get("protocol") == "m3u8_native" and f.get("url")]
     audio = max(
         (f for f in hls if f.get("vcodec") == "none" and f.get("acodec") != "none"),
@@ -360,11 +375,25 @@ def _hls_formats(formats: list[dict], height: int) -> tuple[dict | None, dict[in
         h, vcodec = int(f.get("height") or 0), str(f.get("vcodec") or "none")
         if not h or h > height or vcodec == "none" or f.get("acodec") not in (None, "none"):
             continue
-        if h <= 1080 and not vcodec.startswith("avc1"):
+        if not _tier_codec_ok(f):
             continue
-        if (f.get("tbr") or 0) >= (videos.get(h, {}).get("tbr") or 0):
+        if (_is_vp9(f), f.get("tbr") or 0) >= (_is_vp9(videos.get(h, {})), videos.get(h, {}).get("tbr") or 0):
             videos[h] = f
     return audio, videos
+
+
+def tiers(formats: list[dict]) -> list[list]:
+    """解析结果里列给用户的档位：[高度, 短边, 编码]。规则同 _hls_formats 和浏览器下载器。"""
+    found: dict[int, list] = {}
+    for f in formats:
+        h = int(f.get("height") or 0)
+        if not h or f.get("vcodec") in (None, "none") or not _tier_codec_ok(f):
+            continue
+        codec = str(f.get("vcodec"))
+        kept = found.get(h)
+        if kept is None or (_is_vp9(f) and not _is_vp9({"vcodec": kept[2]})):
+            found[h] = [h, _short_side(f), codec]
+    return sorted(found.values(), reverse=True)
 
 
 def _track_key(f: dict) -> tuple[int, str, bool]:
@@ -501,9 +530,7 @@ def _hls_result(vid: str, path: Path, info: dict, media) -> dict:
         "author": info.get("uploader") or info.get("channel") or "",
         "channel_id": info.get("channel_id") or "",
         "thumbnail": thumbnails[-1].get("url", "") if thumbnails else "",
-        "heights": sorted(
-            {int(f["height"]) for f in info.get("formats") or [] if f.get("height") and f.get("vcodec") != "none"}
-        ),
+        "tiers": tiers(info.get("formats") or []),
         "streams": [
             {"codec_type": "video", "width": media.width, "height": media.height, "avg_frame_rate": str(media.fps)},
             {"codec_type": "audio"},
@@ -649,10 +676,11 @@ async def parse(url: str):
 
     probing = _FRESH.get()
     src, result = await ensure(url, 144 if probing else 720, key="probe" if probing else "parse")
-    heights = set(result.get("heights") or [])
+    # 旧版下载器只报 heights（没有编码和宽度）
+    listed = result.get("tiers") or [[h, h, ""] for h in result.get("heights") or []]
     formats = [
-        FormatInfo(label=f"{h}p", height=h, ext="mp4", format_spec=f"youtube-native:{h}")
-        for h in sorted(heights, reverse=True)
+        FormatInfo(label=f"{short}p", height=h, ext="mp4", format_spec=f"youtube-native:{h}", codec=codec)
+        for h, short, codec in sorted(listed, reverse=True)
         if src.height < h <= 16384
     ]
     formats.append(FormatInfo(label="仅音频", ext="m4a", height=0, format_spec="youtube-native:audio"))
