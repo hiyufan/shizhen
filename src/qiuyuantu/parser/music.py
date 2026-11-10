@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
-from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.parse import parse_qs, urljoin, urlparse, urlunparse
 
 import httpx
 from parsel import Selector
@@ -13,6 +14,7 @@ from .errors import ParseError
 
 _KINDS = {"song", "album", "playlist"}
 _QQ_PATHS = {"song": "songDetail", "album": "albumDetail", "playlist": "playlist"}
+_SHORT_HOPS = 4
 
 
 def _host_in(host: str, domains: tuple[str, ...]) -> bool:
@@ -34,11 +36,21 @@ def _legacy_id(value: str) -> tuple[str, str]:
     return kind, ident
 
 
-async def _expand_short(parser: BaseParser, url: str, hosts: tuple[str, ...]) -> str:
-    if (urlparse(url).hostname or "").lower() in hosts:
-        response = await parser.fetch("GET", url, follow_redirects=True)
-        return str(response.url)
-    return url
+async def _short_target(parser: BaseParser, url: str, hosts: tuple[str, ...], target) -> tuple[str, str]:
+    """短链逐跳读 Location，认得出作品就停，返回 target(url) 的结果。
+
+    不去抓落地页：要的只是地址里的作品 ID，App 分享落地页又大又慢，还可能中途断开。
+    """
+    if (urlparse(url).hostname or "").lower() not in hosts:
+        return target(url)
+    for _ in range(_SHORT_HOPS):
+        location = await parser.redirect_target(url)
+        if not location:
+            break
+        url = urljoin(url, location)
+        with contextlib.suppress(ParseError):
+            return target(url)
+    return target(url)
 
 
 def _cover_info(title: str, cover: str, author: VideoAuthor, page_url: str) -> VideoInfo:
@@ -104,8 +116,7 @@ class NetEaseMusic(BaseParser):
         return {"User-Agent": self.ua("windows"), "Referer": "https://music.163.com/"}
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        url = await _expand_short(self, share_url, ("163cn.tv",))
-        kind, ident = netease_target(url)
+        kind, ident = await _short_target(self, share_url, ("163cn.tv",), netease_target)
         paths = {
             "song": f"/api/song/detail?ids=%5B{ident}%5D",
             "album": f"/api/v1/album/{ident}",
@@ -199,8 +210,7 @@ class QQMusic(BaseParser):
         return cover
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        url = await _expand_short(self, share_url, ("c6.y.qq.com", "c.y.qq.com"))
-        kind, ident = qq_target(url)
+        kind, ident = await _short_target(self, share_url, ("c6.y.qq.com", "c.y.qq.com"), qq_target)
         canonical = f"https://y.qq.com/n/ryqq_v2/{_QQ_PATHS[kind]}/{ident}"
         html = await self.get_text(canonical, follow_redirects=True)
         sel = Selector(html)

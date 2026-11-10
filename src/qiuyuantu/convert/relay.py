@@ -155,9 +155,16 @@ class RelayTransport(httpx.AsyncBaseTransport):
         }
         if limit := request.extensions.get(MAX_BYTES):
             relay_headers["x-relay-max"] = str(int(limit))
-        resp = await self._client.post(
-            self.relay_url, params={"url": str(request.url)}, headers=relay_headers, content=body
+        resp = await self._client.send(
+            self._client.build_request(
+                "POST", self.relay_url, params={"url": str(request.url)}, headers=relay_headers, content=body
+            ),
+            stream=True,
         )
+        try:
+            complete = await _read(resp)
+        finally:
+            await resp.aclose()
         if resp.status_code != 200:
             raise httpx.TransportError(f"中继返回 {resp.status_code}: {resp.text[:120]}", request=request)
         status = int(resp.headers.get("x-relay-status", "599"))
@@ -167,7 +174,8 @@ class RelayTransport(httpx.AsyncBaseTransport):
             pairs = json.loads(base64.b64decode(resp.headers.get("x-relay-headers", "e30=")).decode("utf-8"))
         except Exception:  # noqa: BLE001
             pairs = []
-        return httpx.Response(status, headers=[(k, v) for k, v in pairs], content=_body(resp, request), request=request)
+        content = _body(resp, request) if complete else b""
+        return httpx.Response(status, headers=[(k, v) for k, v in pairs], content=content, request=request)
 
     async def ping(self) -> None:
         """戳一下中继本身，不产生任何出站请求。
@@ -184,6 +192,21 @@ class RelayTransport(httpx.AsyncBaseTransport):
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+async def _read(resp: httpx.Response) -> bool:
+    """收中继回来的正文。正文断了、但目标回的是跳转时返回 False，由调用方按空正文处理。
+
+    有的源站给跳转配一个声明了 gzip 的 0 字节正文（QQ 音乐短链），边缘运行时去解压它会出错，
+    响应头到了之后流被重置。跳转要的 Location 已经在头里，不该为此判整次请求失败。
+    """
+    try:
+        await resp.aread()
+    except httpx.TransportError:
+        if resp.status_code == 200 and resp.headers.get("x-relay-status", "").startswith("3"):
+            return False
+        raise
+    return True
 
 
 def _body(resp: httpx.Response, request: httpx.Request) -> bytes:

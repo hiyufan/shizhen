@@ -79,6 +79,32 @@ async def test_broken_gzip_is_a_network_error(body):
         await _get(tr)
 
 
+class _ResetStream(httpx.AsyncByteStream):
+    """响应头到了之后流被重置：边缘运行时读不了源站正文时就是这个样子。"""
+
+    async def __aiter__(self):
+        raise httpx.RemoteProtocolError("<StreamReset stream_id:1, error_code:2, remote_reset:True>")
+        yield b""
+
+
+def _reset_reply(status: int) -> httpx.Response:
+    pairs = [["location", "https://i.y.qq.com/v8/playsong.html?songmid=abc"]] if status == 302 else []
+    headers = {"x-relay-status": str(status), "x-relay-headers": base64.b64encode(json.dumps(pairs).encode()).decode()}
+    return httpx.Response(200, headers={**headers, "x-relay-encoding": "gzip"}, stream=_ResetStream())
+
+
+async def test_redirect_survives_a_body_the_edge_could_not_read():
+    # 跳转配了个声明 gzip 的 0 字节正文：Location 在头里，照常交给上层跟跳转
+    response = await _get(_transport(lambda request: _reset_reply(302)))
+    assert response.status_code == 302 and response.content == b""
+    assert response.headers["location"] == "https://i.y.qq.com/v8/playsong.html?songmid=abc"
+
+
+async def test_broken_body_of_a_normal_page_is_still_an_error():
+    with pytest.raises(httpx.RemoteProtocolError):
+        await _get(_transport(lambda request: _reset_reply(200)))
+
+
 def test_edge_image_url_is_stable_within_the_hour(monkeypatch):
     monkeypatch.setattr(relay, "RELAY_URL", "https://edge.example.com/relay")
     monkeypatch.setattr(relay, "RELAY_TOKEN", "tok")

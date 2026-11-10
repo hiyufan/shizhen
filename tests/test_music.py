@@ -213,6 +213,46 @@ async def test_short_links_resolve_before_resource_detection(music_http, source)
     assert info.source == source and len(info.images) == 1
 
 
+async def test_short_link_stops_at_the_app_share_page_without_fetching_it(music_http):
+    routes, calls = music_http
+    # App 分享页没登记在 routes 里：去抓它就会触发「意外的外网请求」
+    routes["https://c6.y.qq.com/base/fcgi-bin/u?__=abc"] = (
+        302,
+        {"Location": "https://i.y.qq.com/v8/playsong.html?ADTAG=cbshare&songmid=songMID&type=0"},
+    )
+    routes["https://y.qq.com/n/ryqq_v2/songDetail/songMID"] = f'<meta property="og:image" content="{QQ_COVER}">'
+    routes["https://y.gtimg.cn/music/photo_new/T002M000albumMID_1.jpg"] = (200, {"Content-Type": "image/jpeg"})
+    info = await QQMusic().parse_share_url("https://c6.y.qq.com/base/fcgi-bin/u?__=abc")
+    assert info.page_url == "https://y.qq.com/n/ryqq_v2/songDetail/songMID"
+    assert [str(call.url) for call in calls][:2] == [
+        "https://c6.y.qq.com/base/fcgi-bin/u?__=abc",
+        "https://y.qq.com/n/ryqq_v2/songDetail/songMID",
+    ]
+
+
+async def test_short_link_follows_intermediate_hops_until_a_work_is_recognized(music_http):
+    routes, _ = music_http
+    routes["https://163cn.tv/abc"] = (302, {"Location": "https://163cn.tv/go?to=abc"})
+    routes["https://163cn.tv/go?to=abc"] = (302, {"Location": "/landing?from=share"})
+    routes["https://163cn.tv/landing?from=share"] = (302, {"Location": "https://y.music.163.com/m/song?id=186016"})
+    routes["https://music.163.com/api/song/detail?ids=%5B186016%5D"] = {
+        "code": 200,
+        "songs": [{"name": "歌", "album": {"picUrl": NET_COVER}, "artists": [{"name": "歌手"}]}],
+    }
+    info = await NetEaseMusic().parse_share_url("https://163cn.tv/abc")
+    assert info.page_url == "https://music.163.com/song?id=186016"
+
+
+async def test_short_link_to_an_unsupported_page_says_so(music_http):
+    routes, _ = music_http
+    mv = "https://i2.y.qq.com/n3/other/pages/details/mv.html?vid=v00"
+    routes["https://c6.y.qq.com/base/fcgi-bin/u?__=mv"] = (302, {"Location": mv})
+    routes[mv] = "mv page"
+    with pytest.raises(ParseError) as error:
+        await QQMusic().parse_share_url("https://c6.y.qq.com/base/fcgi-bin/u?__=mv")
+    assert error.value.reason == "unsupported"
+
+
 def test_music_metadata_and_images_use_domestic_proxy_and_cdn_referers(monkeypatch):
     monkeypatch.setenv("PARSE_VIDEO_PROXY_CN", "http://cn:8080")
     for source, url, referer in (
