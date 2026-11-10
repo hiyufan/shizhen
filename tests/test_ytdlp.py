@@ -78,3 +78,43 @@ def test_storyboard_and_jpeg_formats_cannot_become_the_highest_video():
     info = YtDlp._to_video_info({"formats": formats}, "https://example.com/video")
     assert info.height == 720
     assert info.formats == []
+
+
+# YouTube 竖屏 1080p 同时有 AV1 / VP9 / H.264 三路画面、Opus / AAC 两路声音（2026-11 实际的格式表）
+_SHORTS = [
+    _fmt(format_id="18", ext="mp4", vcodec="avc1.42001E", acodec="mp4a.40.2", height=640, width=360, tbr=600),
+    _fmt(format_id="399", ext="mp4", vcodec="av01.0.08M.08", height=1920, width=1080, fps=30, tbr=2400),
+    _fmt(format_id="248", ext="webm", vcodec="vp9", height=1920, width=1080, fps=30, tbr=3000),
+    _fmt(format_id="137", ext="mp4", vcodec="avc1.640028", height=1920, width=1080, fps=30, tbr=4300),
+    _fmt(format_id="140", ext="m4a", acodec="mp4a.40.2", abr=129),
+    _fmt(format_id="251", ext="webm", acodec="opus", abr=140),
+]
+
+
+def _selected(spec, formats):
+    import yt_dlp
+
+    with yt_dlp.YoutubeDL({"quiet": True, "merge_output_format": "mp4"}) as ydl:
+        ctx = {"formats": [{**f, "format": f["format_id"]} for f in formats], "incomplete_formats": False}
+        chosen = next(ydl.build_format_selector(spec)(ctx))
+    return [f["format_id"] for f in chosen.get("requested_formats") or [chosen]]
+
+
+def test_photos_compatible_h264_and_aac_are_merged_for_the_listed_tier():
+    """yt-dlp 默认会挑 AV1 + Opus，合成的 MP4 iPhone 相册存不进去；列出的档位要和实际下载的编码一致。"""
+    info = YtDlp._to_video_info({"formats": _SHORTS}, "https://www.youtube.com/shorts/1")
+    tier = info.formats[0]
+    assert (tier.label, tier.codec) == ("1080p", "avc1.640028")
+    assert _selected(tier.format_spec, _SHORTS) == ["137", "140"]
+
+
+def test_higher_framerate_is_kept_when_only_vp9_has_it():
+    formats = [
+        _fmt(format_id="137", ext="mp4", vcodec="avc1.640028", height=1080, width=1920, fps=30, tbr=4300),
+        _fmt(format_id="303", ext="webm", vcodec="vp9", height=1080, width=1920, fps=60, tbr=4000),
+        _fmt(format_id="140", ext="m4a", acodec="mp4a.40.2", abr=129),
+        _fmt(format_id="251", ext="webm", acodec="opus", abr=140),
+    ]
+    tier = YtDlp._to_video_info({"formats": formats}, "https://www.youtube.com/watch?v=1").formats[0]
+    assert (tier.label, tier.codec) == ("1080p60", "vp9")
+    assert _selected(tier.format_spec, formats) == ["303", "140"]

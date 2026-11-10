@@ -316,17 +316,17 @@ def _merge_options(formats: list[dict[str, Any]], primary: dict[str, Any]) -> li
     options = []
     heights = sorted({int(number(f.get("height"))) for f in videos}, reverse=True)
     for h in heights:
-        same_height = [f for f in videos if number(f.get("height")) == h]
-        best = max(same_height, key=lambda f: (number(f.get("fps")), number(f.get("tbr"))))
+        candidates, h264 = _tier_candidates([f for f in videos if number(f.get("height")) == h])
+        best = max(candidates, key=lambda f: number(f.get("tbr")))
         if not h or _video_rank(best) <= _video_rank(primary):
             continue
         width = int(number(best.get("width")))
-        approx = max((f.get("filesize") or f.get("filesize_approx") or 0 for f in same_height), default=0)
+        approx = max((f.get("filesize") or f.get("filesize_approx") or 0 for f in candidates), default=0)
         options.append(
             FormatInfo(
                 label=f"{short_side(width, h)}p"
                 + (str(round(number(best.get("fps")))) if number(best.get("fps")) > 45 else ""),
-                format_spec=f"bv[height={h}]+ba/b[height={h}]/bv[height={h}]",
+                format_spec=_tier_spec(h, h264),
                 ext="mp4",
                 height=h,
                 filesize=int(approx),
@@ -339,6 +339,24 @@ def _merge_options(formats: list[dict[str, Any]], primary: dict[str, Any]) -> li
     if any(_is_audio(f) and not _is_video(f) for f in formats):
         options.append(FormatInfo(label="仅音频", format_spec="ba[ext=m4a]/ba", ext="m4a", height=0))
     return options
+
+
+def _tier_candidates(same_height: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
+    """同一清晰度里实际会下的那几路，和是否限定 H.264。先保帧率，同帧率有 H.264 就只用它。
+
+    yt-dlp 默认把 AV1 / VP9 排在 H.264 前面，音轨也偏好 Opus：YouTube 1080p 会合成 AV1 + Opus 的 MP4，
+    iPhone 的照片 App 存不进去，很多播放器也放不了。HLS 和浏览器兜底在 1080p 以内同样只取 H.264。"""
+    top = max(number(f.get("fps")) for f in same_height)
+    fastest = [f for f in same_height if number(f.get("fps")) == top]
+    h264 = [f for f in fastest if str(f.get("vcodec") or "").startswith("avc1")]
+    return (h264, True) if h264 else (fastest, False)
+
+
+def _tier_spec(h: int, h264: bool) -> str:
+    """优先 AAC 音轨（m4a）；限定 H.264 时先按它挑，挑不到再退回原来的不限编码写法。"""
+    pick = f"[height={h}]"
+    codec = f"bv{pick}[vcodec^=avc1]+ba[ext=m4a]/bv{pick}[vcodec^=avc1]+ba/" if h264 else ""
+    return f"{codec}bv{pick}+ba[ext=m4a]/bv{pick}+ba/b{pick}/bv{pick}"
 
 
 def _video_rank(fmt: dict) -> tuple[float, float, float]:
