@@ -332,10 +332,14 @@ function sourceRequest(d, title) {
   return request;
 }
 
+// 做完就先往手机上拉的文件上限：整份放在浏览器内存里，再大的等用户自己点
+const EAGER_MAX = 100 * 1024 * 1024;
+
 // 照片 App 只认 mp4 / mov 里的 H.264 / HEVC；webm、音频、AV1 / VP9 还是走下载
 function jobPhotosButton(f, done, file, baseName) {
   if (!PHOTOS || !/\.mp4$/i.test(done.filename || '') || !albumSafe(f.codec)) return null;
-  return photosButton(t('存到相册'), oneFile(file + '?inline=1', baseName + '_' + f.label.replace(/\s+/g, ''), 'video/mp4'), 'btn sm dark');
+  const load = oneFile(file + '?inline=1', baseName + '_' + f.label.replace(/\s+/g, ''), 'video/mp4');
+  return photosButton(t('存到相册'), load, 'btn sm dark', done.filesize > 0 && done.filesize <= EAGER_MAX);
 }
 
 async function startDownload(f, d, baseName, jobsBox) {

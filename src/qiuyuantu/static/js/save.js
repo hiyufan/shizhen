@@ -27,28 +27,60 @@ const MIME_EXT = {
   'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
 };
 const STALL_MS = 20000;
+// 能接着下的时候不用等那么久：断了只是多发一次请求，不会白下
+const RESUME_STALL_MS = 10000;
 const ATTEMPTS = 3;
+// 一路卡一路续的总次数上限，免得每次只挪一点、没完没了
+const RESUMES = 24;
 
-// 拉一个文件（同源地址），边下边报进度。跨境转发偶尔卡在半路：20 秒没收到数据就算卡住，
-// 换个地址（&retry=n，和 proxyImg 一样避开缓存里那份残缺的）再试，最多三次
-async function download(url, name, onBytes, type, guard) {
-  const res = await fetch(url, fetchOptions(url, guard));
-  if (!res.ok) throw new Error(t('下载失败（{status}）', { status: res.status }));
-  const mime = type || (res.headers.get('content-type') || '').split(';')[0] || 'application/octet-stream';
+/** 一次下载收到的部分：type 是调用方指定的类型（不信源站的 Content-Type 时用） */
+const newPart = (type = '') => ({ type, chunks: [], got: 0, total: 0, mime: '', etag: '', resumable: false });
+
+/** 续传请求的响应是不是正好从已收到的位置接上 */
+function continues(res, part) {
+  if (!part.got || res.status !== 206) return false;
+  const m = /^bytes (\d+)-\d+\/(\d+)$/.exec(res.headers.get('content-range') || '');
+  return !!m && +m[1] === part.got && +m[2] === part.total;
+}
+
+// 只对本站地址（任务结果、服务器转发）续传：跨域带 Range 在旧浏览器上要预检。
+// 不知道总大小、或者正文压缩过（字节数对不上）的也不续
+const canResume = (res, url, total) => /^\/(?!\/)/.test(url) && total > 0
+  && !res.headers.get('content-encoding') && /bytes/i.test(res.headers.get('accept-ranges') || '');
+
+/** 从头收一份：记下大小和版本，判断之后断了能不能接着下 */
+function startOver(res, part, url) {
+  if (res.status === 206) throw new Error(t('下载失败（{status}）', { status: res.status }));
+  const etag = res.headers.get('etag') || '';
   const total = +res.headers.get('content-length') || 0;
-  checkLimit(total, guard);
+  Object.assign(part, {
+    chunks: [],
+    got: 0,
+    total,
+    mime: part.type || (res.headers.get('content-type') || '').split(';')[0] || 'application/octet-stream',
+    etag: etag.startsWith('"') ? etag : '',
+    resumable: canResume(res, url, total),
+  });
+}
+
+// 拉一个文件到 part 里，边下边报进度。跨境转发偶尔卡在半路：一段时间没收到数据就算卡住，由调用方
+// 换个地址（&retry=n，和 proxyImg 一样避开缓存里那份残缺的）再试。part 记着已经收到的部分：
+// 本站地址支持按范围取，重试时从断点接着下；源站不认范围（回 200）就从头收
+async function download(url, part, guard, onBytes) {
+  const res = await fetch(url, fetchOptions(url, guard, part));
+  if (!res.ok) throw new Error(t('下载失败（{status}）', { status: res.status }));
+  if (!continues(res, part)) startOver(res, part, url);
+  checkLimit(part.total, guard);
   const reader = res.body.getReader();
-  const chunks = [];
-  let got = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    guard.touch();
-    chunks.push(value);
-    got += value.length;
-    if (onBytes) onBytes(got, total);
+    guard.touch(part.resumable);
+    part.chunks.push(value);
+    part.got += value.length;
+    if (onBytes) onBytes(part.got, part.total);
   }
-  return downloadedFile(chunks, name, mime);
+  if (part.resumable && part.got < part.total) throw new Error(t('网络太慢，下载卡住了'));
 }
 
 function downloadedFile(chunks, name, mime) {
@@ -97,9 +129,15 @@ export function imageButton(label, url, name, share = PHOTOS) {
   return btn;
 }
 
-/** 直连推特要不带 Referer，不然 403（防盗链） */
-const fetchOptions = (url, guard) =>
-  (canDirect(url) ? { signal: guard.signal, referrerPolicy: 'no-referrer' } : { signal: guard.signal });
+/** 直连推特要不带 Referer，不然 403（防盗链）；已经收到一部分的本站文件只要剩下的字节 */
+function fetchOptions(url, guard, part) {
+  if (canDirect(url)) return { signal: guard.signal, referrerPolicy: 'no-referrer' };
+  if (!part?.resumable || !part.got) return { signal: guard.signal };
+  const headers = { Range: 'bytes=' + part.got + '-' };
+  // 文件在两次请求之间换过（任务重做了）时服务器回整份，download 那边从头收
+  if (part.etag) headers['If-Range'] = part.etag;
+  return { signal: guard.signal, headers };
+}
 
 /** 设了上限的下载：不知道多大或者超了就不下 */
 function checkLimit(total, guard) {
@@ -108,7 +146,7 @@ function checkLimit(total, guard) {
   throw new Error(t('文件太大，换服务器转发'));
 }
 
-/** 一段时间没收到数据就中断请求；每收到一块调 touch() 续命 */
+/** 一段时间没收到数据就中断请求；每收到一块调 touch() 续命，能续传时（quick）等得短一些 */
 function stallGuard(limit = 0) {
   const ctl = new AbortController();
   let timer = setTimeout(() => ctl.abort(), STALL_MS);
@@ -116,20 +154,31 @@ function stallGuard(limit = 0) {
     signal: ctl.signal,
     limit,
     cancel() { ctl.abort(); },
-    touch() { clearTimeout(timer); timer = setTimeout(() => ctl.abort(), STALL_MS); },
+    touch(quick = false) {
+      clearTimeout(timer);
+      timer = setTimeout(() => ctl.abort(), quick ? RESUME_STALL_MS : STALL_MS);
+    },
     done() { clearTimeout(timer); },
   };
 }
 
+const retryUrl = (url, attempt) => (attempt ? url + (url.includes('?') ? '&' : '?') + 'retry=' + attempt : url);
+
 async function fetchWithRetry(url, name, onBytes, type, attempts) {
-  for (let attempt = 0; ; attempt++) {
+  const part = newPart(type);
+  for (let attempt = 0, failed = 0; ; attempt++) {
     const guard = stallGuard();
-    const target = attempt ? url + (url.includes('?') ? '&' : '?') + 'retry=' + attempt : url;
+    const before = part.got;
     try {
-      return await download(target, name, onBytes, type, guard);
+      await download(retryUrl(url, attempt), part, guard, onBytes);
+      return downloadedFile(part.chunks, name, part.mime);
     } catch (e) {
-      if (attempt >= attempts - 1) throw new Error(e.name === 'AbortError' ? t('网络太慢，下载卡住了') : e.message);
-      if (onBytes) onBytes(0, 0);
+      // 接着下并且又收到了数据的不算失败次数：线路时通时断也能一段段下完
+      failed = part.resumable && part.got > before ? 0 : failed + 1;
+      if (failed >= attempts || attempt >= RESUMES) {
+        throw new Error(e.name === 'AbortError' ? t('网络太慢，下载卡住了') : e.message);
+      }
+      if (onBytes && !part.resumable) onBytes(0, 0);
     } finally {
       guard.done();
     }
@@ -156,8 +205,10 @@ const DIRECT_MAX = 200 * 1024 * 1024;
 /** 跨域直连下载成文件；文件太大、连不上、中途断了都返回 null，由调用方退回服务器转发 */
 export async function fetchDirect(url, name, onBytes, type = 'video/mp4') {
   const guard = stallGuard(DIRECT_MAX);
+  const part = newPart(type);
   try {
-    return await download(url, name, onBytes, type, guard);
+    await download(url, part, guard, onBytes);
+    return downloadedFile(part.chunks, name, part.mime);
   } catch (_) {
     return null;
   } finally {
@@ -193,8 +244,10 @@ export const oneFile = (sources, name, type) => async (onBytes) => [await fetchF
 
 // 「存到相册」按钮：第一次点先把文件拉到手机上（显示进度），拉完立刻弹分享面板。
 // Safari 要求弹面板离点击不能太久，大文件拉完它会拒绝（NotAllowedError）：这时按钮变成
-// 「点这里存到相册」，再点一下，文件已经在手里，直接弹
-export function photosButton(label, load, cls = 'btn dark') {
+// 「点这里存到相册」，再点一下，文件已经在手里，直接弹。
+// eager：按钮一出来就开始拉，不等用户点。服务器刚按用户的要求做完的文件用它：文件到手机这一段
+// （跨境）往往比服务器处理还久，早点开始，点的时候多半已经在手里了
+export function photosButton(label, load, cls = 'btn dark', eager = false) {
   let files = null;
   let busy = false;
   const btn = el('button', { class: cls, type: 'button' }, label);
@@ -235,6 +288,11 @@ export function photosButton(label, load, cls = 'btn dark') {
     if (busy) return;
     if (files || (await prepare())) await share();
   });
+  if (eager) {
+    prepare().then((ok) => {
+      if (ok) btn.textContent = t('准备好了，点这里存到相册');
+    });
+  }
   return btn;
 }
 
