@@ -7,9 +7,9 @@ RUN apt-get update \
  && echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp.gpg] https://pkg.cloudflareclient.com/ bookworm main" > /etc/apt/sources.list.d/cloudflare-client.list \
  && apt-get update && apt-get install -y --no-install-recommends cloudflare-warp \
  && rm -rf /var/lib/apt/lists/*
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-EXPOSE 1080
+COPY entrypoint.sh renew.sh /
+RUN chmod +x /entrypoint.sh /renew.sh
+EXPOSE 1080 1081
 HEALTHCHECK --interval=60s --timeout=15s --start-period=60s \
   CMD curl -fsS -m 10 -x http://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -q "warp=on" || exit 1
 ENTRYPOINT ["/entrypoint.sh"]

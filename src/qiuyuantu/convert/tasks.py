@@ -14,8 +14,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..utils import gather_or_cancel, run_ytdlp
-from . import animated, artwork, bilibili, cctv, config, ffmpeg, livephoto, store, ugoira, xinpianchang
+from ..utils import bot_checked, gather_or_cancel, run_ytdlp
+from . import animated, artwork, bilibili, cctv, config, fallback_exit, ffmpeg, livephoto, store, ugoira, xinpianchang
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
 from .jobs import Job
 from .net import safe_filename
@@ -46,7 +46,23 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
         return await xinpianchang.download(
             page_url, format_spec, out_dir, stem, report, fit=fit, cancelled=lambda: job.abort
         )
-    try:
+    return await _generic_ytdlp(job, page_url, format_spec, out_dir, stem, report=report, fit=fit)
+
+
+async def _generic_ytdlp(
+    job: Job,
+    page_url: str,
+    format_spec: str,
+    out_dir: Path,
+    stem: str,
+    *,
+    report: Callable[[float, str], None],
+    fit: bool,
+) -> Path:
+    """没有专用下载器的站点都走 yt-dlp；YouTube 的出口被拦时先换出口，再交给原生兜底。"""
+    from . import youtube_native
+
+    async def download() -> Path:
         return await run_ytdlp(
             ytdlp_download,
             page_url,
@@ -57,18 +73,31 @@ async def _ytdlp(job: Job, page_url: str, format_spec: str, out_dir: Path, stem:
             cancelled=lambda: job.abort,
             fit=fit,
         )
+
+    try:
+        return await _renewing(download)
     except Exception as err:
         if not youtube_native.should_try(err, page_url):
             raise
-        height = re.search(r"height\s*(?:<=|=)\s*(\d+)", format_spec)
-        native_format = (
-            "youtube-native:audio"
-            if format_spec.startswith("ba")
-            else f"youtube-native:{height[1]}"
-            if height
-            else "youtube-native:720"
-        )
-        return await youtube_native.download(page_url, native_format, out_dir, stem, report)
+        return await youtube_native.download(page_url, _native_format(format_spec), out_dir, stem, report)
+
+
+def _native_format(format_spec: str) -> str:
+    if format_spec.startswith("ba"):
+        return "youtube-native:audio"
+    height = re.search(r"height\s*(?:<=|=)\s*(\d+)", format_spec)
+    return f"youtube-native:{height[1] if height else 720}"
+
+
+async def _renewing(download: Callable[[], Awaitable[Path]]) -> Path:
+    """备用出口也被要求验证时换一个出口地址重下一次；仍不行再交给调用方的兜底。"""
+    seen = fallback_exit.generation()
+    try:
+        return await download()
+    except Exception as err:
+        if not (bot_checked(err) and await fallback_exit.renew(seen)):
+            raise
+    return await download()
 
 
 def _source_format(format_spec: str) -> str:

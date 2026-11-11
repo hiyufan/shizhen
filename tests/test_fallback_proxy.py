@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from qiuyuantu import utils
-from qiuyuantu.convert import net
+from qiuyuantu.convert import fallback_exit, net
 from qiuyuantu.parser import ytdlp
 
 BOT = "ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies-from-browser"
@@ -96,6 +96,39 @@ def _parse_many(count, url="https://www.youtube.com/watch?v=abc"):
             await ytdlp.YtDlp().parse_share_url(url)
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("fallback_error", "renewed", "expected_calls"),
+    [
+        (BOT, True, [None, "http://warp:1080", "http://warp:1080"]),
+        (BOT, False, [None, "http://warp:1080"]),
+        ("HTTP Error 403: Forbidden", True, [None, "http://warp:1080"]),  # 不是按地址拦的，换出口没用
+    ],
+)
+def test_checked_fallback_exit_is_renewed_and_retried_once(warp, monkeypatch, fallback_error, renewed, expected_calls):
+    calls, asked = [], []
+
+    def extract(url, proxy=None):
+        calls.append(proxy)
+        if proxy is None:
+            raise RuntimeError(BOT)
+        if len(calls) == 2:
+            raise RuntimeError(fallback_error)
+        return _formats()
+
+    async def renew(seen):
+        asked.append(seen)
+        return renewed
+
+    monkeypatch.setattr(ytdlp.YtDlp, "_extract", staticmethod(extract))
+    monkeypatch.setattr(fallback_exit, "renew", renew)
+    if len(expected_calls) == 3:
+        _parse_many(1)
+    else:
+        with pytest.raises(RuntimeError):
+            _parse_many(1)
+    assert calls == expected_calls and len(asked) == (1 if fallback_error == BOT else 0)
 
 
 def test_repeated_bot_checks_skip_direct_until_probe_window(warp, monkeypatch):

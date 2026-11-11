@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ..utils import fallback_proxy, is_cn_url, youtube_proxy
+from ..utils import fallback_proxy, fallback_renew, is_cn_url, youtube_proxy
 from . import config, relay
 
 # 各家 CDN 直链需要带的 Referer，缺了会 403
@@ -230,7 +230,7 @@ _GUARD = os.environ.get("PARSE_VIDEO_SSRF_GUARD", "1") == "1"
 
 
 def _trusted_hosts() -> set[str]:
-    """配置里写死的内网服务可以连：YouTube PO Token 服务（bgutil）、代理。"""
+    """配置里写死的内网服务可以连：YouTube PO Token 服务（bgutil）、代理、备用出口的控制口。"""
     urls = (
         config.POT_URL,
         os.getenv("PARSE_VIDEO_PROXY"),
@@ -238,7 +238,10 @@ def _trusted_hosts() -> set[str]:
         os.getenv("PARSE_VIDEO_PROXY_YOUTUBE"),
         fallback_proxy(),
     )
-    return {host.lower() for url in urls if url and (host := urlparse(url).hostname)}
+    hosts = {host.lower() for url in urls if url and (host := urlparse(url).hostname)}
+    if renew := fallback_renew():
+        hosts.add(renew[0].lower())
+    return hosts
 
 
 def _guarded_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):  # noqa: A002 - 和 socket 的签名一致

@@ -7,6 +7,7 @@ YouTube / TikTok / Instagram 以及其它没有专用解析器的站点, 统一�
 
 import asyncio
 import contextlib
+import logging
 import re
 import time
 from http.cookies import CookieError, SimpleCookie
@@ -14,13 +15,18 @@ from typing import Any
 
 from .. import progress
 from ..convert import config as convert_config
-from ..convert import net
+from ..convert import fallback_exit, net
 from ..convert.ffmpeg import ffmpeg_dir
-from ..utils import fallback_proxy, is_youtube_url, proxy_for, run_ytdlp, wants_fallback, youtube_proxy
+from ..utils import bot_checked, fallback_proxy, is_youtube_url, proxy_for, run_ytdlp, wants_fallback, youtube_proxy
 from . import instagram, tiktok
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import classify
 from .quality import number, short_side
+
+log = logging.getLogger("uvicorn.error")
+
+# 已有原生兜底缓存的视频再次解析时，给备用出口这么久去换回完整结果，超时就用缓存
+_REFRESH_SECONDS = 12
 
 
 class _DirectBreaker:
@@ -62,11 +68,18 @@ async def _whole_carousel(info: dict[str, Any], share_url: str) -> VideoInfo | N
 
 class YtDlp(BaseParser):
     async def parse_share_url(self, share_url: str) -> VideoInfo:
+        """原生兜底缓存过的视频也先走常规路径：缓存只有兜底自己那几档，出口恢复后要能换回完整结果。"""
         from ..convert import youtube_native
 
-        if youtube_native.cached(share_url):
-            progress.emit("cached")
-            return await youtube_native.parse(share_url)
+        try:
+            return await self._parse(share_url)
+        except Exception as err:
+            if not youtube_native.cached(share_url):
+                raise
+            log.info("YouTube 常规路径没走通，沿用兜底缓存：%s", _brief(err))
+        return await youtube_native.parse(share_url)
+
+    async def _parse(self, share_url: str) -> VideoInfo:
         guarded = is_youtube_url(share_url) and bool(fallback_proxy())
         if guarded and _direct.skipping():
             return await self._without_direct(share_url)
@@ -74,7 +87,7 @@ class YtDlp(BaseParser):
             info = await run_ytdlp(self._extract, share_url)
             result = await _whole_carousel(info, share_url) or await self._usable_info(info, share_url)
         except Exception as err:
-            if guarded and wants_fallback(err, share_url):
+            if guarded and _worth_fallback(err, share_url):
                 _direct.blocked()
             return await self._recover(share_url, err)
         if guarded:
@@ -112,13 +125,12 @@ class YtDlp(BaseParser):
             with contextlib.suppress(Exception):
                 if post := await instagram.image_post(share_url):
                     return post
-        if wants_fallback(err, share_url):
+        if _worth_fallback(err, share_url):
             progress.emit("fallback", fallback=True)
             if youtube_native.should_try(err, share_url):
                 return await self._race_fallbacks(share_url)
             try:
-                info = await run_ytdlp(self._extract, share_url, fallback_proxy())
-                return await self._usable_info(info, share_url, fallback=True)
+                return await self._fallback_info(share_url)
             except Exception as fallback_err:
                 err = fallback_err
         if youtube_native.should_try(err, share_url):
@@ -139,6 +151,16 @@ class YtDlp(BaseParser):
             raise err from native_err
 
     async def _fallback_info(self, share_url: str) -> VideoInfo:
+        """走备用出口解析；这个出口自己也被要求验证时换一个出口地址再试一次。"""
+        seen = fallback_exit.generation()
+        try:
+            return await self._via_fallback(share_url)
+        except Exception as err:
+            if not (bot_checked(err) and await fallback_exit.renew(seen)):
+                raise
+        return await self._via_fallback(share_url)
+
+    async def _via_fallback(self, share_url: str) -> VideoInfo:
         info = await run_ytdlp(self._extract, share_url, fallback_proxy())
         return await self._usable_info(info, share_url, fallback=True)
 
@@ -146,16 +168,22 @@ class YtDlp(BaseParser):
         """默认路径失败后并行恢复；只接受可读媒体或完整验证的缓存。"""
         from ..convert import youtube_native
 
+        if youtube_native.cached(share_url):
+            # 缓存随时可用，不必和它赛跑；失败或超时由 parse_share_url 退回缓存
+            return await asyncio.wait_for(self._fallback_info(share_url), _REFRESH_SECONDS)
         fallback = asyncio.create_task(self._fallback_info(share_url))
         native = asyncio.create_task(youtube_native.parse(share_url))
         attempts = (fallback, native)
         try:
             for finished in asyncio.as_completed(attempts):
                 try:
-                    return await finished
+                    result = await finished
                 except Exception:
                     if fallback.done() and (err := fallback.exception()) and _definitive(err, share_url):
                         raise err from None
+                else:
+                    _note_slow_recovery(fallback, native)
+                    return result
             error = native.exception()
             if isinstance(error, (asyncio.TimeoutError, youtube_native.Refused)):
                 raise error
@@ -249,6 +277,30 @@ def specific_extractor(url: str) -> str:
     from yt_dlp.extractor import gen_extractor_classes
 
     return next((ie.ie_key() for ie in gen_extractor_classes() if ie.ie_key() != "Generic" and ie.suitable(url)), "")
+
+
+def _worth_fallback(err: Exception, share_url: str) -> bool:
+    """默认出口的结果用不了时要不要换备用出口。
+
+    除了明说被拦，YouTube 还会让默认出口「提取成功」却不给合流直链、或直链读不了（2026-11-10 复现：
+    只报「没有可读取的视频直链」）。这时备用出口几秒就能拿到完整结果，不能只等慢好几倍的原生兜底。"""
+    from ..convert import youtube_native
+
+    return wants_fallback(err, share_url) or bool(fallback_proxy() and youtube_native.should_try(err, share_url))
+
+
+def _brief(err: BaseException) -> str:
+    return f"{classify(err).reason} {type(err).__name__}: {str(err)[:160]}"
+
+
+def _note_slow_recovery(fallback: asyncio.Task, native: asyncio.Task) -> None:
+    """原生兜底比备用出口慢好几倍、档位也少；它赢了说明备用出口有事，留一行日志备查。"""
+    if not (native.done() and not native.cancelled() and native.exception() is None):
+        return
+    if not fallback.done():
+        log.info("YouTube 备用出口还没返回，原生兜底先完成")
+    elif not fallback.cancelled() and (err := fallback.exception()):
+        log.info("YouTube 备用出口失败，改用原生兜底的结果：%s", _brief(err))
 
 
 def _definitive(err: Exception, share_url: str) -> bool:

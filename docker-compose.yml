@@ -34,6 +34,8 @@ services:
       # PARSE_VIDEO_COOKIES_FILE: "/app/cookies.txt"
       # YouTube 对机房 IP 按视频抽查「确认不是机器人」，cookies / PO Token 都不管用时换 WARP 出口重试
       PARSE_VIDEO_FALLBACK_PROXY: "http://warp:1080"
+      # WARP 出口自己也被拦时，让 warp 容器重连换一个出口地址再试（docker/warp/renew.sh）；不配就不自动换
+      PARSE_VIDEO_FALLBACK_RENEW: "warp:1081"
       # 镜像内置原生 Chromium / SABR 失败兜底，同一会话的所有请求复用 WARP；设 0 可关闭
       # PARSE_VIDEO_YOUTUBE_NATIVE: "0"
       # 每 7 天自动升级 yt-dlp 并在空闲时重启（平台改版全靠它跟进）

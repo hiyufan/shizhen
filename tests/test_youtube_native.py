@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from qiuyuantu import status, web
 from qiuyuantu.convert import config, net, store, tasks
 from qiuyuantu.convert import youtube_native as native
+from qiuyuantu.parser import ytdlp
 from qiuyuantu.parser.base import VideoInfo
 from qiuyuantu.parser.errors import ParseError
 from qiuyuantu.parser.ytdlp import YtDlp
@@ -129,17 +130,84 @@ async def test_download_refuses_silent_resolution_downgrade(worker, monkeypatch,
     assert not (tmp_path / "downloads" / "4k.mp4").exists()
 
 
+BOT = "Sign in to confirm you’re not a bot"
+
+
 @pytest.mark.asyncio
-async def test_cached_alias_bypasses_extractors_and_busy_browser(worker, monkeypatch):
+async def test_cached_alias_survives_failing_extractors_and_busy_browser(worker, monkeypatch):
     info = await native.parse(PAGE)
+    calls = []
 
-    def no_extract(*_args):
-        raise AssertionError("已有验证缓存不应再调用 yt-dlp")
+    def extract(_url, proxy=None):
+        calls.append(proxy)
+        raise RuntimeError(BOT)
 
-    monkeypatch.setattr(YtDlp, "_extract", staticmethod(no_extract))
+    monkeypatch.setattr(YtDlp, "_extract", staticmethod(extract))
     async with native._semaphore():
-        alias = await asyncio.wait_for(YtDlp().parse_share_url(f"https://youtu.be/{VIDEO_ID}?t=30"), 0.2)
-    assert alias == info and len(worker) == 1
+        alias = await asyncio.wait_for(YtDlp().parse_share_url(f"https://youtu.be/{VIDEO_ID}?t=30"), 0.5)
+    assert alias == info and len(worker) == 1 and calls == [None]
+
+
+@pytest.mark.asyncio
+async def test_unreadable_direct_result_also_tries_fallback_exit(worker, monkeypatch):
+    """默认出口「提取成功」却没有可读直链时不报被拦；也要换备用出口，不能只等原生兜底。"""
+    monkeypatch.setenv("PARSE_VIDEO_FALLBACK_PROXY", "http://warp:1080")
+    calls = []
+    video_only = {
+        "url": "https://rr1.googlevideo.com/v",
+        "vcodec": "avc1",
+        "acodec": "none",
+        "ext": "mp4",
+        "height": 720,
+    }
+    merged = {"url": "https://rr1.googlevideo.com/a", "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4", "height": 360}
+
+    def extract(_url, proxy=None):
+        calls.append(proxy)
+        return {"title": "t", "duration": 3, "formats": [video_only, merged] if proxy else [video_only]}
+
+    async def check(info):
+        if not info.video_url:
+            raise ParseError("empty", "没有可读取的视频直链")
+
+    async def slow_native(_url):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(YtDlp, "_extract", staticmethod(extract))
+    monkeypatch.setattr(native, "check_media", check)
+    monkeypatch.setattr(native, "parse", slow_native)
+    for _ in range(3):
+        info = await asyncio.wait_for(YtDlp().parse_share_url(PAGE), 1)
+        assert info.video_url == "https://rr1.googlevideo.com/a"
+    # 连着两次用不了就先跳过默认出口
+    assert calls == [None, "http://warp:1080", None, "http://warp:1080", "http://warp:1080"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fallback", ["works", "blocked", "hangs"])
+async def test_cached_result_gives_way_to_recovered_fallback_exit(worker, monkeypatch, fallback):
+    """兜底缓存只有它自己那几档；备用出口恢复后要能换回完整结果，换不到时立刻用缓存。"""
+    cached_info = await native.parse(PAGE)
+    monkeypatch.setenv("PARSE_VIDEO_FALLBACK_PROXY", "http://warp:1080")
+    monkeypatch.setattr(ytdlp, "_REFRESH_SECONDS", 0.05)
+    full = VideoInfo(video_url="https://rr1.googlevideo.com/full.mp4", cover_url="")
+
+    def direct(_url, proxy=None):
+        raise RuntimeError(BOT)
+
+    async def fallback_info(_self, _url):
+        if fallback == "blocked":
+            raise RuntimeError(BOT)
+        if fallback == "hangs":
+            await asyncio.Event().wait()
+        return full
+
+    monkeypatch.setattr(YtDlp, "_extract", staticmethod(direct))
+    monkeypatch.setattr(YtDlp, "_fallback_info", fallback_info)
+    async with native._semaphore():
+        result = await asyncio.wait_for(YtDlp().parse_share_url(PAGE), 1)
+    assert result == (full if fallback == "works" else cached_info)
+    assert len(worker) == 1
 
 
 @pytest.mark.asyncio

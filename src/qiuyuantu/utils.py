@@ -112,6 +112,17 @@ def fallback_proxy() -> str:
     return os.getenv("PARSE_VIDEO_FALLBACK_PROXY", "").strip()
 
 
+def fallback_renew() -> tuple[str, int] | None:
+    """备用出口的换地址控制口，写成「主机:端口」；没配就不自动换（见 convert/fallback_exit.py）。"""
+    host, _, port = os.getenv("PARSE_VIDEO_FALLBACK_RENEW", "").strip().rpartition(":")
+    return (host, int(port)) if host and port.isdigit() else None
+
+
+def bot_checked(err: BaseException) -> bool:
+    """平台按出口地址要求「确认不是机器人」；403 / 429 这类不算，换地址不一定有用。"""
+    return bool(_BOT_CHECK.search(str(err)))
+
+
 def wants_fallback(err: BaseException, url: str = "") -> bool:
     text = str(err)
     status = getattr(getattr(err, "response", None), "status_code", None)
