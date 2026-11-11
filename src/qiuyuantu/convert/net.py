@@ -50,6 +50,7 @@ _REFERERS = {
     "yximgs.com": "https://www.kuaishou.com/",
     "twimg.com": "https://x.com/",
     "sinaimg.cn": "https://weibo.com/",
+    "video.weibo.com": "https://weibo.com/",  # 实况照片的视频地址先经这里跳到 livephoto.us.sinaimg.cn
     "weibocdn.com": "https://weibo.com/",
     "miaopai.com": "https://weibo.com/",
     "pipix.com": "https://h5.pipix.com/",

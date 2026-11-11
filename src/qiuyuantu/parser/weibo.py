@@ -40,12 +40,21 @@ def _status_formats(media: dict) -> list[FormatInfo]:
     return formats
 
 
+def _live_video(pic: dict) -> str:
+    """实况图的那段视频：桌面接口叫 video，手机接口叫 videoSrc，都是 video.weibo.com/media/play?livephoto=…
+    的跳转地址。跳过去的 livephoto.us.sinaimg.cn 才给文件；直接拼 us.sinaimg.cn/<id>.mov 会 403。
+    桌面接口的 video_hd 里文件名可能是空的，不用。"""
+    if pic.get("type") != "livephoto":
+        return ""
+    return _url(pic.get("video") or pic.get("videoSrc") or "")
+
+
 def _status_images(status: dict) -> list[ImgInfo]:
     pics = status.get("pics") or []
     if not pics:
         by_id = status.get("pic_infos") or {}
         pics = [by_id[key] for key in status.get("pic_ids") or by_id if key in by_id]
-    return [ImgInfo(url=_url(url)) for pic in pics if (url := _largest_pic(pic))]
+    return [ImgInfo(url=_url(url), live_photo_url=_live_video(pic)) for pic in pics if (url := _largest_pic(pic))]
 
 
 def _from_status(status: dict) -> VideoInfo:
@@ -99,7 +108,7 @@ async def _verify_video(info: VideoInfo) -> VideoInfo:
 
 
 class WeiBo(BaseParser):
-    """微博视频、普通微博中的视频与图集。"""
+    """微博视频、普通微博中的视频与图集（含实况照片）。"""
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
         if urlparse(share_url).hostname == APP_SHARE_HOST:

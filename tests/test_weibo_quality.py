@@ -118,6 +118,34 @@ async def test_desktop_status_keeps_full_playback_tiers_and_original_pictures(re
     assert info.video_headers["Referer"] == "https://weibo.com/"
 
 
+async def test_live_photos_keep_their_video_from_desktop_and_mobile_apis(responses):
+    live = "https://video.weibo.com/media/play?livephoto=https%3A%2F%2Flivephoto.us.sinaimg.cn%2Fx.mov"
+    responses["https://weibo.com/ajax/statuses/show?id=live"] = {
+        "pic_ids": ["a", "b"],
+        "pic_infos": {
+            "a": {
+                "type": "livephoto",
+                "original": {"url": "https://cdn.test/a.jpg"},
+                "video": live,
+                "video_hd": "https://video.weibo.com/media/play?livephoto=https%3A%2F%2Fus.sinaimg.cn%2F.mov",
+            },
+            "b": {"type": "pic", "original": {"url": "https://cdn.test/b.jpg"}},
+        },
+    }
+    info = await weibo.WeiBo().parse_share_url("https://weibo.com/123/live")
+    assert [(pic.url, pic.live_photo_url) for pic in info.images] == [
+        ("https://cdn.test/a.jpg", live),
+        ("https://cdn.test/b.jpg", ""),
+    ]
+
+    responses["https://weibo.com/ajax/statuses/show?id=mlive"] = {}
+    responses["https://m.weibo.cn/statuses/show?id=mlive"] = {
+        "data": {"pics": [{"type": "livephoto", "large": {"url": "https://cdn.test/m.jpg"}, "videoSrc": live}]}
+    }
+    info = await weibo.WeiBo().parse_share_url("https://weibo.com/123/mlive")
+    assert [(pic.url, pic.live_photo_url) for pic in info.images] == [("https://cdn.test/m.jpg", live)]
+
+
 async def test_tv_link_uses_post_playback_list_instead_of_only_legacy_urls(responses):
     responses["https://weibo.com/tv/api/component?page=%2Ftv%2Fshow%2F1034%3A99"] = {
         "data": {"Component_Play_Playinfo": {"mid": "123", "urls": {"low": "https://cdn.test/low.mp4"}}}
