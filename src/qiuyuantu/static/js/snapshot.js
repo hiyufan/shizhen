@@ -195,7 +195,7 @@ function frameView(again) {
 /** 后台高清的结果写进卡片：高清优先，退回预览画质时说明；都没拿到就提示先播放 */
 function settle(view, sharp, first, format) {
   if (sharp || first) view.ready(sharp || first, format && !sharp ? t('高清没取到，这是预览画质') : '');
-  else view.fail(t('视频画面还没加载出来，先播放一下再截。'));
+  else view.fail(t('没截到画面，播放一下再点「再截一张」。'));
 }
 
 /**
@@ -222,7 +222,9 @@ function frameCard(data, baseName, video) {
       flash(video);
       view.preview(first);
     }
-    const sharp = format ? await sharperShot(format, time, name) : null;
+    // 预览还没出画面（只预载了元数据）又没有更清楚的档位：用预览地址本身在后台跳到这一刻
+    const source = format || (first ? null : { url: data.video_url });
+    const sharp = source?.url ? await sharperShot(source, time, name) : null;
     if (token === current) settle(view, sharp, first, format);
   };
   const view = frameView(shoot);
