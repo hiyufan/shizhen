@@ -536,6 +536,15 @@ def _prefer_non_webp(urls: list | None) -> str:
     return next((u for u in urls if u and not u.split("?", 1)[0].endswith(".webp")), _first(urls))
 
 
+def _video_cover(video: dict) -> str:
+    """作者选的封面：cover 是 300×400 的居中裁切小图，cover_original_scale 是同一张图按原比例缩放、不裁切，优先用它。
+    origin_cover 多是视频首帧而不是作者选的封面，不用。地址都带签名，不能改尺寸参数换大图。"""
+    for key in ("cover_original_scale", "cover"):
+        if url := _prefer_non_webp((video.get(key) or {}).get("url_list")):
+            return url
+    return ""
+
+
 def _aweme_images(aweme: dict) -> list[ImgInfo]:
     """图集的每张图（不要 webp），实况图带上那段短视频。
     注意 download_url_list 是带用户名水印的（tplv-dy-water-v2），不能用。"""
@@ -768,7 +777,7 @@ class DouYin(BaseParser):
             music_url = _video_music(aweme)
         info = VideoInfo(
             video_url=video_url,
-            cover_url=_prefer_non_webp((video.get("cover") or {}).get("url_list")),
+            cover_url=_video_cover(video),
             music_url=music_url,
             title=aweme.get("desc", ""),
             images=images,

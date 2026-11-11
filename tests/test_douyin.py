@@ -109,6 +109,13 @@ def test_primary_track_keeps_its_actual_framerate_and_bitrate(monkeypatch):
     assert info.video_fps == 60 and info.video_bitrate == 8000000 and info.video_codec == "H.264"
 
 
+def test_video_cover_prefers_uncropped_original_scale(monkeypatch):
+    aweme = copy.deepcopy(VIDEO_AWEME)
+    aweme["video"]["cover_original_scale"] = {"url_list": ["https://p3.douyinpic.com/full~tplv-dy-360p.jpeg?x=1"]}
+    aweme["video"]["origin_cover"] = {"url_list": ["https://p3.douyinpic.com/first-frame.jpeg?x=1"]}
+    assert _parse(monkeypatch, aweme).cover_url == "https://p3.douyinpic.com/full~tplv-dy-360p.jpeg?x=1"
+
+
 def test_official_playback_can_recover_higher_quality_than_web_list(monkeypatch):
     from qiuyuantu.parser.quality import best_video_format
 
