@@ -8,6 +8,7 @@ import {
 import { openConverter } from './converter.js';
 import { assetImages, independentAssets } from './assets.js';
 import { contentSections } from './content.js';
+import { streamSection } from './stream.js';
 import { $, el, fmtClock, fmtSize, notice, safeName, sleep } from './dom.js';
 import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, imageButton, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
 import { jobCard } from './ui.js';
@@ -82,6 +83,7 @@ function reportLink(href) {
 }
 
 function resultContent(data, baseName) {
+  if (data.streams?.length) return [streamSection(data)];
   if (['qqmusic', 'netease', 'applemusic'].includes(data.source) && data.images?.[0]?.url) return [coverSection(data.images[0], baseName, data)];
   return resultBody(data, baseName);
 }
@@ -90,6 +92,7 @@ function resultHead(d) {
   return el('div', { class: 'res-head' },
     el('span', { class: 'tag' }, PLATFORMS[d.source] || d.source || t('未知来源')),
     d.author && d.author.name ? el('span', {}, d.author.name) : null,
+    d.content_kind === 'live' ? el('span', {}, t('直播中')) : null,
     d.duration ? el('span', {}, fmtClock(d.duration)) : null);
 }
 

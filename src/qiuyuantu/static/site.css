@@ -251,6 +251,15 @@ a.card { display: block; text-decoration: none; }
 .hero .music-supports { margin-top: 8px; }
 .media.portrait { justify-content: flex-start; background: transparent; }
 .media.portrait video, .media.portrait img { border-radius: 16px; max-height: 520px; }
+/* 直播间结果：封面只作辨认用，地址列表占主要宽度；每路流一行，按钮放不下时换到名称下面 */
+.stream-result { grid-template-columns: minmax(0, 220px) minmax(0, 1fr); }
+.stream-list { list-style: none; margin: 0; padding: 0; }
+.stream-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.stream-row:first-child { border-top: 0; padding-top: 2px; }
+.stream-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stream-name span { font-size: 12px; color: var(--ink-3); }
+.stream-url { width: 100%; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--card); color: var(--ink); font-size: 12px; }
+@media (max-width: 760px) { .stream-result { grid-template-columns: 1fr; } .stream-result .media img { max-height: 220px; } }
 .side { display: flex; flex-direction: column; gap: 10px; }
 .side .group { display: flex; flex-wrap: wrap; gap: 10px; }
 .side .rule { border-top: 1px solid var(--line); margin: 10px 0 2px; }

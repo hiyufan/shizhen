@@ -22,6 +22,7 @@ const REASON_TIPS = {
   restricted: t('这条是平台单独限制的，换一条链接通常就正常。不是你的网络问题。'),
   parse: t('平台可能刚改版，可以过两天再试。'),
   too_large: t('YouTube 把服务器拦下时只能走备用线路，太长的视频暂时搬不了，换一条短些的试试。'),
+  offline: t('直播流只在开播时才有，等主播开播后再解析一次。'),
 };
 
 const form = $('#paste-form');

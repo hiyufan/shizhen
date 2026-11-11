@@ -42,6 +42,7 @@
 | 素材 | 平台 |
 | --- | --- |
 | 视频与图片 | 抖音、小红书、快手、YouTube、X、B站、Instagram、Threads、TikTok（含图文）、公众号文章、Telegram 公开频道帖子等 |
+| 直播流地址 | [抖音直播间](https://ynvan.com/douyin-live-stream?utm_source=github&utm_medium=referral&utm_campaign=readme)：正在直播时给出各清晰度的 FLV / HLS 地址与原始推流，复制到 VLC、OBS 等播放器；只给地址，不下载、不录制 |
 | 静态与动态封面 | [QQ 音乐](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[网易云音乐](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | 游戏素材 | [Steam 动态头像、头像框与背景](https://ynvan.com/steam-assets?utm_source=github&utm_medium=referral&utm_campaign=readme)、[HoYoPlay 启动器壁纸](https://ynvan.com/hoyoplay-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme)、[鸣潮国际服壁纸](https://ynvan.com/wuthering-waves-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | 匿名贴纸与视频号 | [Telegram 已收录贴纸](https://ynvan.com/telegram-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme)（TGS 转透明 GIF / 实况）、[视频号下载](https://ynvan.com/wechat-channels?utm_source=github&utm_medium=referral&utm_campaign=readme)（公益接口补充视频，支持下载与转换） |

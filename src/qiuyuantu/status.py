@@ -117,6 +117,7 @@ REASON_LABELS = {
     "unsupported": "不支持",
     "copyright": "版权内容",
     "too_large": "视频太大",
+    "offline": "未开播",
 }
 
 FAQ = [
@@ -145,7 +146,7 @@ FAQ = [
 # 链接本身的问题，不是平台的问题
 _LINK_ROT = ("deleted",)
 # 用户这边的原因（贴错链接、作品删了），不算进平台成功率
-_USER_SIDE = ("deleted", "unsupported", "copyright", "cache")
+_USER_SIDE = ("deleted", "unsupported", "copyright", "cache", "offline")
 
 
 def _db():

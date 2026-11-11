@@ -13,7 +13,7 @@ import httpx
 
 from .. import progress
 from ..utils import create_async_client, gather_or_cancel
-from . import deferred, mp4_probe
+from . import deferred, douyin_live, mp4_probe
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo, _random_ua
 from .errors import ParseError
 from .quality import number, rank, short_side
@@ -512,7 +512,7 @@ _NOTE_DOM_EXTRACT = """
 _PC_HOSTS = ("www.iesdouyin.com", "www.douyin.com", "douyin.com", "m.douyin.com", "so.douyin.com")
 # 同属 douyin.com、但不是作品的子域名：直接说清楚，免得用户以为作品被删了
 _OTHER_HOSTS = {
-    "live.douyin.com": "这是直播间链接，直播还不能下载；打开作品后再复制分享链接",
+    "live.douyin.com": "这是直播频道页，不是某个直播间；进入直播间后再复制链接",
     "qishui.douyin.com": "汽水音乐的链接还不支持",
 }
 _ROUTER_DATA = re.compile(r"window\._ROUTER_DATA\s*=\s*(.*?)</script>", re.DOTALL)
@@ -634,9 +634,14 @@ class DouYin(BaseParser):
     """
 
     _note = False  # 地址上看出来是图文（/note/、/slides/）
+    _live: douyin_live.LiveRef | None = None  # 分享短链跳到的是直播间
 
     async def parse_share_url(self, share_url: str) -> VideoInfo:
-        video_id = await self._resolve_video_id(share_url)
+        # 直播间先认：网页地址里的房间号也是一串数字，落到下面会被当成作品 ID 去查
+        self._live = douyin_live.live_ref(share_url)
+        video_id = "" if self._live else await self._resolve_video_id(share_url)
+        if self._live:
+            return await douyin_live.parse(self, self._live)
         # 2026-09 起匿名请求 slidesinfo 拿不到图文（一律 filter），白等它两个 query 要 ~0.8 秒。
         # 跳转地址认得出是图文、又没配登录 cookie，就让浏览器同时开始；接口万一给了数据照样用接口的
         early = None
@@ -713,7 +718,7 @@ class DouYin(BaseParser):
             # 主页 / 搜索页 / 推荐页的地址里没有作品 ID，以前被归成「已删除」，用户以为作品没了
             raise ParseError("unsupported", "这不是单条作品的链接（像是主页、搜索页），打开作品后再复制分享链接")
         if host == "v.douyin.com":
-            if video_id := await self._parse_app_share_url(share_url):
+            if (video_id := await self._parse_app_share_url(share_url)) or self._live:
                 return video_id
             raise ValueError("Failed to parse video ID from app share URL")
         raise ParseError("unsupported", _OTHER_HOSTS.get(host, "这不是抖音作品的链接，打开作品后再复制分享链接"))
@@ -843,6 +848,9 @@ class DouYin(BaseParser):
         # 路径里的数字照取、照常走 slidesinfo 即可（见 xigua.py）。取不到数字时
         # 要自己说清楚原因：返回空的话上层统一抛 "Failed to parse video ID"，
         # 会被 classify 的 deleted 规则收走，对用户谎称"内容已被删除"。
+        self._live = douyin_live.live_ref(location)
+        if self._live:
+            return ""
         self._note = _looks_like_note(location)
         video_id = self._parse_video_id_from_path(location)
         if not video_id and "ixigua.com" in location:

@@ -111,9 +111,9 @@ video_source_info_mapping = {
         "parser": DouPai,
     },
     VideoSource.DouYin: {
-        # douyin.com 连同所有子域名：搜索页 so.、无 www 的网页版、直播间 live. 都在这里给出明确答复，
-        # 不再落到 yt-dlp 兜底，被报成「要登录」或「不支持的格式」
-        "domain_list": ["douyin.com", "www.iesdouyin.com"],
+        # douyin.com 连同所有子域名：搜索页 so.、无 www 的网页版、直播频道页 live. 都在这里给出明确答复，
+        # 不再落到 yt-dlp 兜底，被报成「要登录」或「不支持的格式」。webcast.amemv.com 是 App 分享直播间的落地页
+        "domain_list": ["douyin.com", "www.iesdouyin.com", "webcast.amemv.com"],
         "parser": DouYin,
     },
     VideoSource.HaoKan: {
@@ -352,6 +352,7 @@ async def parse_video_share_url(share_url: str) -> VideoInfo:
         or video_info.assets
         or video_info.entries
         or video_info.documents
+        or video_info.streams
         or video_info.content_kind == "directory"
     ):
         raise ParseError("empty")

@@ -222,7 +222,7 @@ def test_filtered_and_no_browser_keeps_original_error(monkeypatch):
         # 主页 / 搜索页不是作品：说清楚，别归成「已删除」
         ("https://www.douyin.com/user/abc", "不是单条作品的链接"),
         ("https://www.douyin.com/search/%E5%80%9F%E5%8F%B7", "不是单条作品的链接"),
-        ("https://live.douyin.com/369324308707", "直播间"),
+        ("https://live.douyin.com/", "直播频道页"),
         ("https://qishui.douyin.com/s/iXQkjGeP/", "汽水音乐"),
         ("https://haha.douyin.com/x", "不是抖音作品的链接"),
     ],

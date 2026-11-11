@@ -11,6 +11,7 @@
 - Original watermark-free video streams
 - Original Xiaohongshu images, commonly 1920×2560
 - Douyin HD H.265 video and separate background music
+- Douyin live room stream addresses (FLV / HLS) for each quality plus the original push stream, for your own player
 - Server-side merging for the HD formats actually supplied by YouTube and Bilibili
 - Live Photo detection and packaging for an entire post
 - QQ Music / NetEase Cloud Music song, album and playlist cover extraction
@@ -40,7 +41,7 @@
 
 | Platform | Video | Image galleries | Live Photos | Quality | Notes |
 |---|:-:|:-:|:-:|---|---|
-| Douyin | ✅ | ✅ | ✅ | 720p–1080p, H.265 | Background music can be downloaded separately |
+| Douyin | ✅ | ✅ | ✅ | 720p–1080p, H.265 | Background music can be downloaded separately; [live stream tool](https://ynvan.com/douyin-live-stream): a room that is currently live returns FLV / HLS stream addresses for each quality, without downloading or recording |
 | Xiaohongshu (RedNote) | ✅ | ✅ | ✅ | Highest available | Links need a valid `xsec_token`; copy a fresh share link before use |
 | Kuaishou | ✅ | ✅ | – | Platform default | |
 | YouTube | ✅ | – | – | Readable direct URLs; merges the HD formats actually returned | Docker includes a native session / SABR fallback |

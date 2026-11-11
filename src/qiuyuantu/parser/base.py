@@ -150,6 +150,30 @@ class ContentEntry:
 
 
 @dataclasses.dataclass
+class LiveStream:
+    """直播的一路拉流地址。直播没有终点，只把地址交给用户的播放器，不经服务器代理、下载或转换。"""
+
+    # 展示名, 如 蓝光 / 超清 / 原始推流 / 仅音频
+    label: str
+
+    flv_url: str = ""
+    hls_url: str = ""
+
+    width: int = 0
+    height: int = 0
+    fps: float = 0
+
+    # 视频码率（bit/s）, 未知为 0
+    bitrate: int = 0
+
+    # 编码说明, 如 "H.265"
+    codec: str = ""
+
+    # video = 平台转码后的清晰度档；source = 主播推上来的原始流；audio = 只有声音
+    kind: str = "video"
+
+
+@dataclasses.dataclass
 class TextDocument:
     """纯文本正文；调用方不得作为 HTML 插入页面。"""
 
@@ -211,7 +235,9 @@ class VideoInfo:
     next_page_url: str = ""
     entry_total: int = 0
     animation_frames: list[dict] = dataclasses.field(default_factory=list)
-    content_kind: str = "media"  # media / directory / document
+    # 直播间的各路流；有它时 content_kind 为 live
+    streams: list[LiveStream] = dataclasses.field(default_factory=list)
+    content_kind: str = "media"  # media / directory / document / live
 
     video_fps: float = 0
     video_bitrate: int = 0
