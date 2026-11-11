@@ -5,9 +5,11 @@ import { serverMessage, t } from './i18n.js';
 import {
   directOf, mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob,
 } from './api.js';
-import { openConverter } from './converter.js';
+import { closeConverter, openConverter } from './converter.js';
 import { assetImages, independentAssets } from './assets.js';
 import { contentSections } from './content.js';
+import { imageStep } from './snapshot.js';
+import { stepTabs } from './steps.js';
 import { streamSection } from './stream.js';
 import { $, el, fmtClock, fmtSize, notice, safeName, sleep } from './dom.js';
 import { ANDROID, IOS, PHOTOS, fetchDirect, fetchFiles, imageButton, iphoneLiveHint, oneFile, photosButton, saveFile } from './save.js';
@@ -130,7 +132,7 @@ function coverSection(image, baseName, data) {
     el('div', { class: 'side' },
       el('p', { class: 'label' }, t('音乐封面')),
       el('div', { class: 'group' }, ...coverActions(proxy(image.url, name, true), name),
-        data.formats.length ? formatMenu(data, baseName, jobsBox, false) : null),
+        data.formats.length ? formatMenu(data, baseName, jobsBox) : null),
       el('p', { class: 'hint' }, t(coverHint(data))),
       data.source === 'applemusic' && !data.formats.length ? null : coverConversions(image.url, baseName, data), jobsBox));
 }
@@ -160,36 +162,71 @@ function coverActions(url, name) {
 }
 
 // ---------- 视频
+// 结果区按步骤走：主按钮（下载 / iPhone 存相册）直接给出，大多数人到这里就够了；
+// 清晰度、GIF、实况、图片（截图与封面）收成一排标签，一次只展开一个（steps.js），点得再多结果区也不会越来越长。
+// GIF / 实况的编辑区要整宽，仍在结果下方另开（#converter），同样由标签开关。
 
 function videoSection(d, baseName, jobsBox) {
-  const preview = d.video_url
-    ? el('div', { class: 'media' + (isPortrait(d) ? ' portrait' : '') },
-      mediaVideo(d.video_url, {
-        controls: true, playsinline: true, preload: 'metadata', poster: d.cover_url ? proxy(d.cover_url) : null,
-      }))
+  // crossorigin：「截图」要把这一帧画到 canvas 上，跨域的边缘地址需带 CORS 请求才不污染画布
+  const player = d.video_url ? mediaVideo(d.video_url, {
+    controls: true, playsinline: true, preload: 'metadata', crossorigin: 'anonymous', poster: d.cover_url ? proxy(d.cover_url) : null,
+  }) : null;
+  const media = player
+    ? el('div', { class: 'media' + (isPortrait(d) ? ' portrait' : '') }, player)
     : el('div', { class: 'media portrait' }, d.cover_url ? proxyImg(d.cover_url, { alt: '' }) : null);
-  const convert = (format) => () => openConverter(sourceRequest(d, baseName), format);
-  let actions = saveActions(d, baseName, jobsBox);
+  let primary = primaryAction(d, baseName, jobsBox);
   const status = el('p', { class: 'hint found', role: 'status' });
+  const steps = stepTabs(stepItems(d, baseName, jobsBox, player));
   refreshDownloads = (next) => {
     const before = defaultDownload(d)?.url;
     Object.assign(d, next);
-    const fresh = saveActions(d, baseName, jobsBox);
-    actions.replaceWith(fresh);
-    actions = fresh;
+    const fresh = primaryAction(d, baseName, jobsBox);
+    primary.replaceWith(fresh);
+    primary = fresh;
+    steps.refresh('formats');
     const best = defaultDownload(d);
     if (best?.url !== before && best?.label) status.textContent = t('已找到更高画质：{label}', { label: t(best.label) });
   };
-  const side = el('div', { class: 'side' },
-    actions,
-    status,
-    el('div', { class: 'rule' }),
-    el('p', { class: 'label' }, t('拿这段视频继续做')),
-    el('div', { class: 'group' },
-      el('button', { class: 'btn', type: 'button', onclick: convert('gif') }, t('转 GIF')),
-      el('button', { class: 'btn', type: 'button', onclick: convert('livephoto') }, t('做成实况照片'))),
-    jobsBox);
-  return el('div', { class: 'res-body' }, preview, side);
+  // 没有能一键下载的档位（都要服务端合并、又没有直链预览）时，直接摊开清晰度让人选
+  if (!defaultDownload(d)) steps.open('formats');
+  return el('div', { class: 'res-body' }, media, el('div', { class: 'side' }, primary, status, steps.element, jobsBox));
+}
+
+/** 「下一步」标签：有什么给什么，没有的不显示 */
+function stepItems(d, baseName, jobsBox, player) {
+  const items = [];
+  const downloads = downloadStep(d, baseName, jobsBox);
+  if (downloads) items.push(downloads);
+  items.push(converterStep(d, baseName, 'gif', 'GIF', []));
+  // 安卓相册认的是动态照片，其他设备默认实况照片；两种可在编辑区里互换
+  const live = ANDROID ? ['motionphoto', t('动态照片')] : ['livephoto', t('实况照片')];
+  items.push(converterStep(d, baseName, live[0], live[1], ['livephoto', 'motionphoto']));
+  const image = imageStep(d, baseName, player && videoExtension(d) !== 'm3u8' ? player : null);
+  if (image) items.push(image);
+  return items;
+}
+
+const converterStep = (d, baseName, format, label, switches) => ({
+  key: format, label, controls: 'converter',
+  open: () => {
+    openConverter(sourceRequest(d, baseName), format, { switches });
+    return closeConverter;
+  },
+});
+
+/** 清晰度 / 音频：列出全部档位和单独的音频；面板每次打开都按当前数据重画 */
+function downloadStep(d, baseName, jobsBox) {
+  const hasFormats = !!d.formats?.length;
+  if (!hasFormats && !d.music_url) return null;
+  return {
+    key: 'formats', label: hasFormats ? formatsLabel(d) : t('音频'),
+    open: (body) => body.append(formatList(d, baseName, jobsBox)),
+  };
+}
+
+function formatsLabel(d) {
+  if (d.video_url) return t('清晰度');
+  return t(['applemusic', 'netease'].includes(d.source) ? '动态封面' : '下载视频');
 }
 
 const isPortrait = (d) => (d.width && d.height ? d.height > d.width : !['steam', 'hoyoplay', 'wutheringwaves'].includes(d.source));
@@ -223,31 +260,20 @@ function previewDownload(data) {
   return { url: data.video_url, ext: videoExtension(data), label: resolution ? resolution + 'p' : '' };
 }
 
-/** 下载视频 / 其他清晰度 / 音频。iPhone 上「存到相册」是主按钮，其余收成下面一行小字，免得三个大按钮竖着排 */
-function saveActions(d, baseName, jobsBox) {
+/** 主按钮只有一个：iPhone 上能存相册时是「存到相册」，其他情况是最高档的「下载视频」 */
+function primaryAction(d, baseName, jobsBox) {
   const best = defaultDownload(d);
-  if (PHOTOS && best?.url && best.ext === 'mp4') {
-    const more = el('div', { class: 'more-acts' }, ...secondaryDownloads(d, baseName, jobsBox, true));
-    return el('div', { class: 'group' }, photosButton(t('存到相册'), oneFile(() => sourcesOf(best.url), baseName, 'video/mp4')), more);
+  if (!best) return el('div', { class: 'group', hidden: true });
+  if (PHOTOS && best.url && best.ext === 'mp4') {
+    return el('div', { class: 'group' }, photosButton(t('存到相册'), oneFile(() => sourcesOf(best.url), baseName, 'video/mp4')));
   }
-  return el('div', { class: 'group' }, ...secondaryDownloads(d, baseName, jobsBox, false));
+  return el('div', { class: 'group' }, primaryDownload(best, d, baseName, jobsBox));
 }
 
-function secondaryDownloads(d, baseName, jobsBox, compact) {
-  const links = [];
-  const best = defaultDownload(d);
-  if (best) links.push(primaryDownload(best, d, baseName, jobsBox, compact));
-  if (d.formats && d.formats.length) links.push(formatMenu(d, baseName, jobsBox, compact));
-  // 音频用得少，不和下载视频抢位置
-  if (d.music_url) links.push(download(d.music_url, baseName + '.mp3', t('下载音频'), compact ? 'btn sm quiet' : 'btn quiet'));
-  return links;
-}
-
-function primaryDownload(format, data, baseName, jobsBox, compact) {
+function primaryDownload(format, data, baseName, jobsBox) {
   const label = t('下载视频') + (format.label ? ' ' + t(format.label) : '');
-  const cls = compact ? 'btn sm quiet' : 'btn dark';
-  if (format.url) return download(format.url, baseName + '.' + (format.ext || 'mp4'), label, cls);
-  return el('button', { class: cls, type: 'button', onclick: async (event) => {
+  if (format.url) return download(format.url, baseName + '.' + (format.ext || 'mp4'), label, 'btn dark');
+  return el('button', { class: 'btn dark', type: 'button', onclick: async (event) => {
     const button = event.currentTarget;
     if (button.disabled) return;
     button.disabled = true;
@@ -284,14 +310,27 @@ function formatHints(formats) {
   return hints.map((text) => el('p', { class: 'hint', style: 'padding:6px 10px 4px' }, text));
 }
 
-/** 「其他清晰度 ▾」 */
-function formatMenu(d, baseName, jobsBox, compact) {
+/** 清晰度面板里的列表：各档位、编码提示，最后是单独的音频 */
+function formatList(d, baseName, jobsBox) {
+  const list = el('div', { class: 'format-list' });
+  if (d.formats?.length) {
+    list.append(...downloadFormats(d).map((f) => formatItem(f, d, baseName, jobsBox, () => {})), ...formatHints(d.formats));
+  }
+  if (d.music_url) {
+    const name = baseName + '.mp3';
+    list.append(el('a', { href: mediaDownload(d.music_url, name), download: name, onclick: (e) => saveDirect(e, d.music_url, name) },
+      el('span', {}, t('仅音频')), el('small', {}, 'MP3')));
+  }
+  return list;
+}
+
+/** 音乐动态封面的「下载 ▾」下拉菜单 */
+function formatMenu(d, baseName, jobsBox) {
   const list = el('div', { class: 'menu-list', hidden: true });
   const close = () => { list.hidden = true; };
   for (const f of downloadFormats(d)) list.append(formatItem(f, d, baseName, jobsBox, close));
   list.append(...formatHints(d.formats));
-  const toggleClass = compact ? 'btn sm quiet' : 'btn' + (d.video_url ? '' : ' dark');
-  const toggle = el('button', { class: toggleClass, type: 'button', onclick: () => { list.hidden = !list.hidden; } },
+  const toggle = el('button', { class: 'btn' + (d.video_url ? '' : ' dark'), type: 'button', onclick: () => { list.hidden = !list.hidden; } },
     d.video_url ? t('其他清晰度 ▾') : t(['applemusic', 'netease'].includes(d.source) ? '下载动态封面 ▾' : '下载视频 ▾'));
   return el('div', { class: 'menu' }, toggle, list);
 }

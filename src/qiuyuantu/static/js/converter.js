@@ -25,8 +25,11 @@ export function closeConverter() {
   $('#converter').hidden = true;
 }
 
-/** req 含准备参数与本地 preview_url；预览地址不发给服务端。本地上传可直接给 { ready: source }。 */
-export async function openConverter(req, format) {
+/**
+ * req 含准备参数与本地 preview_url；预览地址不发给服务端。本地上传可直接给 { ready: source }。
+ * switches：编辑区里可以改做哪些格式（小链接）。视频结果页由上方的标签切换 GIF / 实况，只留实况与动态照片互换。
+ */
+export async function openConverter(req, format, { switches = Object.keys(FORMAT_NAMES) } = {}) {
   closeConverter();
   const current = opening;
   const { preview_url: previewUrl, ...request } = req;
@@ -50,7 +53,7 @@ export async function openConverter(req, format) {
   }
   if (current !== opening) return;
   conv.replaceChildren();
-  teardown = buildConverter(conv, source, format, previewUrl);
+  teardown = buildConverter(conv, source, format, previewUrl, switches);
 }
 
 async function prepareSource(req, card) {
@@ -158,7 +161,7 @@ function conversionPreview(src, previewUrl) {
   return video;
 }
 
-function buildConverter(conv, src, format, previewUrl) {
+function buildConverter(conv, src, format, previewUrl, switches) {
   // fit：压到 GIF_TARGET 以内，帧率和宽度变成上限，超了服务端自动往下降
   const state = {
     format, start: 0, end: Math.min(src.duration, LIMITS[format]),
@@ -214,7 +217,7 @@ function buildConverter(conv, src, format, previewUrl) {
   function setFormat(key) {
     const name = FORMAT_NAMES[key];
     state.format = key;
-    switcher.replaceChildren(...Object.keys(FORMAT_NAMES).filter((k) => k !== key).map((k) =>
+    switcher.replaceChildren(...Object.keys(FORMAT_NAMES).filter((k) => switches.includes(k) && k !== key).map((k) =>
       el('button', { class: 'btn sm quiet', type: 'button', onclick: () => setFormat(k) }, SWITCH_LABELS[k])));
     gifPanel.hidden = key !== 'gif';
     keyFrame.element.hidden = key === 'gif';

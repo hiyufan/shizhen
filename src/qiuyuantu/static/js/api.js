@@ -188,10 +188,12 @@ export function trackDownload(url) {
   }).catch(() => {});
 }
 
+/** <video> 能用的地址：先边缘再服务器转发。不用直连：<video> 没法不带 Referer（见上面「直连」） */
+export const videoSources = (url) => [edges[url], proxy(url)].filter(Boolean);
+
 /** <video>：边缘地址播不了（节点出错、被平台拒）就退回服务器转发，只退一次 */
 export function mediaVideo(url, attrs) {
-  // 不用直连：<video> 没法不带 Referer（见上面「直连」）
-  const [first, ...rest] = [edges[url], proxy(url)].filter(Boolean);
+  const [first, ...rest] = videoSources(url);
   const video = el('video', { ...attrs, src: first });
   video.addEventListener('error', () => {
     if (rest.length) video.src = rest.shift();

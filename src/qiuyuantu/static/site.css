@@ -259,6 +259,28 @@ a.card { display: block; text-decoration: none; }
 .stream-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .stream-name span { font-size: 12px; color: var(--ink-3); }
 .stream-url { width: 100%; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--card); color: var(--ink); font-size: 12px; }
+/* 视频结果的「下一步」：一排小标签，一次只展开一个面板（清晰度、截图、封面；GIF / 实况在下方另开） */
+.step-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.step-tabs .btn { padding-left: 14px; padding-right: 14px; }
+.step-tabs .btn[aria-expanded="true"] { background: var(--ink); color: var(--warm); border-color: var(--ink); }
+.step-panel { margin-top: 12px; padding: 12px 14px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.step-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.step-head b { font-size: 14px; }
+.step-close { width: 32px; height: 32px; margin: -6px -6px -6px 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink-3); font-size: 20px; line-height: 1; cursor: pointer; }
+.step-close:hover { background: var(--surface); color: var(--ink); }
+.format-list { display: grid; gap: 2px; margin: 0 -6px; }
+.format-list button, .format-list a { display: flex; width: 100%; justify-content: space-between; gap: 12px; border: 0; background: none; padding: 10px 12px; border-radius: 10px; text-align: left; font-weight: 600; text-decoration: none; color: inherit; font-size: 14px; cursor: pointer; }
+.format-list button:hover, .format-list a:hover { background: var(--surface); color: var(--sky); }
+.format-list small { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.step-body { display: grid; gap: 14px; }
+.shot { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px 12px; align-items: center; }
+.shot + .shot { border-top: 1px solid var(--line); padding-top: 14px; }
+.shot .shot-acts { grid-column: 1 / -1; }
+.shot-thumb { width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: #0a0a0a; }
+.shot-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shot-body { display: grid; gap: 4px; min-width: 0; }
+.media video.shot-flash { animation: shot-flash .35s var(--ease-out); }
+@keyframes shot-flash { from { filter: brightness(1.9); } to { filter: none; } }
 @media (max-width: 760px) { .stream-result { grid-template-columns: 1fr; } .stream-result .media img { max-height: 220px; } }
 .side { display: flex; flex-direction: column; gap: 10px; }
 .side .group { display: flex; flex-wrap: wrap; gap: 10px; }

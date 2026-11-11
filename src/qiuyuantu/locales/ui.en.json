@@ -812,5 +812,18 @@
   "写一下遇到了什么情况": "Please describe what happened",
   "请选择反馈类型": "Please choose a feedback type",
   "内容太长了，请控制在 2000 字以内": "Your message is too long. Please keep it under 2000 characters.",
-  "表单已失效，刷新页面后再提交一次": "This form has expired. Refresh the page and submit again."
+  "表单已失效，刷新页面后再提交一次": "This form has expired. Refresh the page and submit again.",
+  "视频画面还没加载出来，先播放一下再截。": "The video hasn't loaded a frame yet. Play it for a moment, then try again.",
+  "这个视频的画面不能在网页里截取，下载后用播放器截图吧。": "This video's frames can't be captured in the browser. Download it and take the screenshot in a player.",
+  "没截到画面，请再试一次。": "Couldn't capture the frame. Please try again.",
+  "截图": "Screenshot",
+  "正在取高清画面…": "Fetching the HD frame…",
+  "高清没取到，这是预览画质": "HD unavailable, preview quality",
+  "再截一张": "Capture again",
+  "收起": "Close",
+  "音频": "Audio",
+  "清晰度": "Quality",
+  "保存截图": "Save screenshot",
+  "保存封面": "Save cover",
+  "{time} 的画面": "Frame at {time}"
 }

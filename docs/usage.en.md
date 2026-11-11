@@ -13,6 +13,7 @@
 - Douyin HD H.265 video and separate background music
 - Douyin live room stream addresses (FLV / HLS) for each quality plus the original push stream, for your own player
 - Server-side merging for the HD formats actually supplied by YouTube and Bilibili
+- Video results lead with one download button; quality, GIF, Live Photo and image options sit in a row of tabs that open one at a time. The image tab saves the cover or a screenshot of the current frame, re-captured from the highest directly playable quality as PNG in the browser
 - Live Photo detection and packaging for an entire post
 - QQ Music / NetEase Cloud Music song, album and playlist cover extraction
 - Media proxy for browser playback when direct requests return 403
