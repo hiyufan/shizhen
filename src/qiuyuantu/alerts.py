@@ -25,7 +25,8 @@ log = logging.getLogger(__name__)
 
 ALERT_TO = os.environ.get("PARSE_VIDEO_ALERT_TO", "").strip()
 STATE_PATH = config.DATA_DIR / "alerts.json"
-STATUS_PAGE = "https://ynvan.com/status"
+# 没配正式域名时邮件里不放状态页链接
+STATUS_PAGE = feedback.SITE_URL + "/status" if feedback.SITE_URL else ""
 
 # 服务器自己连不出去时各平台的样子
 _NETWORK = {"timeout", "network", "blocked"}
@@ -72,6 +73,10 @@ def _save(active: dict[str, float]) -> None:
     STATE_PATH.write_text(json.dumps(active, ensure_ascii=False), encoding="utf-8")
 
 
+def _status_link() -> list[str]:
+    return [f"状态页：{STATUS_PAGE}", ""] if STATUS_PAGE else []
+
+
 def _alert_text(new: dict[str, str]) -> tuple[str, str]:
     lines = [f"- {v}" for v in new.values()]
     hint = (
@@ -83,13 +88,13 @@ def _alert_text(new: dict[str, str]) -> tuple[str, str]:
         else "单个平台多半是改版了，看日志里这个平台的报错。"
     )
     subject = "求原图告警：" + ("服务器可能连不上外网" if "server" in new else "有平台自检连续失败")
-    text = "\n".join(["自检发现问题：", *lines, "", hint, "", f"状态页：{STATUS_PAGE}", "", "— 求原图自检"])
+    text = "\n".join(["自检发现问题：", *lines, "", hint, "", *_status_link(), "— 求原图自检"])
     return subject, text
 
 
 def _recovered_text(gone: list[str], active: dict[str, float]) -> tuple[str, str]:
     lines = [f"- {k}（持续 {(time.time() - active[k]) / 3600:.1f} 小时）" for k in gone]
-    text = "\n".join(["这些问题的自检已经恢复正常：", *lines, "", f"状态页：{STATUS_PAGE}", "", "— 求原图自检"])
+    text = "\n".join(["这些问题的自检已经恢复正常：", *lines, "", *_status_link(), "— 求原图自检"])
     return "求原图：自检已恢复", text
 
 

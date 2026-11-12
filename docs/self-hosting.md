@@ -98,7 +98,7 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 |---|---|---|
 | `PARSE_VIDEO_HOST` / `PARSE_VIDEO_PORT` | `0.0.0.0` / `8000` | 监听地址 / 端口 |
 | `PARSE_VIDEO_DATA_DIR` | `./data` | 缓存、结果、密钥目录 |
-| `PARSE_VIDEO_SITE_URL` | 按请求 | 正式域名，用于 canonical / sitemap / OG 图 |
+| `PARSE_VIDEO_SITE_URL` | 按请求 | 正式域名，用于 canonical / sitemap / OG 图，以及反馈和告警邮件里的链接 |
 | `PARSE_VIDEO_TRUST_PROXY` | `0` | 反代后面设 `1`，信任 `X-Forwarded-For` |
 | `PARSE_VIDEO_USERNAME` + `PARSE_VIDEO_PASSWORD` | – | 同时设置则开启 Basic Auth |
 | `PARSE_VIDEO_MCP` | `1` | 设 `0` 关闭 `/mcp`（Docker 镜像默认关） |
@@ -172,7 +172,7 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | `PARSE_VIDEO_SEARCH_GOOGLE_SITE` | – | Windsor 已授权的 Google Search Console 站点，例如 `sc-domain:example.com` |
 | `PARSE_VIDEO_SEARCH_BING_SITE` | – | Windsor 已授权的 Bing Webmaster 站点，例如 `https://example.com`；不是 Microsoft Ads 账号 |
 | `PARSE_VIDEO_STATS_IGNORE_IPS` | – | 不计入统计的 IP（逗号分隔），填服务器自己的公网地址；本机 / 内网地址本来就不计。站长自己的设备打开 `/test` 用统计口令开一次测试模式 |
-| `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | 解析失败反馈：建 issue 的私有仓库、只给它 Issues 读写的 fine-grained token、加密反馈邮箱的 32 字节密钥（base64）。和下面的 SMTP 四样都填了才显示「反馈这个问题」 |
+| `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | 解析失败反馈：建 issue 的私有仓库、只给它 Issues 读写的 fine-grained token、加密反馈邮箱的 32 字节密钥（base64）。和下面的 SMTP 四样、`PARSE_VIDEO_SITE_URL` 都填了才显示「反馈这个问题」 |
 | `PARSE_VIDEO_SMTP_USER` / `_PASS` / `_HOST` / `_PORT` | – / – / `smtp.qq.com` / `465` | 反馈修好后发通知邮件的发件邮箱和 SMTP 授权码 |
 | `PARSE_VIDEO_ALERT_TO` | – | 站长收告警的邮箱（用上面的 SMTP 发）。每小时自检后判断：一半以上平台连续两轮超时 / 连不上（多半是服务器自己断网了），或某个平台连续三轮解析失败（多半改版了），就发一封；恢复了再发一封，同一个问题不重复发 |
 | `PARSE_VIDEO_FEEDBACK_NOTIFY` | 同 `PARSE_VIDEO_ALERT_TO` | 页脚「意见反馈」表单的通知收件人。和 `PARSE_VIDEO_FEEDBACK_KEY`、SMTP 都配好才显示入口；反馈存在 `data/feedback.db` 的 messages 表，不建公开 issue；访客留的邮箱加密暂存，作为通知邮件的 Reply-To，通知发出后即删除。每 IP 每小时 5 条（`PARSE_VIDEO_RL_MESSAGE`） |

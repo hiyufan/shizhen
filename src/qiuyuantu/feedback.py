@@ -48,7 +48,8 @@ SMTP_PASS = os.environ.get("PARSE_VIDEO_SMTP_PASS", "").strip()  # SMTP 密码 /
 # 发件人地址。QQ 邮箱和登录名是同一个，不用填；Brevo 这类中继登录名是 xxx@smtp-brevo.com，要另填
 SMTP_FROM = os.environ.get("PARSE_VIDEO_SMTP_FROM", "").strip() or SMTP_USER
 _KEY_B64 = os.environ.get("PARSE_VIDEO_FEEDBACK_KEY", "").strip()  # 32 字节，base64
-SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "https://ynvan.com").rstrip("/")
+# 通知邮件和 issue 里的链接指向这里；没配正式域名时不开反馈，免得把用户引到别人的站上
+SITE_URL = os.environ.get("PARSE_VIDEO_SITE_URL", "").strip().rstrip("/")
 
 DB_PATH = config.DATA_DIR / "feedback.db"
 TICKET_TTL = 24 * 3600
@@ -82,8 +83,8 @@ def can_encrypt() -> bool:
 
 
 def enabled() -> bool:
-    # 四样都齐才开：页面上答应了「修好发邮件」，发不了信就不该收邮箱
-    return bool(REPO and GH_TOKEN and _KEY_B64) and mail_enabled()
+    # 都齐了才开：页面上答应了「修好发邮件」，发不了信、邮件里没有可点的链接就不该收邮箱
+    return bool(REPO and GH_TOKEN and _KEY_B64 and SITE_URL) and mail_enabled()
 
 
 # --------------------------------------------------------------------------- 反馈凭证
@@ -311,7 +312,7 @@ def _issue_text(row: sqlite3.Row) -> tuple[str, str, list[str]]:
         f"**反馈编号**：{row['id']}（服务器 `data/feedback.db` 里按编号查完整链接）\n"
         f"**反馈时间**：{_when(row['created'])}\n\n"
         + ("" if trimmed else f"在线复现：{SITE_URL}/?url={quote(link, safe='')}&src=issue\n\n")
-        + "这条 issue 由 ynvan.com 用户在解析失败后反馈自动创建。修好后提交信息里写 `Fixes #<编号>`；"
+        + "这条 issue 由网站用户在解析失败后反馈自动创建。修好后提交信息里写 `Fixes #<编号>`；"
         "issue 关闭后服务器会先自己再解析一次，确认能用了才给留了邮箱的人发邮件（邮箱不在这里，只加密存在服务器上）。"
     )
     return f"[{plat}] {reason}：{re.sub(r'^https?://', '', link)[:60]}", body, ["用户反馈", plat, reason]

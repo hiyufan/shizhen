@@ -189,3 +189,13 @@ def test_alert_sent_once_then_recovery(monkeypatch, tmp_path):
     assert sent[-1] == ("me@example.com", "求原图：自检已恢复") and len(sent) == 2
     asyncio.run(alerts.check(up))
     assert len(sent) == 2 and (tmp_path / "alerts.json").read_text() == "{}"
+
+
+def test_alert_mail_links_to_this_site_only_when_configured(monkeypatch):
+    from qiuyuantu import alerts
+
+    monkeypatch.setattr(alerts, "STATUS_PAGE", "https://example.test/status")
+    assert "状态页：https://example.test/status" in alerts._alert_text({"server": "断网"})[1]
+    monkeypatch.setattr(alerts, "STATUS_PAGE", "")
+    _, text = alerts._recovered_text([], {})
+    assert "状态页" not in text and "ynvan" not in text

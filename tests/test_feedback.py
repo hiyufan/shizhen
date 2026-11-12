@@ -25,6 +25,7 @@ def fb(monkeypatch, tmp_path):
     monkeypatch.setattr(feedback, "_KEY_B64", base64.b64encode(b"k" * 32).decode())
     monkeypatch.setattr(feedback, "SMTP_USER", "bot@qq.com")
     monkeypatch.setattr(feedback, "SMTP_PASS", "authcode")
+    monkeypatch.setattr(feedback, "SITE_URL", "https://example.test")
     monkeypatch.setattr(feedback, "DB_PATH", tmp_path / "feedback.db")
     monkeypatch.setattr(limits.feedback_limit, "_buckets", {})
     sent = []
@@ -48,6 +49,12 @@ def test_ticket_only_for_fixable_failures(fb):
 def test_ticket_is_off_when_feature_not_configured(fb, monkeypatch):
     monkeypatch.setattr(feedback, "GH_TOKEN", "")
     assert ticket() is None
+
+
+def test_feedback_needs_the_public_site_url_for_mail_links(fb, monkeypatch):
+    # 邮件里「点这里打开」要指向本站；以前没配时默认指向 ynvan.com
+    monkeypatch.setattr(feedback, "SITE_URL", "")
+    assert not feedback.enabled() and ticket() is None
 
 
 def test_tampered_or_expired_ticket_is_rejected(fb, monkeypatch):

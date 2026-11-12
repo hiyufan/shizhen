@@ -98,7 +98,7 @@ All configuration uses environment variables. Every variable is optional.
 |---|---|---|
 | `PARSE_VIDEO_HOST` / `PARSE_VIDEO_PORT` | `0.0.0.0` / `8000` | Listening address / port |
 | `PARSE_VIDEO_DATA_DIR` | `./data` | Directory for caches, outputs, and keys |
-| `PARSE_VIDEO_SITE_URL` | Derived from request | Public site URL for canonical links, sitemap, and Open Graph images |
+| `PARSE_VIDEO_SITE_URL` | Derived from request | Public site URL for canonical links, sitemap, Open Graph images, and links in feedback and alert emails |
 | `PARSE_VIDEO_TRUST_PROXY` | `0` | Set to `1` behind a reverse proxy to trust `X-Forwarded-For` |
 | `PARSE_VIDEO_USERNAME` + `PARSE_VIDEO_PASSWORD` | – | Setting both enables Basic Auth |
 | `PARSE_VIDEO_MCP` | `1` | Set to `0` to disable `/mcp`; disabled by default in the Docker image |
@@ -169,7 +169,7 @@ The notice appears above the navigation on every page and scrolls away with the 
 |---|---|---|
 | `PARSE_VIDEO_STATS_TOKEN` | – | Recording starts only when set; open `/stats?token=<token>` for hourly / daily users, platform success rates, failure reasons, and job durations |
 | `PARSE_VIDEO_STATS_IGNORE_IPS` | – | Comma-separated IPs to exclude from statistics; add the server's own public IP; loopback / private IPs are already excluded. On an admin's device, open `/test` and enable test mode once using the statistics token |
-| `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | Failure feedback: private repository for issues, fine-grained token with Issues read/write access only to that repository, and a base64-encoded 32-byte key to encrypt feedback email addresses. These and all four SMTP settings below must be configured to show the feedback action |
+| `PARSE_VIDEO_FEEDBACK_REPO` / `_GH_TOKEN` / `_KEY` | – | Failure feedback: private repository for issues, fine-grained token with Issues read/write access only to that repository, and a base64-encoded 32-byte key to encrypt feedback email addresses. These, all four SMTP settings below, and `PARSE_VIDEO_SITE_URL` must be configured to show the feedback action |
 | `PARSE_VIDEO_SMTP_USER` / `_PASS` / `_HOST` / `_PORT` | – / – / `smtp.qq.com` / `465` | Sender email, SMTP authorization password, host, and port for notifying users after a reported issue is fixed |
 | `PARSE_VIDEO_ALERT_TO` | – | Admin alert email, sent using the SMTP settings above. Hourly checks send an alert if more than half the platforms time out / fail to connect for two consecutive rounds, suggesting a server connectivity issue, or one platform fails extraction for three rounds, suggesting a platform change. Recovery sends another email; repeated alerts for the same issue are suppressed |
 | `PARSE_VIDEO_FEEDBACK_NOTIFY` | Same as `PARSE_VIDEO_ALERT_TO` | Recipient for the footer “Feedback” form. The entry appears only when `PARSE_VIDEO_FEEDBACK_KEY` and SMTP are also configured. Messages are stored in the messages table of `data/feedback.db` and never become public issues; a visitor's email is stored encrypted, used as the notification's Reply-To and deleted once the notification is sent. Limited to 5 messages per IP per hour (`PARSE_VIDEO_RL_MESSAGE`) |
