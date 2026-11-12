@@ -72,3 +72,15 @@ def test_both_console_entry_points_use_the_new_distribution(command):
     result = CliRunner().invoke(entry.load(), ["version"], prog_name=command)
     assert result.exit_code == 0
     assert result.stdout.strip() == f"qiuyuantu {metadata.version('qiuyuantu')}"
+
+
+def test_serve_command_pins_the_asyncio_event_loop(monkeypatch):
+    # uvloop 不经过 socket.getaddrinfo，SSRF 防线会失效；应用在 uvloop 上拒绝启动，所以命令行入口要和 main.py 一样写死
+    import uvicorn
+
+    started = {}
+    monkeypatch.setattr(uvicorn, "run", lambda target, **options: started.update(target=target, **options))
+    result = CliRunner().invoke(app, ["serve", "--port", "8123"])
+    assert result.exit_code == 0, result.output
+    assert started["target"] == "qiuyuantu.web:app"
+    assert started["port"] == 8123 and started["loop"] == "asyncio"

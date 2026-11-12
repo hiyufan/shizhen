@@ -51,4 +51,6 @@ def serve(
         host=host,
         port=port,
         reload=False,
+        # 和 main.py 一致：环境里装了 uvloop 时默认的 "auto" 会选它，SSRF 防线失效，应用会拒绝启动
+        loop="asyncio",
     )
