@@ -59,6 +59,16 @@ def test_wrong_token_does_not_turn_test_mode_on(rows):
     assert kinds(rows) == ["view"]
 
 
+def test_non_ascii_token_and_cookie_are_just_wrong(rows):
+    # 口令、Cookie 里出现非 ASCII 字符时按「不对」处理；以前常数时间比较抛 TypeError，整页 500
+    c = TestClient(web.app)
+    assert c.get("/stats", params={"token": "口令"}).status_code == 404
+    assert c.post("/test", data={"token": "口令"}).status_code == 403
+    garbled = [(b"cookie", f"{stats.TEST_COOKIE}=测试".encode())]  # 浏览器按原始字节发，服务端读成非 ASCII 的 str
+    assert c.get("/", headers=garbled).status_code == 200
+    assert kinds(rows) == ["view"]
+
+
 def test_test_device_is_not_counted(rows):
     c = TestClient(web.app)
     r = c.post("/test", data={"token": "tok"})

@@ -69,7 +69,7 @@ def test_cookie_value() -> str:
 
 
 def is_test_cookie(value: str | None) -> bool:
-    return bool(value) and hmac.compare_digest(value, test_cookie_value())
+    return net.secret_equal(test_cookie_value(), value)
 
 
 _buf: list[tuple] = []
@@ -283,4 +283,4 @@ def summary(since: float, until: float, step: int, tz_offset: int = 0, selected:
 
 
 def check_token(token: str | None) -> bool:
-    return enabled() and bool(token) and hmac.compare_digest(token, TOKEN)
+    return enabled() and net.secret_equal(TOKEN, token)

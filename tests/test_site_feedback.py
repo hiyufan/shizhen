@@ -39,6 +39,11 @@ def token(age=10):
     return f"{issued}.{site_feedback._sig(issued)}"
 
 
+def test_form_token_with_non_ascii_signature_is_invalid():
+    assert site_feedback.valid_form_token(token())
+    assert not site_feedback.valid_form_token(f"{int(time.time()) - 10}.签名")
+
+
 def message(**overrides):
     data = {"kind": "page", "body": "微信里打开被跳走了", "token": token(), "page": "/douyin?url=https://x"}
     return data | overrides

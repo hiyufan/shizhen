@@ -296,6 +296,14 @@ def test_proxy_rejects_unsigned_url(client):
     assert r.status_code == 403
 
 
+def test_non_ascii_signature_is_rejected_not_a_server_error(client):
+    # hmac.compare_digest 遇到含非 ASCII 字符的 str 会抛 TypeError，以前随手填个中文签名就是 500
+    r = client.get("/api/proxy", params={"url": "https://example.com/a.mp4", "sig": "签名"})
+    assert r.status_code == 403
+    assert not net.verify("https://example.com/a.mp4", "签名")
+    assert net.verify("https://example.com/a.mp4", net.sign("https://example.com/a.mp4"))
+
+
 def test_proxy_rejects_signed_internal_url(client):
     # 签名对了也不行：解析器万一吐出内网地址，转发前还有一道 SSRF 检查
     url = "http://169.254.169.254/latest/meta-data/"

@@ -429,8 +429,14 @@ def sign(url: str) -> str:
     return hmac.new(secret_key(), url.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
 
 
+def secret_equal(expected: str, given: str | None) -> bool:
+    """常数时间比较访客给的签名 / 口令 / Cookie 值。按字节比：hmac.compare_digest 遇到含非 ASCII
+    字符的 str 会抛 TypeError，随手填个中文就能让接口回 500。"""
+    return bool(given) and hmac.compare_digest(expected.encode(), given.encode("utf-8", "replace"))
+
+
 def verify(url: str, sig: str | None) -> bool:
-    return bool(sig) and hmac.compare_digest(sign(url), sig)
+    return secret_equal(sign(url), sig)
 
 
 _UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')

@@ -81,7 +81,7 @@ def form_token() -> str:
 
 def valid_form_token(token: str) -> bool:
     issued, _, sig = token.partition(".")
-    if not issued.isdigit() or not hmac.compare_digest(sig, _sig(issued)):
+    if not issued.isdigit() or not net.secret_equal(_sig(issued), sig):
         return False
     age = time.time() - int(issued)
     return FORM_MIN_SECONDS <= age <= FORM_TTL
