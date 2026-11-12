@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import types
 from pathlib import Path
 
 import httpx
@@ -855,3 +856,41 @@ def test_browser_worker_follows_the_same_tier_rules(monkeypatch):
     assert worker_script.tiers(response) == native.tiers(_PORTRAIT)
     assert worker_script.codec_filter(response, 1920) == "[vcodec^=avc1]"
     assert worker_script.codec_filter(response, 2160) == "[vcodec=vp9]"
+
+
+def test_browser_worker_helpers_keep_the_session_contract(monkeypatch, tmp_path):
+    worker_script = _load_worker(monkeypatch)
+    cookies = [
+        {"domain": ".youtube.com", "path": "/", "secure": True, "expires": -1, "name": "VISITOR", "value": "v"},
+        {"domain": "www.youtube.com", "path": "/", "secure": False, "expires": 1.9e9, "name": "PREF", "value": "p"},
+    ]
+    assert worker_script.cookie_lines(cookies) == [
+        "# Netscape HTTP Cookie File",
+        ".youtube.com\tTRUE\t/\tTRUE\t0\tVISITOR\tv",
+        "www.youtube.com\tFALSE\t/\tFALSE\t1900000000\tPREF\tp",
+    ]
+    flags = {"serializedExperimentFlags": "a=1&html5_generate_content_po_token=true"}
+    assert worker_script.content_bound({"WEB_PLAYER_CONTEXT_CONFIGS": {"x": flags, "y": "skip"}})
+    assert not worker_script.content_bound({"WEB_PLAYER_CONTEXT_CONFIGS": {"x": {"serializedExperimentFlags": ""}}})
+    ok = {"videoDetails": {"videoId": VIDEO_ID, "lengthSeconds": "12"}, "playabilityStatus": {"status": "OK"}}
+    assert worker_script.check_player(ok, VIDEO_ID) == (ok["videoDetails"], 12.0)
+    for bad in (
+        {**ok, "playabilityStatus": {"status": "LOGIN_REQUIRED"}},
+        {**ok, "videoDetails": {"videoId": "other", "lengthSeconds": "12"}},
+        {**ok, "videoDetails": {"videoId": VIDEO_ID, "lengthSeconds": "0"}},
+    ):
+        with pytest.raises(RuntimeError):
+            worker_script.check_player(bad, VIDEO_ID)
+    html = worker_script.watch_html({"A": 1}, {"r": 2}, {"i": 3}, "<body>")
+    assert html.startswith('<html><script>ytcfg.set({"A": 1});var ytInitialPlayerResponse = {"r": 2}')
+    assert html.endswith(';var ytInitialData = {"i": 3};</script></html><body>')
+    command = worker_script.chromium_command("/chrome", 9222, "/profile", "http://warp:1080")
+    assert command[:2] == ["/chrome", "--proxy-server=http://warp:1080"] and command[-1] == "about:blank"
+    assert "--remote-debugging-port=9222" in command and "--proxy-server" not in " ".join(
+        worker_script.chromium_command("/chrome", 9222, "/profile", "")
+    )
+    args = types.SimpleNamespace(max_bytes=1 << 20, proxy="http://warp:1080", pot_url="http://bgutil:4416")
+    opts = worker_script.ytdlp_options(args, {"streamingData": {}}, 720, tmp_path / "c.txt", "UA", tmp_path)
+    assert opts["format"].startswith("bv[protocol=sabr][height<=720]") and opts["proxy"] == args.proxy
+    assert opts["extractor_args"]["youtubepot-bgutilhttp"] == {"base_url": [args.pot_url]}
+    assert opts["http_headers"] == {"User-Agent": "UA"} and opts["outtmpl"] == str(tmp_path / "video.%(ext)s")

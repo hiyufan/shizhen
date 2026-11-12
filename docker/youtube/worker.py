@@ -286,34 +286,329 @@ async def prepare_session(page, video: str, *, activate: bool, compatibility: bo
     return navigation, snapshot, player_js
 
 
-async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
+_MINT_JS = """async c => {
+    const get = window.top['havuokmhhs-0']?.bevasrs?.wpc;
+    if (!get) throw Error('WebPoClient unavailable');
+    const client = await get();
+    return await client.mws({c, mc:false, me:false});
+}"""
+
+_PLAYER_JS = """async body => {
+    const c = structuredClone(ytcfg.get('INNERTUBE_CONTEXT'));
+    body.context = c;
+    const r = await fetch('/youtubei/v1/player?prettyPrint=false', {
+        method:'POST', credentials:'include',
+        headers:{'content-type':'application/json',
+          'X-Goog-Visitor-Id':c.client.visitorData || ytcfg.get('VISITOR_DATA'),
+          'X-Youtube-Client-Name':String(ytcfg.get('INNERTUBE_CONTEXT_CLIENT_NAME') || 1),
+          'X-Youtube-Client-Version':c.client.clientVersion},
+        body:JSON.stringify(body)
+    }); return await r.json();
+}"""
+
+_MEDIA_JS = """async p => {
+    const r = await fetch(p.url, {method:p.method, headers:p.headers,
+        body:p.body ? new Uint8Array(p.body) : undefined, credentials:'omit'});
+    const b = new Uint8Array(await r.arrayBuffer()); let s='';
+    for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));
+    return {status:r.status,url:r.url,headers:Object.fromEntries(r.headers),body:btoa(s)};
+}"""
+
+
+class Session:
+    """一个原生 Chromium 页面上的 YouTube 会话：预热、Token、player 请求和媒体请求都经它发出。"""
+
+    def __init__(self, args, page, loop: asyncio.AbstractEventLoop) -> None:
+        self.args = args
+        self.page = page
+        self.loop = loop
+        self.compatibility = args.compatibility
+        self.navigation = self.snapshot = self.player_js = None
+
+    async def prepare(self, *, compatibility: bool) -> None:
+        self.compatibility = compatibility
+        self.navigation, self.snapshot, self.player_js = await prepare_session(
+            self.page, self.args.video_id, activate=self.args.activate, compatibility=compatibility
+        )
+
+    async def open(self) -> None:
+        """先走快速预热；页面没准备好就退回对照流程（固定等待）再来一次。"""
+        try:
+            await self.prepare(compatibility=self.compatibility)
+        except Exception:
+            if self.compatibility:
+                raise
+            report("compatibility_retry", reason="session_not_ready")
+            await self.prepare(compatibility=True)
+
+    async def mint(self, binding):
+        for attempt in range(10):
+            try:
+                return await self.page.evaluate(_MINT_JS, binding)
+            except Exception:
+                if attempt == 9:
+                    raise RuntimeError("原生 WebPoClient 未就绪") from None
+                await asyncio.sleep(1)
+        raise RuntimeError("原生 WebPoClient 未就绪")
+
+    async def player(self, body):
+        token = await self.mint(self.args.video_id)
+        body["serviceIntegrityDimensions"] = {"poToken": token}
+        # API 必须知道用于解码 URL 的播放器版本，否则元数据 OK 但媒体仍可能 403。
+        playback = body.setdefault("playbackContext", {}).setdefault("contentPlaybackContext", {})
+        playback["signatureTimestamp"] = self.player_js["sts"]
+        return await self.page.evaluate(_PLAYER_JS, body)
+
+    async def playable(self) -> dict:
+        """目标视频的 player 响应；快速流程拿不到 OK 时按对照流程重新预热再请求一次。"""
+        request = {"videoId": self.args.video_id, "contentCheckOk": True, "racyCheckOk": True}
+        response = await self.player(dict(request))
+        if response.get("playabilityStatus", {}).get("status") != "OK" and not self.compatibility:
+            report("compatibility_retry", reason="player_not_ready")
+            await self.prepare(compatibility=True)
+            response = await self.player(dict(request))
+        return response
+
+    async def media(self, req):
+        headers = {k: v for k, v in req.headers.items() if k.lower() in ("content-type", "accept", "range")}
+        payload = {"url": req.url, "method": req.method, "body": list(req.data) if req.data else None}
+        return await self.page.evaluate(_MEDIA_JS, payload | {"headers": headers})
+
+    def wait(self, coroutine, seconds: float):
+        """yt-dlp 跑在线程里，回到页面所在的事件循环执行浏览器调用。"""
+        return asyncio.run_coroutine_threadsafe(coroutine, self.loop).result(seconds)
+
+
+def check_player(response: dict, video_id: str) -> tuple[dict, float]:
+    """(videoDetails, 时长)；不是目标视频、不可播放或没有完整时长都直接失败。"""
+    details, state = response.get("videoDetails", {}), response.get("playabilityStatus", {})
+    report(
+        "player",
+        id=details.get("videoId"),
+        status=state.get("status"),
+        reason=redact(state.get("reason", "")),
+        formats=len(response.get("streamingData", {}).get("adaptiveFormats", [])),
+    )
+    if details.get("videoId") != video_id or state.get("status") != "OK":
+        raise RuntimeError("目标视频 player 请求失败")
+    duration = float(details.get("lengthSeconds") or 0)
+    if duration <= 0:
+        raise RuntimeError("本实验仅验收有完整时长的非直播视频")
+    return details, duration
+
+
+def watch_html(config: dict, response: dict, initial: dict, raw_html: str) -> str:
+    """交给 yt-dlp 的观看页：前面补上浏览器里实际拿到的配置和 player 响应。"""
+    return (
+        "<html><script>ytcfg.set("
+        + json.dumps(config)
+        + ");var ytInitialPlayerResponse = "
+        + json.dumps(response)
+        + ";var ytInitialData = "
+        + json.dumps(initial)
+        + ";</script></html>"
+        + raw_html
+    )
+
+
+def cookie_lines(cookies: list[dict]) -> list[str]:
+    lines = ["# Netscape HTTP Cookie File"]
+    for c in cookies:
+        fields = [
+            c["domain"],
+            "TRUE" if c["domain"].startswith(".") else "FALSE",
+            c["path"],
+            "TRUE" if c["secure"] else "FALSE",
+            str(max(0, int(c["expires"]))),
+            c["name"],
+            c["value"],
+        ]
+        lines.append("\t".join(fields))
+    return lines
+
+
+def content_bound(config: dict) -> bool:
+    """播放器要求按视频 ID 生成 GVS Token 时，Token 绑定视频而不是访客。"""
+    return any(
+        "true" in parse_qs(v.get("serializedExperimentFlags", "")).get("html5_generate_content_po_token", [])
+        for v in config.get("WEB_PLAYER_CONTEXT_CONFIGS", {}).values()
+        if isinstance(v, dict)
+    )
+
+
+def extractor_class(session: Session, html: str, binding_visitor: str, bound: bool) -> type:
+    args = session.args
+
+    class BrowserYoutubeIE(YoutubeIE):
+        @classmethod
+        def ie_key(cls):
+            # 保留 youtube 参数命名空间，否则会静默采用其它默认客户端。
+            return "Youtube"
+
+        def _download_webpage(self, url, video_id, *a, **kw):
+            if video_id == args.video_id and isinstance(url, str) and urlparse(url).path == "/watch":
+                return html
+            return super()._download_webpage(url, video_id, *a, **kw)
+
+        def _download_json(self, url, video_id, *a, **kw):
+            if isinstance(url, str) and "/youtubei/v1/player" in url and video_id == args.video_id:
+                result = session.wait(session.player(json.loads(kw.get("data") or b"{}")), 30)
+                report(
+                    "reload",
+                    status=result.get("playabilityStatus", {}).get("status"),
+                    reason=redact(result.get("playabilityStatus", {}).get("reason", "")),
+                )
+                return result
+            return super()._download_json(url, video_id, *a, **kw)
+
+        def fetch_po_token(self, *a, **kw):
+            kind = getattr(kw.get("context"), "value", "gvs")
+            if kind == "gvs" and args.pot_url:
+                return super().fetch_po_token(*a, **kw)
+            binding = binding_visitor if kind == "gvs" and not bound else args.video_id
+            if not binding:
+                raise RuntimeError("缺少 Token 内容绑定")
+            return session.wait(session.mint(binding), 20)
+
+    return BrowserYoutubeIE
+
+
+def downloader_class(session: Session) -> type:
+    class BrowserDownloader(YoutubeDL):
+        def urlopen(self, req):
+            if not (
+                session.args.transport == "browser"
+                and hasattr(req, "url")
+                and (urlparse(req.url).hostname or "").endswith(".googlevideo.com")
+            ):
+                return super().urlopen(req)
+            reply = session.wait(session.media(req), 30)
+            result = Response(
+                io.BytesIO(base64.b64decode(reply["body"])), reply["url"], reply["headers"], status=reply["status"]
+            )
+            if reply["status"] >= 400:
+                raise HTTPError(result)
+            return result
+
+    return BrowserDownloader
+
+
+def ytdlp_options(args, response: dict, height: int, cookiefile: Path, user_agent: str, work: Path) -> dict:
+    # 1080p 以内 H.264；更高分辨率通常只有 VP9 / AV1，不能悄悄降到 1080p。
+    codec = codec_filter(response, height)
+    opts = {
+        "logger": Logger(),
+        "quiet": True,
+        "noprogress": True,
+        "cachedir": False,
+        "check_formats": False,
+        "socket_timeout": 20,
+        "retries": 0,
+        "extractor_retries": 0,
+        "max_filesize": args.max_bytes,
+        "progress_hooks": [size_guard(args.max_bytes), bytes_reporter()],
+        "postprocessor_hooks": [postprocess],
+        "cookiefile": str(cookiefile),
+        "http_headers": {"User-Agent": user_agent},
+        "js_runtimes": {"deno": {"path": str(find_deno_bin())}},
+        "extractor_args": {"youtube": {"player_client": ["web"], "player_js_variant": ["actual"]}},
+        "format": f"bv[protocol=sabr][height<={height}]{codec}+ba[protocol=sabr][ext=m4a]",
+        "merge_output_format": "mp4",
+        "outtmpl": str(work / "video.%(ext)s"),
+    }
+    if args.proxy:
+        opts["proxy"] = args.proxy
+    if args.pot_url:
+        opts["extractor_args"]["youtubepot-bgutilhttp"] = {"base_url": [args.pot_url]}
+    return opts
+
+
+def public_result(video_id: str, details: dict, response: dict) -> dict:
+    thumbnails = details.get("thumbnail", {}).get("thumbnails") or []
+    return {
+        "id": video_id,
+        "title": details.get("title") or "YouTube",
+        "author": details.get("author") or "",
+        "channel_id": details.get("channelId") or "",
+        "thumbnail": thumbnails[-1].get("url", "") if thumbnails else "",
+        "tiers": tiers(response),
+    }
+
+
+async def download(session: Session, context, profile: str, work: Path) -> tuple[dict, float]:
+    """在已预热的会话上拿 player 响应、选档并用 SABR 下完，返回 (公开元数据, 时长)。"""
+    args = session.args
+    response = await session.playable()
+    details, duration = check_player(response, args.video_id)
+    height, expected = plan(response, args.height, args.max_bytes, duration, fit=args.fit)
+    report("plan", height=height, bytes=expected, duration=duration)
+    snapshot = session.snapshot
+    snapshot["response"] = response
+    config = snapshot["config"]
+    navigation = session.navigation
+    raw_html = await navigation.text() if navigation else await session.page.content()
+    html = watch_html(config, response, snapshot["initial"], raw_html)
+    cookiefile = Path(profile) / "guest.txt"
+    cookiefile.write_text("\n".join(cookie_lines(await context.cookies())) + "\n")
+    cookiefile.chmod(0o600)
+    visitor = config.get("VISITOR_DATA") or config["INNERTUBE_CONTEXT"]["client"].get("visitorData")
+    extractor = extractor_class(session, html, visitor, content_bound(config))
+    opts = ytdlp_options(args, response, height, cookiefile, snapshot["ua"], work)
+
+    def run_ytdlp():
+        report("download_start")
+        with downloader_class(session)(opts) as ydl:
+            ydl.add_info_extractor(extractor(ydl))
+            info = ydl.extract_info("https://www.youtube.com/watch?v=" + args.video_id, download=True, ie_key="Youtube")
+            if info["id"] != args.video_id:
+                raise RuntimeError("下载器返回了其它视频")
+
+    await asyncio.to_thread(run_ytdlp)
+    return public_result(args.video_id, details, response), duration
+
+
+def chromium_command(executable: str, port: int, profile: str, proxy: str) -> list[str]:
+    command = [
+        executable,
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--no-first-run",
+        f"--remote-debugging-port={port}",
+        "--user-data-dir=" + profile,
+        "about:blank",
+    ]
+    if proxy:
+        command.insert(1, "--proxy-server=" + proxy)
+    return command
+
+
+def free_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+async def connect(pw, port: int):
+    for _ in range(40):
+        try:
+            return await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+        except Exception:
+            await asyncio.sleep(0.25)
+    raise RuntimeError("Chromium 未就绪")
+
+
+async def run(args) -> dict:
     # 不把 cookies、Token、媒体签名 URL 或完整 player JSON 写入输出目录。
     work = args.output / f"{args.video_id}-{uuid.uuid4().hex[:8]}"
     work.mkdir(parents=True)
     async with async_playwright() as pw:
         with (
             display(report_resources=args.report_resources) as screen,
-            tempfile.TemporaryDirectory(
-                prefix="youtube-probe-",
-                ignore_cleanup_errors=True,
-            ) as profile,
+            tempfile.TemporaryDirectory(prefix="youtube-probe-", ignore_cleanup_errors=True) as profile,
         ):
-            with socket.socket() as listener:
-                listener.bind(("127.0.0.1", 0))
-                port = listener.getsockname()[1]
-            command = [
-                pw.chromium.executable_path,
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--no-first-run",
-                f"--remote-debugging-port={port}",
-                "--user-data-dir=" + profile,
-                "about:blank",
-            ]
-            if args.proxy:
-                command.insert(1, "--proxy-server=" + args.proxy)
+            port = free_port()
             proc = subprocess.Popen(
-                command,
+                chromium_command(pw.chromium.executable_path, port, profile, args.proxy),
                 env=os.environ | {"DISPLAY": screen},
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -324,250 +619,12 @@ async def run(args) -> dict:  # noqa: C901, PLR0912, PLR0915
             browser = None
             browser_stopped = False
             try:
-                for _ in range(40):
-                    try:
-                        browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
-                        break
-                    except Exception:
-                        await asyncio.sleep(0.25)
-                if browser is None:
-                    raise RuntimeError("Chromium 未就绪")
+                browser = await connect(pw, port)
                 report("chromium_ready")
                 context = browser.contexts[0]
-                page = await context.new_page()
-                compatibility = args.compatibility
-                try:
-                    navigation, snapshot, player_js = await prepare_session(
-                        page, args.video_id, activate=args.activate, compatibility=compatibility
-                    )
-                except Exception:
-                    if compatibility:
-                        raise
-                    report("compatibility_retry", reason="session_not_ready")
-                    compatibility = True
-                    navigation, snapshot, player_js = await prepare_session(
-                        page, args.video_id, activate=args.activate, compatibility=True
-                    )
-
-                async def mint(binding):
-                    for attempt in range(10):
-                        try:
-                            return await page.evaluate(
-                                """async c => {
-                                const get = window.top['havuokmhhs-0']?.bevasrs?.wpc;
-                                if (!get) throw Error('WebPoClient unavailable');
-                                const client = await get();
-                                return await client.mws({c, mc:false, me:false});
-                            }""",
-                                binding,
-                            )
-                        except Exception:
-                            if attempt == 9:
-                                raise RuntimeError("原生 WebPoClient 未就绪") from None
-                            await asyncio.sleep(1)
-                    raise RuntimeError("原生 WebPoClient 未就绪")
-
-                async def player(body):
-                    token = await mint(args.video_id)
-                    body["serviceIntegrityDimensions"] = {"poToken": token}
-                    # API 必须知道用于解码 URL 的播放器版本，否则元数据 OK 但媒体仍可能 403。
-                    playback = body.setdefault("playbackContext", {}).setdefault("contentPlaybackContext", {})
-                    playback["signatureTimestamp"] = player_js["sts"]
-                    return await page.evaluate(
-                        """async body => {
-                        const c = structuredClone(ytcfg.get('INNERTUBE_CONTEXT'));
-                        body.context = c;
-                        const r = await fetch('/youtubei/v1/player?prettyPrint=false', {
-                            method:'POST', credentials:'include',
-                            headers:{'content-type':'application/json',
-                              'X-Goog-Visitor-Id':c.client.visitorData || ytcfg.get('VISITOR_DATA'),
-                              'X-Youtube-Client-Name':String(ytcfg.get('INNERTUBE_CONTEXT_CLIENT_NAME') || 1),
-                              'X-Youtube-Client-Version':c.client.clientVersion},
-                            body:JSON.stringify(body)
-                        }); return await r.json();
-                    }""",
-                        body,
-                    )
-
-                response = await player({"videoId": args.video_id, "contentCheckOk": True, "racyCheckOk": True})
-                if response.get("playabilityStatus", {}).get("status") != "OK" and not compatibility:
-                    report("compatibility_retry", reason="player_not_ready")
-                    navigation, snapshot, player_js = await prepare_session(
-                        page, args.video_id, activate=args.activate, compatibility=True
-                    )
-                    response = await player({"videoId": args.video_id, "contentCheckOk": True, "racyCheckOk": True})
-                details, state = response.get("videoDetails", {}), response.get("playabilityStatus", {})
-                report(
-                    "player",
-                    id=details.get("videoId"),
-                    status=state.get("status"),
-                    reason=redact(state.get("reason", "")),
-                    formats=len(response.get("streamingData", {}).get("adaptiveFormats", [])),
-                )
-                if details.get("videoId") != args.video_id or state.get("status") != "OK":
-                    raise RuntimeError("目标视频 player 请求失败")
-                duration = float(details.get("lengthSeconds") or 0)
-                if duration <= 0:
-                    raise RuntimeError("本实验仅验收有完整时长的非直播视频")
-                height, expected = plan(response, args.height, args.max_bytes, duration, fit=args.fit)
-                report("plan", height=height, bytes=expected, duration=duration)
-                snapshot["response"] = response
-                config = snapshot["config"]
-                raw_html = await navigation.text() if navigation else await page.content()
-                html = (
-                    "<html><script>ytcfg.set("
-                    + json.dumps(config)
-                    + ");var ytInitialPlayerResponse = "
-                    + json.dumps(response)
-                    + ";var ytInitialData = "
-                    + json.dumps(snapshot["initial"])
-                    + ";</script></html>"
-                    + raw_html
-                )
-                cookiefile = Path(profile) / "guest.txt"
-                lines = ["# Netscape HTTP Cookie File"]
-                for c in await context.cookies():
-                    lines.append(
-                        "\t".join(
-                            [
-                                c["domain"],
-                                "TRUE" if c["domain"].startswith(".") else "FALSE",
-                                c["path"],
-                                "TRUE" if c["secure"] else "FALSE",
-                                str(max(0, int(c["expires"]))),
-                                c["name"],
-                                c["value"],
-                            ]
-                        )
-                    )
-                cookiefile.write_text("\n".join(lines) + "\n")
-                cookiefile.chmod(0o600)
-                loop = asyncio.get_running_loop()
-                visitor = config.get("VISITOR_DATA") or config["INNERTUBE_CONTEXT"]["client"].get("visitorData")
-                content_bound = any(
-                    "true"
-                    in parse_qs(v.get("serializedExperimentFlags", "")).get("html5_generate_content_po_token", [])
-                    for v in config.get("WEB_PLAYER_CONTEXT_CONFIGS", {}).values()
-                    if isinstance(v, dict)
-                )
-
-                class BrowserYoutubeIE(YoutubeIE):
-                    @classmethod
-                    def ie_key(cls):
-                        # 保留 youtube 参数命名空间，否则会静默采用其它默认客户端。
-                        return "Youtube"
-
-                    def _download_webpage(self, url, video_id, *a, **kw):
-                        if video_id == args.video_id and isinstance(url, str) and urlparse(url).path == "/watch":
-                            return html
-                        return super()._download_webpage(url, video_id, *a, **kw)
-
-                    def _download_json(self, url, video_id, *a, **kw):
-                        if isinstance(url, str) and "/youtubei/v1/player" in url and video_id == args.video_id:
-                            result = asyncio.run_coroutine_threadsafe(
-                                player(json.loads(kw.get("data") or b"{}")), loop
-                            ).result(30)
-                            report(
-                                "reload",
-                                status=result.get("playabilityStatus", {}).get("status"),
-                                reason=redact(result.get("playabilityStatus", {}).get("reason", "")),
-                            )
-                            return result
-                        return super()._download_json(url, video_id, *a, **kw)
-
-                    def fetch_po_token(self, *a, **kw):
-                        kind = getattr(kw.get("context"), "value", "gvs")
-                        if kind == "gvs" and args.pot_url:
-                            return super().fetch_po_token(*a, **kw)
-                        binding = visitor if kind == "gvs" and not content_bound else args.video_id
-                        if not binding:
-                            raise RuntimeError("缺少 Token 内容绑定")
-                        return asyncio.run_coroutine_threadsafe(mint(binding), loop).result(20)
-
-                async def media(req):
-                    return await page.evaluate(
-                        """async p => {
-                        const r = await fetch(p.url, {method:p.method, headers:p.headers,
-                            body:p.body ? new Uint8Array(p.body) : undefined, credentials:'omit'});
-                        const b = new Uint8Array(await r.arrayBuffer()); let s='';
-                        for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode(...b.subarray(i,i+8192));
-                        return {status:r.status,url:r.url,headers:Object.fromEntries(r.headers),body:btoa(s)};
-                    }""",
-                        {
-                            "url": req.url,
-                            "method": req.method,
-                            "body": list(req.data) if req.data else None,
-                            "headers": {
-                                k: v for k, v in req.headers.items() if k.lower() in ("content-type", "accept", "range")
-                            },
-                        },
-                    )
-
-                class BrowserDownloader(YoutubeDL):
-                    def urlopen(self, req):
-                        if (
-                            args.transport == "browser"
-                            and hasattr(req, "url")
-                            and (urlparse(req.url).hostname or "").endswith(".googlevideo.com")
-                        ):
-                            reply = asyncio.run_coroutine_threadsafe(media(req), loop).result(30)
-                            result = Response(
-                                io.BytesIO(base64.b64decode(reply["body"])),
-                                reply["url"],
-                                reply["headers"],
-                                status=reply["status"],
-                            )
-                            if reply["status"] >= 400:
-                                raise HTTPError(result)
-                            return result
-                        return super().urlopen(req)
-
-                def download():
-                    # 1080p 以内 H.264；更高分辨率通常只有 VP9 / AV1，不能悄悄降到 1080p。
-                    codec = codec_filter(response, height)
-                    opts = {
-                        "logger": Logger(),
-                        "quiet": True,
-                        "noprogress": True,
-                        "cachedir": False,
-                        "check_formats": False,
-                        "socket_timeout": 20,
-                        "retries": 0,
-                        "extractor_retries": 0,
-                        "max_filesize": args.max_bytes,
-                        "progress_hooks": [size_guard(args.max_bytes), bytes_reporter()],
-                        "postprocessor_hooks": [postprocess],
-                        "cookiefile": str(cookiefile),
-                        "http_headers": {"User-Agent": snapshot["ua"]},
-                        "js_runtimes": {"deno": {"path": str(find_deno_bin())}},
-                        "extractor_args": {"youtube": {"player_client": ["web"], "player_js_variant": ["actual"]}},
-                        "format": f"bv[protocol=sabr][height<={height}]{codec}+ba[protocol=sabr][ext=m4a]",
-                        "merge_output_format": "mp4",
-                        "outtmpl": str(work / "video.%(ext)s"),
-                    }
-                    if args.proxy:
-                        opts["proxy"] = args.proxy
-                    if args.pot_url:
-                        opts["extractor_args"]["youtubepot-bgutilhttp"] = {"base_url": [args.pot_url]}
-                    report("download_start")
-                    with BrowserDownloader(opts) as ydl:
-                        ydl.add_info_extractor(BrowserYoutubeIE(ydl))
-                        info = ydl.extract_info(
-                            "https://www.youtube.com/watch?v=" + args.video_id, download=True, ie_key="Youtube"
-                        )
-                        if info["id"] != args.video_id:
-                            raise RuntimeError("下载器返回了其它视频")
-                    thumbnails = details.get("thumbnail", {}).get("thumbnails") or []
-                    return {
-                        "id": args.video_id,
-                        "title": details.get("title") or "YouTube",
-                        "author": details.get("author") or "",
-                        "channel_id": details.get("channelId") or "",
-                        "thumbnail": thumbnails[-1].get("url", "") if thumbnails else "",
-                        "tiers": tiers(response),
-                    }
-
-                result = await asyncio.to_thread(download)
+                session = Session(args, await context.new_page(), asyncio.get_running_loop())
+                await session.open()
+                result, duration = await download(session, context, profile, work)
                 # 下载结束后释放广告播放器和渲染进程，再做完整解码校验。
                 await browser.close()
                 browser = None
