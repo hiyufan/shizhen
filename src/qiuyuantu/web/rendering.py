@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from .. import guides, seo, site_feedback, stats, status
-from . import notice
+from . import download_host, notice
 from .preferences import UI_ENGLISH_PATH, preferences, t, translate_data, ui_english
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -151,6 +151,7 @@ def render(request: Request, name: str, context: dict, **kwargs):
     context["audience_enabled"] = stats.enabled() and public
     # 广告只放公开内容页；统计后台、测试、反馈和错误页不放
     context["adsense_client"] = seo.ADSENSE_CLIENT if public else ""
+    context["download_origin"] = download_host.ORIGIN
     if context.get("json_ld") and prefs["locale"] == "en":
         data = translate_data(json.loads(context["json_ld"]), "en")
         context["json_ld"] = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")

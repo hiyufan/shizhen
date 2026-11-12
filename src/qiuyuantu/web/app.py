@@ -8,13 +8,14 @@ import os
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
 
 from .. import failures, feedback, search_reports, site_feedback, stats, status
 from ..convert import animation_uploads, config, jobs, net, relay, signal, store, updater
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
-from . import access_log, admin, audience, contact, legacy_api, media, pages, parse, proxy
+from . import access_log, admin, audience, contact, download_host, legacy_api, media, pages, parse, proxy
 from .middleware import site_headers
 from .rendering import STATIC_DIR
 
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.middleware("http")(site_headers)
+    app.add_exception_handler(StarletteHTTPException, download_host.http_error)
     mcp = _mount_mcp(app)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     for module in (legacy_api, parse, proxy, media, admin, audience, contact):

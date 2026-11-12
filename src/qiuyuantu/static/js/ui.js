@@ -2,7 +2,7 @@
 
 import { isEnglish, serverMessage, t } from './i18n.js';
 
-import { postJSON } from './api.js';
+import { jobDownload, postJSON } from './api.js';
 import { el } from './dom.js';
 
 /** 任务卡片：进度条 + 状态文字，做完换成保存按钮（iPhone 上前面多一个「存到相册」） */
@@ -21,9 +21,9 @@ export function jobCard(container, title) {
       const fallback = job.status === 'queued' ? '排个队，马上轮到' : '忙活中';
       status.textContent = serverMessage(job.message || fallback, fallback) + ' ' + pct + '%';
     },
-    done(text, href, filename, photos) {
+    done(text, job, photos) {
       bar.style.width = '100%';
-      const link = el('a', { class: 'btn sm' + (photos ? '' : ' dark'), href, download: filename || '' }, text);
+      const link = el('a', { class: 'btn sm' + (photos ? '' : ' dark'), ...jobDownload(job) }, text);
       status.replaceWith(photos ? el('div', { class: 'group' }, photos, link) : link);
     },
     fail(msg) {

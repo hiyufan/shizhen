@@ -97,6 +97,7 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 - 出站 HTTP 使用 `utils.create_async_client()` 或 `convert.net.safe_client()`，保留 SSRF 检查、重定向逐跳校验和 Cookie 隔离；业务代码不要另建裸 `httpx.AsyncClient()`。
 - 保留 `uvicorn` + `httptools` 的依赖选择；`pyproject.toml` 明确禁止引入绕过现有 SSRF 防线的 `uvloop`，不要换成 `uvicorn[standard]`。
 - `warp` 容器的控制口（1081，`PARSE_VIDEO_FALLBACK_RENEW`）只认整行 `renew`，用于备用出口被拦时换出口地址；保持只在 Compose 内网可达，不发布到宿主机，应用侧的去重与递增间隔（`convert/fallback_exit.py`）不能绕开。
+- 独立下载域名（`PARSE_VIDEO_DOWNLOAD_ORIGIN`，`web/download_host.py`）只放行下载接口、不记统计，下载由页面在主站另报；只给交由浏览器下载的 `<a>` 链接用，页面内 `fetch` 的预览和「存到相册」留在主站。它的证书必须和主站分开签：共用证书时浏览器会合并连接，全新连接的提速就没了。
 - 下载、代理和转换入口继续校验签名、限流与配额。外部命令使用参数列表，沿用现有执行封装。
 - `tests/conftest.py` 在模块导入前设置临时数据目录和测试配置。新增测试沿用此隔离，不读取或写入真实 `data/`、密钥和账号 Cookie；平台响应使用离线替身。
 

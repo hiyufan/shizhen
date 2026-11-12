@@ -5,7 +5,7 @@
 
 import { t as translate } from './i18n.js';
 
-import { postJSON, watchJob } from './api.js';
+import { downloadUrl, jobDownload, postJSON, watchJob } from './api.js';
 import { $, el, fmtSize, fmtTime } from './dom.js';
 import { PHOTOS, iphoneLiveHint, oneFile, photosButton } from './save.js';
 import { LIMITS, Trimmer } from './trimmer.js';
@@ -147,7 +147,7 @@ function defaultWidth(src) {
 /** 返回清理函数：再开一个转换器时调 */
 function sourceDownloads(src) {
   if (!src.animation) return [];
-  return [el('a', { class: 'btn sm quiet', href: '/api/source/' + src.id + '?download=1', download: '' }, translate('下载渲染后的 MP4'))];
+  return [el('a', { class: 'btn sm quiet', href: downloadUrl('/api/source/' + src.id + '?download=1'), download: '' }, translate('下载渲染后的 MP4'))];
 }
 
 function conversionPreview(src, previewUrl) {
@@ -298,18 +298,18 @@ function photosAction(job, format, fileUrl) {
 }
 
 /** 下载按钮：没有「存到相册」时它就是主按钮 */
-function saveLink(job, fileUrl, secondary) {
+function saveLink(job, secondary) {
   const ext = (job.filename || '').split('.').pop().toUpperCase();
   const label = (secondary ? translate('下载 ') : translate('保存 ')) + ext + (job.filesize ? translate('，') + fmtSize(job.filesize) : '');
   return secondary
-    ? el('a', { class: 'btn block', href: fileUrl, download: job.filename || '', style: 'margin-top:10px' }, label)
-    : el('a', { class: 'btn block dark', href: fileUrl, download: job.filename || '' }, label);
+    ? el('a', { class: 'btn block', ...jobDownload(job), style: 'margin-top:10px' }, label)
+    : el('a', { class: 'btn block dark', ...jobDownload(job) }, label);
 }
 
 function showResult(box, job, format) {
   const fileUrl = '/api/jobs/' + job.id + '/file';
   const photos = photosAction(job, format, fileUrl);
-  const save = saveLink(job, fileUrl, !!photos);
+  const save = saveLink(job, !!photos);
   const note = PHOTOS && format === 'livephoto'
     ? iphoneLiveHint(translate('存视频到相册'), ' ZIP')
     : el('p', { class: 'hint' }, resultNote(job, format));

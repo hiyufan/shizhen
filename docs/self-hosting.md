@@ -99,6 +99,7 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | `PARSE_VIDEO_HOST` / `PARSE_VIDEO_PORT` | `0.0.0.0` / `8000` | 监听地址 / 端口 |
 | `PARSE_VIDEO_DATA_DIR` | `./data` | 缓存、结果、密钥目录 |
 | `PARSE_VIDEO_SITE_URL` | 按请求 | 正式域名，用于 canonical / sitemap / OG 图，以及反馈和告警邮件里的链接 |
+| `PARSE_VIDEO_DOWNLOAD_ORIGIN` | – | 独立下载域名，如 `https://download.example.com`；设了以后下载链接走它，见[独立下载域名](#独立下载域名) |
 | `PARSE_VIDEO_TRUST_PROXY` | `0` | 反代后面设 `1`，信任 `X-Forwarded-For` |
 | `PARSE_VIDEO_USERNAME` + `PARSE_VIDEO_PASSWORD` | – | 同时设置则开启 Basic Auth |
 | `PARSE_VIDEO_MCP` | `1` | 设 `0` 关闭 `/mcp`（Docker 镜像默认关） |
@@ -194,6 +195,30 @@ Discord 贴纸只读取官方匿名 `/api/v10/sticker-packs` 目录，再匹配�
 | 配额 | 按 IP 限流、并发任务数、上传与原视频上限、磁盘配额 |
 
 仍需注意：ffmpeg 和 yt-dlp 处理的是不可信媒体，应保持更新（yt-dlp 可自动升级，ffmpeg 通过重建镜像更新）；`cookies.txt` 属于账号凭证，只应存放在服务器上；服务本身没有登录机制，限流针对的是脚本滥用，带宽成本需要部署者自行评估。
+
+## 独立下载域名
+
+桌面浏览器点同源的下载链接，复用的是打开页面的那条 HTTP/2 连接。这条连接加载页面时被客户端的接收窗口顶住过，拥塞控制已经退出启动阶段，在往返延迟高的线路上（国内直连海外服务器）要几十秒才爬到满速。实测同一条线路：全新连接 181 MB 用 17 秒；复用被顶住过的连接，30 秒只下了 54 MB。给下载单独一个域名，浏览器就会另开一条连接。
+
+1. 把 `download.example.com` 解析到同一台服务器，反代到同一个应用。
+2. **证书要单独签，不能和主站共用一张**（也不要用通配符证书）。证书同时包含两个域名、又解析到同一个地址时，浏览器会把它们合并到同一条连接上，等于没换。Caddy 每个站点各签一张，默认就满足；Nginx 要给下载域名单独申请。
+3. 设置 `PARSE_VIDEO_DOWNLOAD_ORIGIN=https://download.example.com` 并重建应用容器。
+
+Caddy 加一段即可：
+
+```caddyfile
+download.example.com {
+	reverse_proxy app:8000 {
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+		flush_interval -1
+	}
+}
+```
+
+这个域名上只放行 `/api/proxy`、`/api/jobs/<id>/file`、`/api/source/<id>` 三类下载请求，其它地址跳回主站（需要设置 `PARSE_VIDEO_SITE_URL`，否则回 404）。它收不到主站的 Cookie，所以不记使用统计，由页面在主站另报一次下载。只有交给浏览器下载管理器的链接走它；页面内的预览、iPhone「存到相册」仍走主站。开了整站 Basic Auth 时这项设置不生效。
 
 ## 性能
 

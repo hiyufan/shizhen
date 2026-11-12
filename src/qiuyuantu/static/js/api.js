@@ -171,17 +171,35 @@ export function proxy(url, name, download) {
     + (name ? '&filename=' + encodeURIComponent(name) : '') + (download ? '&download=1' : '');
 }
 
+// ---------- 独立下载域名：点下载交给浏览器的整文件走另一个域名，那是一条全新的连接。
+// 同源下载复用页面这条 HTTP/2 连接，它加载页面时被接收窗口顶住过，高延迟线路上要几十秒才爬到满速
+// （见后端 web/download_host.py）。只用于 <a> 链接：页面里 fetch 的（存相册、预览）仍走本站，不跨域。
+// 那个域名收不到本站 Cookie、不记统计，所以下载都在本站另报一声。
+const DOWNLOAD_ORIGIN = document.documentElement.dataset.downloadOrigin || '';
+
+/** 站内路径 → 下载链接 */
+export const downloadUrl = (path) => DOWNLOAD_ORIGIN + path;
+
+/** 任务产物下载链接的属性；跨域时 download 属性不生效，文件名由服务器的下载头给 */
+export function jobDownload(job) {
+  const report = () => {
+    if (!DOWNLOAD_ORIGIN) return; // 同源下载服务器自己会记
+    fetch('/api/jobs/' + job.id + '/download-hit', { method: 'POST', keepalive: true }).catch(() => {});
+  };
+  return { href: downloadUrl('/api/jobs/' + job.id + '/file'), download: job.filename || '', onclick: report };
+}
+
 /** 一个文件可以从哪儿拿：有国内边缘地址就先边缘（国内直达），再服务器转发（跨两次太平洋，兜底） */
 export const sourcesOf = (url) => [edges[url], direct[url], proxy(url)].filter(Boolean);
 
 /** 视频 / 音频的下载链接。边缘地址是跨域的，<a download> 浏览器不认，靠边缘回的下载头 */
 export function mediaDownload(url, name) {
-  return edges[url] ? edges[url] + '&dl=1&name=' + encodeURIComponent(name) : proxy(url, name, true);
+  return edges[url] ? edges[url] + '&dl=1&name=' + encodeURIComponent(name) : downloadUrl(proxy(url, name, true));
 }
 
-/** 走边缘的下载不经过服务器，单独报一声给使用统计（走服务器转发的那边自己会记） */
+/** 走边缘 / 直连 / 下载域名的下载服务器记不到，单独报一声给使用统计（同源转发的那边自己会记） */
 export function trackDownload(url) {
-  if (!edges[url] && !direct[url]) return;
+  if (!edges[url] && !direct[url] && !DOWNLOAD_ORIGIN) return;
   fetch('/api/download-hit', {
     method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, sig: sigOf(url) }),

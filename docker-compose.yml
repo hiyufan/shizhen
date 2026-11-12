@@ -41,6 +41,8 @@ services:
       # PARSE_VIDEO_YOUTUBE_NATIVE: "0"
       # 每 7 天自动升级 yt-dlp 并在空闲时重启（平台改版全靠它跟进）
       PARSE_VIDEO_YTDLP_AUTOUPDATE_DAYS: "7"
+      # 独立下载域名：下载走一条全新连接，高延迟线路上快得多；证书要和主站分开签，见 docs/self-hosting.md
+      # PARSE_VIDEO_DOWNLOAD_ORIGIN: "https://download.your.domain"
       # 站长统计页：设了就记录，打开 https://域名/stats?token=<它> 看每小时 / 每天多少人在用
       # PARSE_VIDEO_STATS_TOKEN: "换成一串随机字符"
       # 搜索站长报表：把真实凭证放进本机 .env，配置步骤见 docs/analytics.md

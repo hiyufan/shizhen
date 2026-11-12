@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 
 from .. import audience, seo, stats
 from ..convert import relay
-from . import attribution, limits
+from . import attribution, download_host, limits
 
 _INLINE_SCRIPT = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
 _SCRIPT_ORIGIN = re.compile(r"<script\b[^>]*\bsrc=[\"']?(https://[^/\"'\s>]+)", re.I)
@@ -130,6 +130,8 @@ def _excluded_from_stats(request: Request) -> bool:
     2026-10-02 一条测试反馈就这样被不认识的 IP 打开了 4 次，统计里快手成功率直接成了 0。"""
     if request.query_params.get("src") == "issue" or _is_script(request.headers.get("user-agent", "")):
         return True
+    if download_host.is_request(request):
+        return True  # 收不到本站 Cookie，分不出来源和测试设备；下载由页面在主站另报（见 download_host.py）
     if _api_without_page(request):
         return True
     return stats.ignored_ip(limits.client_ip(request)) or stats.is_test_cookie(request.cookies.get(stats.TEST_COOKIE))
@@ -166,9 +168,8 @@ async def site_headers(request: Request, call_next) -> Response:
 
 
 async def _site_response(request: Request, call_next) -> Response:
-
     try:
-        response = _strip_trailing_slash(request) or await call_next(request)
+        response = download_host.refusal(request) or _strip_trailing_slash(request) or await call_next(request)
     except RuntimeError as exc:
         # 响应头还没发出去用户就走了（视频代理等上游第一块数据时常见），框架报这个错。
         # 人都走了，没什么可记的，免得每次在日志里留一整段 traceback
@@ -189,4 +190,6 @@ async def _site_response(request: Request, call_next) -> Response:
         response.headers.setdefault(name, value)
     if _is_html(response):
         response.headers.setdefault("Content-Security-Policy", CSP)
+    if download_host.is_request(request):
+        response.headers["X-Robots-Tag"] = "noindex"
     return response

@@ -934,5 +934,9 @@
   "原视频超过 {limit} MB，不支持转换": "The source video exceeds {limit} MB and cannot be converted",
   "视频没下完整，多半是超过了服务器 {limit} MB 的上限": "The video did not download completely, most likely because it exceeds the server's {limit} MB limit",
   "超过 {minutes} 分钟还没做完，已放弃。试试缩短时长或降低尺寸": "Not finished after {minutes} min, so it was stopped. Try a shorter clip or a smaller size",
-  "超过 {seconds} 秒还没做完，已放弃。试试缩短时长或降低尺寸": "Not finished after {seconds} s, so it was stopped. Try a shorter clip or a smaller size"
+  "超过 {seconds} 秒还没做完，已放弃。试试缩短时长或降低尺寸": "Not finished after {seconds} s, so it was stopped. Try a shorter clip or a smaller size",
+  "下载没有成功": "The download did not complete",
+  "下载没有成功，回到页面再试一次。": "The download did not complete. Go back to the page and try again.",
+  "按浏览器的返回键可以回到刚才的结果。": "Use your browser's Back button to return to your results.",
+  "回到求原图": "Back to Qiuyuantu"
 }

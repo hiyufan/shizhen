@@ -99,6 +99,7 @@ All configuration uses environment variables. Every variable is optional.
 | `PARSE_VIDEO_HOST` / `PARSE_VIDEO_PORT` | `0.0.0.0` / `8000` | Listening address / port |
 | `PARSE_VIDEO_DATA_DIR` | `./data` | Directory for caches, outputs, and keys |
 | `PARSE_VIDEO_SITE_URL` | Derived from request | Public site URL for canonical links, sitemap, Open Graph images, and links in feedback and alert emails |
+| `PARSE_VIDEO_DOWNLOAD_ORIGIN` | – | Separate download host such as `https://download.example.com`; download links use it when set. See [Separate download host](#separate-download-host) |
 | `PARSE_VIDEO_TRUST_PROXY` | `0` | Set to `1` behind a reverse proxy to trust `X-Forwarded-For` |
 | `PARSE_VIDEO_USERNAME` + `PARSE_VIDEO_PASSWORD` | – | Setting both enables Basic Auth |
 | `PARSE_VIDEO_MCP` | `1` | Set to `0` to disable `/mcp`; disabled by default in the Docker image |
@@ -191,6 +192,30 @@ This service fetches user-provided links and forwards files back to them. Public
 | Quotas | Per-IP rate limits, concurrent job limits, upload and source size limits, disk quotas |
 
 FFmpeg and yt-dlp process untrusted media and should be kept up to date. yt-dlp supports automatic updates; update FFmpeg by rebuilding the image. Treat `cookies.txt` as an account credential and store it only on the server. The service has no built-in user account system; rate limits target scripted abuse, and operators need to assess their own bandwidth costs.
+
+## Separate download host
+
+A same-origin download link reuses the HTTP/2 connection that loaded the page. That connection has already been throttled by the client's receive window while the page loaded, so congestion control has left its startup phase and ramps up slowly on high-latency routes: it can take tens of seconds to reach full speed. Measured on one such route, a fresh connection downloaded 181 MB in 17 s, while a reused, previously throttled connection managed only 54 MB in 30 s. A separate hostname makes the browser open a new connection.
+
+1. Point `download.example.com` at the same server and proxy it to the same app.
+2. **Issue a separate certificate for it. Do not share the main site's certificate or use a wildcard.** If one certificate covers both names and they resolve to the same address, browsers coalesce them onto a single connection and nothing changes. Caddy issues one certificate per site by default; with Nginx, request a dedicated certificate.
+3. Set `PARSE_VIDEO_DOWNLOAD_ORIGIN=https://download.example.com` and recreate the app container.
+
+With Caddy, add:
+
+```caddyfile
+download.example.com {
+	reverse_proxy app:8000 {
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+		flush_interval -1
+	}
+}
+```
+
+Only `/api/proxy`, `/api/jobs/<id>/file` and `/api/source/<id>` are served on this host; everything else redirects to the main site (requires `PARSE_VIDEO_SITE_URL`, otherwise 404). The host never receives the main site's cookies, so it records no usage statistics; the page reports each download through the main site instead. Only links handed to the browser's download manager use it; in-page previews and “Save to Photos” on iPhone stay on the main site. The setting is ignored when site-wide Basic Auth is enabled.
 
 ## Performance
 

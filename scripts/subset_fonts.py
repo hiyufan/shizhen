@@ -51,6 +51,8 @@ def heading_text() -> str:
     text = BRAND + "".join(p.h1 for p in seo.PAGES) + "".join(g.h1 for g in guides.GUIDES)
     for f in glob.glob(os.path.join(PKG, "templates", "*.html")):  # 写死在模板里的 h1（教程列表、404、统计页）
         html = Path(f).read_text(encoding="utf-8")
+        if '{% extends "base.html" %}' not in html:
+            continue  # 不继承 base.html 的独立页（下载域名的出错说明）不加载站内字体，标题用系统字体
         for heading in re.findall(r"<h1[^>]*>(.*?)</h1>", html):
             # 本地化标题仍从中文原文收字，不把 Jinja 表达式或翻译函数名当正文。
             for literal in re.findall(r"{{\s*t\((.*)\)\s*}}", heading):

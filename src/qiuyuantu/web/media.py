@@ -353,6 +353,14 @@ async def api_job_file(job_id: str, request: Request, inline: int = 0):
     return FileResponse(path, media_type=media_type, filename=job.filename or Path(path).name)
 
 
+@router.post("/api/jobs/{job_id}/download-hit")
+async def api_job_download_hit(job_id: str, ip: str = Depends(limits.proxy_limit)):
+    """任务产物从独立下载域名拿时，那边不记统计（见 download_host.py），页面在这里单独报一声。"""
+    job = _job_or_404(job_id)
+    stats.record_download(ip, "job:" + job.id, source=job.type)
+    return {"ok": True}
+
+
 @router.get("/api/jobs/{job_id}/preview")
 async def api_job_preview(job_id: str):
     """实况照片的封面图（zip 里的 JPG）。"""

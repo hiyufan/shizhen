@@ -394,7 +394,7 @@ async function startDownload(f, d, baseName, jobsBox) {
     const done = await watchJob(job, card.update);
     const file = '/api/jobs/' + done.id + '/file';
     const photos = jobPhotosButton(f, done, file, baseName);
-    card.done((photos ? t('下载 ') : t('保存 ')) + (done.filesize ? fmtSize(done.filesize) : ''), file, done.filename, photos);
+    card.done((photos ? t('下载 ') : t('保存 ')) + (done.filesize ? fmtSize(done.filesize) : ''), done, photos);
     if (PHOTOS && !albumSafe(f.codec)) card.card.append(el('p', { class: 'hint' }, t(ALBUM_JOB_HINT, { codec: codecMark(f.codec) })));
   } catch (e) {
     card.fail(e.message);
@@ -511,7 +511,7 @@ async function startLive(lives, fmt, baseName, jobsBox, btn) {
     }));
     const done = await watchJob(await postJSON('/api/live', { items, format: fmt, title: baseName }), card.update);
     const ext = (done.filename || '').split('.').pop().toUpperCase();
-    card.done(t('保存 ') + ext + (done.filesize ? t('，') + fmtSize(done.filesize) : ''), '/api/jobs/' + done.id + '/file', done.filename);
+    card.done(t('保存 ') + ext + (done.filesize ? t('，') + fmtSize(done.filesize) : ''), done);
   } catch (e) {
     card.fail(e.message);
   } finally {

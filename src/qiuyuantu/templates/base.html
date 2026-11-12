@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="{{ 'zh-CN' if locale == 'zh' else 'en' }}" data-theme="{{ theme }}" data-language="{{ language }}">
+<html lang="{{ 'zh-CN' if locale == 'zh' else 'en' }}" data-theme="{{ theme }}" data-language="{{ language }}"{% if download_origin %} data-download-origin="{{ download_origin }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

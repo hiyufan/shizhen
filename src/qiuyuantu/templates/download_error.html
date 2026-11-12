@@ -1,0 +1,30 @@
+{# 独立下载域名上的出错说明（见 web/download_host.py）。这个域名只放行下载接口，拿不到主站的脚本和字体，
+   所以不继承 base.html：只有文字和回主站的链接，颜色取自 site.css 的浅色 / 深色变量。 #}
+<!doctype html>
+<html lang="{{ 'zh-CN' if locale == 'zh' else 'en' }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{ t("下载没有成功") }} - {{ t("求原图") }}</title>
+<style>
+  :root { color-scheme: light dark; --cold: #fafaf9; --ink: #1a1815; --ink-2: rgba(0,0,0,.45); --sky: #2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --cold: #161b22; --ink: #e6edf3; --ink-2: #adb8c4; --sky: #99D6FF; } }
+  body { margin: 0; background: var(--cold); color: var(--ink); font: 16px/1.7 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; }
+  main { max-width: 34rem; margin: 18vh auto 0; padding: 0 24px; }
+  h1 { font-size: 1.5rem; margin: 0 0 .75rem; }
+  p { margin: 0 0 1rem; }
+  .hint { color: var(--ink-2); font-size: .9rem; }
+  a { color: var(--sky); }
+  a:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{ t("下载没有成功") }}</h1>
+  <p role="alert">{{ message }}</p>
+  <p class="hint">{{ t("按浏览器的返回键可以回到刚才的结果。") }}</p>
+  {% if site_url %}<p><a href="{{ site_url }}/">{{ t("回到求原图") }}</a></p>{% endif %}
+</main>
+</body>
+</html>
