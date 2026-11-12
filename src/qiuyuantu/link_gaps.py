@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import sqlite3
@@ -61,7 +62,7 @@ def gaps(db_path: Path, days: float = 7, reasons: tuple[str, ...] = DEFAULT_REAS
     if not db_path.exists():
         return []
     marks = ",".join("?" * len(reasons))
-    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+    with contextlib.closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
         rows = conn.execute(
             f"SELECT ts, platform, reason, msg, link FROM failures WHERE ts >= ? AND reason IN ({marks}) ORDER BY ts",
             (time.time() - days * 86400, *reasons),
