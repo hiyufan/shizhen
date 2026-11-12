@@ -1,7 +1,7 @@
 # 本地提交前自动跑和 CI 一样的规范检查：pip install pre-commit && pre-commit install
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.10
+    rev: v0.17.2  # 和 pyproject.toml 的 dev 依赖保持同一版本
     hooks:
       - id: ruff-check
         args: [--fix]
