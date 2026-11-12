@@ -150,7 +150,6 @@ All configuration uses environment variables. Every variable is optional.
 | `PARSE_VIDEO_SSRF_DNS` | `1` | Set to `0` to disable DNS resolution checks, only for local debugging with a fake-IP proxy |
 | `PARSE_VIDEO_SITE_VERIFICATION` | – | Site verification `<meta>` markup, inserted unchanged into `<head>` |
 | `PARSE_VIDEO_ANALYTICS` | – | Analytics snippet, such as Baidu Analytics / Umami / GA, inserted at the bottom of pages |
-| `PARSE_VIDEO_ADSENSE_CLIENT` | – | Google AdSense publisher ID (`ca-pub-…`). When set, public pages load the Auto ads script in `<head>`, CSP allows Google ad domains, and `/ads.txt` is served; leave empty for no ads |
 
 ### Site notice
 

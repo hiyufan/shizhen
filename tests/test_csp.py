@@ -1,12 +1,12 @@
-"""内容安全策略：不许跑内联脚本；站长配的统计代码按哈希 / 域名单独放行，AdSense 只在配置后放行。"""
+"""内容安全策略：不许跑内联脚本；站长配的统计代码按哈希 / 域名单独放行，无广告例外。"""
 
 import base64
 import hashlib
 
 from fastapi.testclient import TestClient
 
-from qiuyuantu import seo, web
-from qiuyuantu.web.middleware import ADSENSE_ORIGINS, build_csp
+from qiuyuantu import web
+from qiuyuantu.web.middleware import build_csp
 
 
 def _directives(csp):
@@ -38,43 +38,15 @@ def test_edge_media_origin_allowed_for_video_and_fetch():
     assert d["connect-src"] == ["'self'", "https://edge.example.com", "https://video.twimg.com"]
 
 
-ADSENSE = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1234567890123456"
-
-
-def test_adsense_origins_only_when_configured():
-    plain = _directives(build_csp())
-    assert "frame-src" not in plain and plain["script-src"] == ["'self'"]
-    d = _directives(build_csp(adsense=True))
-    # 仍然不许内联脚本；广告加载脚本、广告 iframe 与打点只放行 Google 的广告域名
-    assert d["script-src"] == ["'self'", *ADSENSE_ORIGINS] and "'unsafe-inline'" not in d["script-src"]
-    assert d["frame-src"] == ["'self'", *ADSENSE_ORIGINS]
-    assert set(ADSENSE_ORIGINS) <= set(d["img-src"]) and set(ADSENSE_ORIGINS) <= set(d["connect-src"])
-    assert d["frame-ancestors"] == ["'none'"] and d["object-src"] == ["'none'"]
-
-
-def test_adsense_script_only_on_public_pages(monkeypatch):
+def test_legacy_ad_configuration_is_ignored(monkeypatch):
+    monkeypatch.setenv("PARSE_VIDEO_ADSENSE_CLIENT", "ca-pub-1234567890123456")
     client = TestClient(web.app)
-    assert ADSENSE not in client.get("/").text
-    monkeypatch.setattr(seo, "ADSENSE_CLIENT", "ca-pub-1234567890123456")
-    home = client.get("/").text
-    assert ADSENSE in home and home.index(ADSENSE) < home.index("</head>")
-    assert ADSENSE in client.get("/guides").text
-    # 统计后台、错误页不放广告
-    assert ADSENSE not in client.get("/stats").text
-    missing = client.get("/no-such-page-for-ads")
-    assert missing.status_code == 404 and ADSENSE not in missing.text
-
-
-def test_ads_txt_follows_configuration(monkeypatch):
-    client = TestClient(web.app)
+    for path in ("/", "/guides", "/stats", "/no-such-page-for-ads", "/ads.txt"):
+        reply = client.get(path)
+        assert "adsbygoogle" not in reply.text
+        assert "ca-pub-" not in reply.text
+        csp = reply.headers.get("content-security-policy", "")
+        assert "google" not in csp and "doubleclick" not in csp
+        if reply.headers.get("content-type", "").startswith("text/html"):
+            assert _directives(csp)["script-src"] == ["'self'"]
     assert client.get("/ads.txt").status_code == 404
-    monkeypatch.setattr(seo, "ADSENSE_CLIENT", "ca-pub-1234567890123456")
-    reply = client.get("/ads.txt")
-    assert reply.status_code == 200
-    assert reply.text == "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0\n"
-
-
-def test_adsense_client_rejects_anything_but_a_publisher_id():
-    assert seo.adsense_client(" ca-pub-1234567890123456 ") == "ca-pub-1234567890123456"
-    for bad in ["", "pub-1234567890123456", 'ca-pub-1"><script>alert(1)</script>', "ca-pub-12ab"]:
-        assert seo.adsense_client(bad) == ""

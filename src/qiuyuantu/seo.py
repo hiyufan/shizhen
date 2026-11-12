@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from dataclasses import dataclass, field
 
@@ -23,17 +22,6 @@ UPDATED = "2026-10-27"
 # 站长验证 / 统计代码：直接贴 <meta> 或 <script> 片段
 SITE_VERIFICATION_HTML = os.environ.get("PARSE_VIDEO_SITE_VERIFICATION", "")
 ANALYTICS_HTML = os.environ.get("PARSE_VIDEO_ANALYTICS", "")
-
-
-def adsense_client(value: str) -> str:
-    """Google AdSense 发布商 ID（ca-pub-数字）；格式不对按未配置处理，不把任意内容拼进脚本地址。"""
-    value = value.strip()
-    return value if re.fullmatch(r"ca-pub-[0-9]{10,20}", value) else ""
-
-
-# 不配就不放广告：项目可自建部署，发布商 ID 只写在站长自己的服务器配置里
-ADSENSE_CLIENT = adsense_client(os.environ.get("PARSE_VIDEO_ADSENSE_CLIENT", ""))
-
 # IndexNow（Bing / Yandex / Seznam / Naver）的提交凭据。这是公开的验证串不是
 # 机密：web/pages.py 提供 /{key}.txt 路由，scripts/push_urls.py 用它推送新页面。
 INDEXNOW_KEY = "f26b149a71c74f67b3a5d9793914505a"

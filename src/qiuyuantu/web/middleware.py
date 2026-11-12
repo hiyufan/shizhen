@@ -24,34 +24,19 @@ def _inline_hash(body: str) -> str:
 # 页面直接拿的第三方媒体（跨域放行了本站的 CDN，见 static/js/api.js 的 DIRECT_HOSTS，两边要一致）
 DIRECT_MEDIA_ORIGINS = ("https://video.twimg.com",)
 
-# Google AdSense 的加载脚本、广告 iframe 和打点分布在这些 Google 域名下。广告素材本身在
-# Google 的 iframe 里，受 iframe 自己的策略约束，不需要在本站放行任意域名。
-ADSENSE_ORIGINS = (
-    "https://*.adtrafficquality.google",
-    "https://*.doubleclick.net",
-    "https://*.google.com",
-    "https://*.googleadservices.com",
-    "https://*.googlesyndication.com",
-    "https://www.googletagservices.com",
-)
 
-
-def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str = "", adsense: bool = False) -> str:
+def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str = "") -> str:
     """页面上我们自己的脚本都是 /js/ 下的外部文件，不许跑任何内联脚本（XSS 注入进来也执行不了）。
     站长配的统计代码（PARSE_VIDEO_ANALYTICS）是唯一的例外：里面的内联脚本按内容哈希放行，
-    它引用的外部统计域名可以加载脚本、发图片打点和请求。JSON-LD 是数据块，浏览器不执行，不受影响。
-    配了 AdSense 时另外放行 Google 广告域名（ADSENSE_ORIGINS），仍不放行内联脚本。"""
+    它引用的外部统计域名可以加载脚本、发图片打点和请求。JSON-LD 是数据块，浏览器不执行，不受影响。"""
     hashes = [_inline_hash(body) for body in _INLINE_SCRIPT.findall(analytics_html) if body.strip()]
     origins = sorted(set(_SCRIPT_ORIGIN.findall(analytics_html)))
-    if adsense:
-        origins += [origin for origin in ADSENSE_ORIGINS if origin not in origins]
     third_party = "".join(" " + item for item in hashes + origins)
     hosts = "".join(" " + origin for origin in origins)
     edge = f" {edge_origin}" if edge_origin else ""
     direct = "".join(f" {o}" for o in DIRECT_MEDIA_ORIGINS)
     media_edge = (f" {media_origin}" if media_origin else "") + direct
     fetchable = "".join(f" {o}" for o in sorted({edge_origin, media_origin} - {""})) + direct
-    frames = _adsense_frames(adsense)
     return "; ".join(
         (
             "default-src 'self'",
@@ -62,7 +47,6 @@ def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str
             "font-src 'self'",
             # iPhone 存相册要 fetch 边缘节点上的图片 / 视频；推特视频开着代理的直接从推特拿
             f"connect-src 'self'{fetchable}{hosts}",
-            *((f"frame-src 'self'{frames}",) if frames else ()),
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self'",
@@ -71,16 +55,10 @@ def build_csp(analytics_html: str = "", edge_origin: str = "", media_origin: str
     )
 
 
-def _adsense_frames(adsense: bool) -> str:
-    """广告位是 Google 域名下的 iframe；没配广告时不写 frame-src，沿用 default-src 'self'。"""
-    return "".join(" " + origin for origin in ADSENSE_ORIGINS) if adsense else ""
-
-
 CSP = build_csp(
     seo.ANALYTICS_HTML,
     relay.edge_origin() if relay.edge_img_enabled() else "",
     relay.edge_origin() if relay.edge_media_enabled() else "",
-    adsense=bool(seo.ADSENSE_CLIENT),
 )
 
 SECURITY_HEADERS = {

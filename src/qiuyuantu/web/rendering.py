@@ -149,8 +149,6 @@ def render(request: Request, name: str, context: dict, **kwargs):
     context["notice"] = notice.current(request, prefs["locale"])
     public = request.url.path in seo.all_paths() and kwargs.get("status_code", 200) == 200
     context["audience_enabled"] = stats.enabled() and public
-    # 广告只放公开内容页；统计后台、测试、反馈和错误页不放
-    context["adsense_client"] = seo.ADSENSE_CLIENT if public else ""
     context["download_origin"] = download_host.ORIGIN
     if context.get("json_ld") and prefs["locale"] == "en":
         data = translate_data(json.loads(context["json_ld"]), "en")
