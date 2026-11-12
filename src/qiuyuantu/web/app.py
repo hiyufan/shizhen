@@ -19,6 +19,7 @@ from .middleware import site_headers
 from .rendering import STATIC_DIR
 
 SWEEP_INTERVAL = 300
+SHUTDOWN_GRACE = 10
 
 
 def _cleanup() -> None:
@@ -100,6 +101,9 @@ async def _lifespan(_: FastAPI):
     yield
     for task in running:
         task.cancel()
+    # 等它们真正收尾（统计 flusher 会把攒着的事件写掉），再关连接池；卡住的最多等这么久
+    if running:
+        await asyncio.wait(running, timeout=SHUTDOWN_GRACE)
     await _shutdown()
 
 

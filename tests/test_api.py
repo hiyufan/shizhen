@@ -580,3 +580,28 @@ def test_source_download_keeps_the_uploaded_format(client, tmp_path, suffix, med
     r = client.get(f"/api/source/{source.id}", params={"download": 1})
     assert r.status_code == 200 and r.headers["content-type"] == media_type
     assert r.headers["content-disposition"].endswith(f"{suffix}")
+
+
+async def test_shutdown_waits_for_background_jobs_to_finish(monkeypatch):
+    import importlib
+
+    # qiuyuantu.web.app 这个名字被包里的 FastAPI 实例占了，按模块路径取
+    app_module = importlib.import_module("qiuyuantu.web.app")
+    order = []
+
+    async def job():
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep(0.05)  # 收尾也要 await，比如统计 flusher 写库
+            order.append("job finished")
+
+    async def shutdown():
+        order.append("pools closed")
+
+    monkeypatch.setattr(app_module, "_cleanup", lambda: None)
+    monkeypatch.setattr(app_module, "_background_jobs", lambda: [job()])
+    monkeypatch.setattr(app_module, "_shutdown", shutdown)
+    async with app_module._lifespan(None):
+        await asyncio.sleep(0)
+    assert order == ["job finished", "pools closed"]
