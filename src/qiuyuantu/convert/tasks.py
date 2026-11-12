@@ -414,9 +414,12 @@ def _to_jpeg(path: Path) -> Path:
 
     out = path.with_suffix(".jpg")
     with Image.open(path) as im:
-        if im.format == "JPEG":
-            return path.rename(out)
-        im.convert("RGB").save(out, "JPEG", quality=92)
+        already_jpeg = im.format == "JPEG"
+        if not already_jpeg:
+            im.convert("RGB").save(out, "JPEG", quality=92)
+    # 改名 / 删除放在文件关掉之后：Windows 不让动还开着的文件
+    if already_jpeg:
+        return path.rename(out)
     path.unlink(missing_ok=True)
     return out
 
