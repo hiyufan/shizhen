@@ -304,6 +304,22 @@ def test_non_ascii_signature_is_rejected_not_a_server_error(client):
     assert net.verify("https://example.com/a.mp4", net.sign("https://example.com/a.mp4"))
 
 
+def test_legacy_api_keeps_parse_time_cookies_on_the_server(client, monkeypatch):
+    from qiuyuantu.web import legacy_api
+
+    async def fake_parse(url):
+        return _info(video_headers={"Referer": "https://www.tiktok.com/", "Cookie": "sessionid=secret"})
+
+    async def always_safe(url):
+        return True
+
+    monkeypatch.setattr(legacy_api, "parse_video_share_url", fake_parse)
+    monkeypatch.setattr(legacy_api, "is_safe_url_async", always_safe)
+    body = client.get("/video/share/url/parse", params={"url": SHARE}).json()
+    assert body["code"] == 200 and body["data"]["title"] == "标题"
+    assert body["data"]["video_headers"] == {"Referer": "https://www.tiktok.com/"}
+
+
 def test_proxy_rejects_signed_internal_url(client):
     # 签名对了也不行：解析器万一吐出内网地址，转发前还有一道 SSRF 检查
     url = "http://169.254.169.254/latest/meta-data/"

@@ -16,7 +16,10 @@ router = APIRouter()
 
 
 def _ok(info: VideoInfo) -> dict:
-    return {"code": 200, "msg": "解析成功", "data": dataclasses.asdict(info)}
+    data = dataclasses.asdict(info)
+    # 和 /api/parse 一样，cookie 只留在服务器上：配了 cookies 文件时，yt-dlp 给的请求头里是站长的登录态
+    data["video_headers"] = {k: v for k, v in info.video_headers.items() if k.lower() != "cookie"}
+    return {"code": 200, "msg": "解析成功", "data": data}
 
 
 def _error(code: int, msg: str) -> dict:
