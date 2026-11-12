@@ -432,7 +432,8 @@ async def _notify(gh: GitHub, reparse: Reparse) -> None:
 async def run_once(reparse: Reparse, client: httpx.AsyncClient | None = None) -> None:
     async with contextlib.AsyncExitStack() as stack:
         if client is None:
-            client = await stack.enter_async_context(httpx.AsyncClient())
+            # 出站请求一律走带 SSRF 检查的客户端（见 AGENTS.md），GitHub 也不例外
+            client = await stack.enter_async_context(net.safe_client())
         gh = GitHub(client)
         await _sync_issues(gh)
         await _notify(gh, reparse)
