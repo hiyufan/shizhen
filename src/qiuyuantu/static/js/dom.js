@@ -42,9 +42,6 @@ export function fmtSize(bytes) {
 /** 标题 → 能当文件名的字符串 */
 export const safeName = (s) => (s || '').replace(/[\\/:*?"<>|\n\r]+/g, ' ').trim().slice(0, 60);
 
-/** 「生成 GIF」「生成实况照片」：英文名前面空一格 */
-export const spaced = (name) => (/^[A-Za-z]/.test(name) ? ' ' + name : name);
-
 /** 和页面上的「提示条」同一个元素：#notice。msg 为空就收起 */
 export function notice(msg, kind = '') {
   const box = $('#notice');

@@ -196,12 +196,12 @@ async def test_bili_opus_images_and_links():
         "https://www.bilibili.com/opus/1257456486020284425",
         "https://t.bilibili.com/1257456486020284425",
     ):
-        assert await BiliBili()._get_bvid_from_url(url) == "opus1257456486020284425"
+        assert (await BiliBili()._video_ref(url))[0] == "opus1257456486020284425"
     assert detect_source("https://t.bilibili.com/1257456486020284425") == VideoSource.BiliBili
     festival = "https://www.bilibili.com/festival/2026bnj?bvid=BV1GJ411x7h7&spm_id_from=333"
-    assert await BiliBili()._get_bvid_from_url(festival) == "BV1GJ411x7h7"
+    assert (await BiliBili()._video_ref(festival))[0] == "BV1GJ411x7h7"
     with pytest.raises(ParseError) as caught:
-        await BiliBili()._get_bvid_from_url("https://www.bilibili.com/blackboard/era/abc.html?id=1")
+        (await BiliBili()._video_ref("https://www.bilibili.com/blackboard/era/abc.html?id=1"))[0]
     assert caught.value.reason == "unsupported"
 
 

@@ -39,11 +39,7 @@ def _check_encryption(text: str) -> None:
             raise ValueError("暂不支持加密的动态封面")
 
 
-def choose_stream(master: str, base: str) -> str:
-    return _stream_format(master, base).url
-
-
-def _stream_format(master: str, base: str) -> FormatInfo:
+def stream_format(master: str, base: str) -> FormatInfo:
     _check_encryption(master)
     candidates = []
     lines = master.splitlines()
@@ -143,7 +139,7 @@ async def _apple_source(page: str, spec: str, directory: Path, report: Report) -
     if key not in variants:
         raise ValueError("这条作品当前没有可用的动态封面")
     master = await parser.get_text(variants[key])
-    stream = _stream_format(master, variants[key])
+    stream = stream_format(master, variants[key])
     parts = media_parts(await parser.get_text(stream.url), stream.url)
     source, total = directory / "source.bin", 0
     with source.open("wb") as output:

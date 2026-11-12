@@ -7,6 +7,7 @@ app.py 负责组装；各组路由按职责分文件：
 - proxy.py       /api/proxy 转发第三方直链
 - media.py       原视频准备 / 上传、转 GIF / 实况、服务端下载、任务查询
 - admin.py       健康检查、使用统计、测试模式
+- audience.py    /api/visit 第一方交互打点
 - legacy_api.py  上游 parse-video-py 的老接口
 """
 

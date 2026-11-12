@@ -68,7 +68,6 @@ FFMPEG_THREADS = int(os.environ.get("PARSE_VIDEO_FFMPEG_THREADS", 0))  # 0 = 按
 # 转换限制
 GIF_MAX_SECONDS = 30.0
 LIVE_MAX_SECONDS = 10.0
-LIVE_DEFAULT_SECONDS = 3.0
 SOURCE_MAX_HEIGHT = 1080  # 通过 yt-dlp 拉取原视频时的最高分辨率
 
 DESKTOP_UA = (

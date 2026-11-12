@@ -149,26 +149,11 @@ def _check_without_dns(url: str, *, resolve: bool = True) -> tuple[bool | None, 
     return _dns_cached(host), host
 
 
-def is_safe_url(url: str) -> bool:
+async def is_safe_url_async(url: str) -> bool:
     """只放行公网 http(s)。
 
     字面 IP 直接判; 域名解析一次, 解析到内网 / 云元数据地址 (169.254.169.254) 的也拒绝,
-    防止用自定义域名或 nip.io 这类服务把代理引到内网。
-
-    同步版本会在调用线程里查 DNS; 事件循环里请用 is_safe_url_async。
-    """
-    verdict, host = _check_without_dns(url)
-    if verdict is not None:
-        return verdict
-    try:
-        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        infos = []
-    return _dns_store(host, infos)
-
-
-async def is_safe_url_async(url: str) -> bool:
-    """同 is_safe_url, 但 DNS 查询放到线程池里。
+    防止用自定义域名或 nip.io 这类服务把代理引到内网。DNS 查询放到线程池里做：
 
     getaddrinfo 是同步的, 直接在事件循环上调一次 13-200ms, 这期间所有正在转发的
     视频流、其他人的解析全都停住。站点流量小, 缓存经常是凉的, 这个停顿很常见。

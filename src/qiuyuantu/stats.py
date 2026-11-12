@@ -50,10 +50,6 @@ def request_context(*, muted: bool, visit: attribution.Visit | None, evidence: a
         _evidence.reset(evidence_token)
 
 
-def mute() -> None:
-    _muted.set(True)
-
-
 def ignored_ip(ip: str) -> bool:
     if ip in IGNORE_IPS:
         return True

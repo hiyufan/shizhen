@@ -231,10 +231,6 @@ class BiliBili(BaseParser):
             return_exceptions=True,
         )
 
-    async def _get_bvid_from_url(self, raw_url: str) -> str:
-        """从URL中提取 BV 号（或老的 av 号）"""
-        return (await self._video_ref(raw_url))[0]
-
     async def _video_ref(self, raw_url: str) -> tuple[str, int]:
         """(BV 号 / av 号 / opus+动态 id, 分 P 序号)。2026-10-19 有人贴第 13P 的链接，以前一律给第一 P。"""
         try:

@@ -104,7 +104,6 @@ PLATFORMS = (
         ),
     ),
 )
-PLATFORM_BY_KEY = {p.key: p for p in PLATFORMS}
 
 REASON_LABELS = {
     "timeout": "超时",

@@ -36,7 +36,7 @@ movie.mp4
 
 
 def test_hls_selects_highest_video_and_keeps_exact_ranges():
-    assert artwork.choose_stream(MASTER, BASE) == BASE.replace("playlist", "large")
+    assert artwork.stream_format(MASTER, BASE).url == BASE.replace("playlist", "large")
     assert artwork.media_parts(PLAYLIST, BASE) == [
         (BASE.replace("playlist.m3u8", "movie.mp4"), r) for r in [(0, 4), (4, 4), (8, 4)]
     ]
@@ -44,7 +44,7 @@ def test_hls_selects_highest_video_and_keeps_exact_ranges():
 
 def test_hls_same_resolution_chooses_higher_bandwidth():
     master = MASTER.replace("2160x2160", "1080x1080")
-    assert artwork.choose_stream(master, BASE) == BASE.replace("playlist", "large")
+    assert artwork.stream_format(master, BASE).url == BASE.replace("playlist", "large")
 
 
 def test_hls_same_resolution_keeps_the_high_frame_rate_track():
@@ -54,7 +54,7 @@ large.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=8000,CODECS="hvc1.1.6",RESOLUTION=2160x2160,FRAME-RATE=60
 smooth.m3u8
 """
-    assert artwork.choose_stream(master, BASE) == BASE.replace("playlist", "smooth")
+    assert artwork.stream_format(master, BASE).url == BASE.replace("playlist", "smooth")
 
 
 @pytest.mark.parametrize(
@@ -82,9 +82,9 @@ def test_hls_never_accepts_external_or_local_segment_urls(url):
 
 def test_hls_rejects_master_encryption_and_unusable_streams():
     with pytest.raises(ValueError, match="加密"):
-        artwork.choose_stream("#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES\n" + MASTER, BASE)
+        artwork.stream_format("#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES\n" + MASTER, BASE)
     with pytest.raises(ValueError, match="H.264"):
-        artwork.choose_stream(MASTER.replace("avc1", "vp09").replace("hvc1", "vp09"), BASE)
+        artwork.stream_format(MASTER.replace("avc1", "vp09").replace("hvc1", "vp09"), BASE)
 
 
 @pytest.mark.parametrize(

@@ -142,8 +142,6 @@ def link_or_copy(src: str | Path, dest: Path) -> None:
 
 async def check_media(info) -> None:
     """读取 1 KB 后关闭连接，拒绝只有元数据、实际媒体不可读的结果。"""
-    from ..parser.errors import ParseError
-
     if not info.video_url:
         raise ParseError("empty", "没有可读取的视频直链")
     if is_asset_url(info.video_url):

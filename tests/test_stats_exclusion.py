@@ -98,9 +98,9 @@ def test_job_started_by_a_muted_request_is_not_counted(rows, muted):
         await asyncio.sleep(0)
 
     async def handle_request():
-        if muted:
-            stats.mute()
-        return jobs.start("gif", fn, owner="8.8.8.8")
+        # 和中间件一样：请求处理期间设标记，出了 with 块恢复，任务在块里建好就带走了
+        with stats.request_context(muted=muted, visit=None):
+            return jobs.start("gif", fn, owner="8.8.8.8")
 
     async def main():
         job = await asyncio.create_task(handle_request())
