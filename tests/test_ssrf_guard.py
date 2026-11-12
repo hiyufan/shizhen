@@ -67,3 +67,26 @@ async def test_httpx_connect_is_checked_again(guard, local_server):
         with pytest.raises(httpx.ConnectError, match="blocked"):
             await client.get(base.replace("127.0.0.1", "localhost") + "/rebind")
     assert hits == []
+
+
+def test_generated_secret_key_is_private(monkeypatch, tmp_path):
+    import os
+    import stat
+
+    from qiuyuantu.convert import config, net
+
+    monkeypatch.delenv("PARSE_VIDEO_SECRET", raising=False)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    for name in ("BIN_DIR", "SOURCES_DIR", "OUTPUTS_DIR", "UPLOADS_DIR"):
+        monkeypatch.setattr(config, name, tmp_path / name.lower())
+    old = tmp_path / "secret.key"
+    old.write_text("legacy", encoding="utf-8")
+    old.chmod(0o644)
+    net.secret_key.cache_clear()
+    try:
+        assert net.secret_key() == b"legacy" and stat.S_IMODE(old.stat().st_mode) == 0o600
+        old.unlink()
+        net.secret_key.cache_clear()
+        assert len(net.secret_key()) == 64 and stat.S_IMODE(os.stat(old).st_mode) == 0o600
+    finally:
+        net.secret_key.cache_clear()

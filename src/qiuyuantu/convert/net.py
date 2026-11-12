@@ -420,8 +420,14 @@ def secret_key() -> bytes:
         return env.encode()
     config.ensure_dirs()
     key_file = config.DATA_DIR / "secret.key"
-    if not key_file.exists():
-        key_file.write_text(secrets.token_hex(32), encoding="utf-8")
+    # 只给运行服务的用户读：拿到它就能伪造代理签名、反馈凭证和统计 Cookie
+    with contextlib.suppress(FileExistsError):
+        fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(secrets.token_hex(32))
+    with contextlib.suppress(OSError):  # 早先按默认权限（644）生成的也收紧；改不了就照常用
+        if key_file.stat().st_mode & 0o077:
+            key_file.chmod(0o600)
     return key_file.read_text(encoding="utf-8").strip().encode()
 
 
