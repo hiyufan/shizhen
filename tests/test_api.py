@@ -568,3 +568,15 @@ def test_proxy_sends_headers_remembered_at_parse_time(client, calls, monkeypatch
     assert sent[video]["Cookie"] == "tt_chain_token=abc"
     assert sent[cover]["Referer"] == "https://www.tiktok.com/"
     assert sent[data["images"][0]["url"]]["Referer"] == "https://www.douyin.com/"  # 名单里有的照名单
+
+
+@pytest.mark.parametrize(("suffix", "media_type"), [(".mov", "video/quicktime"), (".webm", "video/webm")])
+def test_source_download_keeps_the_uploaded_format(client, tmp_path, suffix, media_type):
+    from qiuyuantu.convert import store
+
+    path = tmp_path / f"clip{suffix}"
+    path.write_bytes(b"\0" * 16)
+    source = store.put(store.Source(id="a" * 16 + suffix[1:], path=str(path), title="我的视频", duration=1))
+    r = client.get(f"/api/source/{source.id}", params={"download": 1})
+    assert r.status_code == 200 and r.headers["content-type"] == media_type
+    assert r.headers["content-disposition"].endswith(f"{suffix}")

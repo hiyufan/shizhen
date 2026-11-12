@@ -19,6 +19,9 @@ from .auth import SITE_AUTH
 router = APIRouter(dependencies=SITE_AUTH)
 
 _UPLOAD_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp"}
+# 按动画 / 动图处理的上传：体积上限更小，交给 animation_uploads 而不是当普通视频探测
+_ANIMATION_SUFFIXES = {".svga", ".pag", ".vap", ".zip", ".tgs", ".json", ".gif", ".webp", ".png", ".apng"}
+_ANIMATION_UPLOAD_BYTES = 32 << 20
 
 _MEDIA_TYPES = {
     ".gif": "image/gif",
@@ -27,6 +30,12 @@ _MEDIA_TYPES = {
     ".mp4": "video/mp4",
     ".m4a": "audio/mp4",
     ".webm": "video/webm",
+    # 上传的本地视频保留原扩展名（见 _UPLOAD_SUFFIXES），原视频下载按它回类型和文件名
+    ".m4v": "video/mp4",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".3gp": "video/3gpp",
 }
 
 
@@ -185,27 +194,12 @@ async def api_upload(file: UploadFile = File(...), _ip: str = Depends(limits.upl
     sid = uuid.uuid4().hex[:16]
     # 扩展名只认常见视频格式，其余一律存成 .mp4（ffmpeg 再按内容认）。用户给的扩展名不能原样用：
     # 传一个 .m3u8 播放列表进来，ffmpeg 会按 HLS 打开，顺着里面写的绝对路径去读服务器上别的视频
-    suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in _UPLOAD_SUFFIXES:
-        suffix = ".mp4"
-    dest = config.UPLOADS_DIR / f"{sid}{suffix}"
-    special_suffix = Path(file.filename or "").suffix.lower() in {
-        ".svga",
-        ".pag",
-        ".vap",
-        ".zip",
-        ".tgs",
-        ".json",
-        ".gif",
-        ".webp",
-        ".png",
-        ".apng",
-    }
-    await _save_upload(file, dest, limit=min(config.MAX_UPLOAD_BYTES, 32 << 20) if special_suffix else None)
-    animation_suffixes = {".svga", ".pag", ".vap", ".zip", ".tgs", ".json", ".gif", ".webp", ".png", ".apng"}
     original_suffix = Path(file.filename or "").suffix.lower()
+    dest = config.UPLOADS_DIR / f"{sid}{original_suffix if original_suffix in _UPLOAD_SUFFIXES else '.mp4'}"
+    animation = original_suffix in _ANIMATION_SUFFIXES
+    await _save_upload(file, dest, limit=min(config.MAX_UPLOAD_BYTES, _ANIMATION_UPLOAD_BYTES) if animation else None)
     try:
-        if original_suffix in animation_suffixes or await asyncio.to_thread(vap.metadata, dest):
+        if animation or await asyncio.to_thread(vap.metadata, dest):
             upload = await asyncio.to_thread(animation_uploads.register, dest, Path(file.filename or "animation").stem)
             if upload.animations:
                 return {"ready": False, "animation_upload": upload.id, "animations": upload.animations}
@@ -267,8 +261,9 @@ async def api_animation_prepare(req: AnimationRequest, ip: str = Depends(limits.
 @router.get("/api/source/{source_id}")
 async def api_source_file(source_id: str, download: int = 0):
     source = _source_or_404(source_id)
-    filename = net.safe_filename(source.title, "mp4") if download else None
-    return FileResponse(source.path, media_type="video/mp4", filename=filename)
+    suffix = Path(source.path).suffix.lower()
+    filename = net.safe_filename(source.title, suffix) if download else None
+    return FileResponse(source.path, media_type=_MEDIA_TYPES.get(suffix, "video/mp4"), filename=filename)
 
 
 @router.get("/api/source/{source_id}/strip")
