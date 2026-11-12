@@ -2,7 +2,8 @@
 # 用法：把 DOMAIN 换成你的域名（DNS 先指到这台机器），然后 docker compose up -d
 services:
   app:
-    init: true
+    # 不用 init: true：镜像的 ENTRYPOINT 已经是 tini（回收渲染进程的孤儿后代），再套一层 docker-init 时
+    # tini 不是 PID 1，孤儿进程交不到它手上
     build:
       context: .
       args:
