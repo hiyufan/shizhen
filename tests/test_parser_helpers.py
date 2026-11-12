@@ -87,7 +87,7 @@ def test_guest_params_shape():
 
 def test_detect_source_matches_host_not_substring():
     # 以前在整个链接里找子串：pinterest.com / reddit.com 里有 "t.co"，pipix.com 里有 "x.com"
-    assert detect_source("https://www.pinterest.com/pin/123") == VideoSource.YtDlp
+    assert detect_source("https://www.pinterest.com/pin/123") == VideoSource.Pinterest
     assert detect_source("https://www.reddit.com/r/a/comments/1") == VideoSource.YtDlp
     assert detect_source("https://www.youtube.com/watch?v=1&ref=t.co") == VideoSource.YtDlp
     assert detect_source("https://h5.pipix.com/item/1") == VideoSource.PiPiXia

@@ -132,8 +132,10 @@ Pixiv / Sketch directories use `entries: [{url, title, cover_url, kind, availabl
 | `GET` | `/api/parse/stream?url=` | Stream real extraction stages, followed by the same final result as the JSON endpoint; used by the website for stage messages, elapsed time, and a fallback indicator |
 | `GET` | `/api/proxy?url=&sig=&filename=&download=1` | Proxy direct media URLs with Range support; accepts only URLs signed in extraction results |
 | `POST` | `/api/prepare` | `{url \| page_url, sig, title}` caches the source video on the server and returns a `source_id` or background job |
-| `POST` | `/api/upload` | Multipart video or animation; videos return a source, animations a preparation job, Spine ZIPs `animation_upload` and `animations` for selection |
+| `POST` | `/api/upload` | Multipart video, animation or wallpaper file; videos return a source, animations a preparation job, Spine ZIPs a selection, PKG / TEX a wallpaper extraction job |
 | `POST` | `/api/animation/prepare` | `{upload_id, animation}` selects an actual animation from an uploaded Spine ZIP and returns a preparation job |
+| `GET` | `/api/wallpaper/{upload_id}/{asset_id}?sig=` | Preview an extracted image or video; `download=1` downloads it, `asset_id=all` returns a ZIP; each reference has its own signature and expires with the upload |
+| `POST` | `/api/wallpaper/prepare` | `{upload_id, asset_id, sig}` prepares an extracted video or animated image as a source for the existing converter |
 | `GET` | `/api/source/{id}` · `/strip?n=` | Source preview · thumbnail strip; `?download=1` downloads the prepared MP4. The additive source field `animation` identifies animation preparation |
 | `POST` | `/api/convert` | `{source_id, format: gif\|livephoto\|motionphoto, start, end, fps, width, dither, speed, key_time}` |
 | `POST` | `/api/live` | `{items: [{image_url, video_url, image_sig, video_sig}], format, title}` packages original platform Live Photos |

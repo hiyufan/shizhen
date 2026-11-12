@@ -56,7 +56,13 @@ def main() -> None:
         if kind == "archive":
             with zipfile.ZipFile(source) as archive:
                 kind = "svga" if "movie.spec" in archive.namelist() else "spine"
-        if kind == "svga":
+        if kind == "wallpaper":
+            from .wallpaper import extract
+
+            options = json.loads(sys.argv[4])
+            extract(source, directory, options["suffix"], options["budget"])
+            duration = 0
+        elif kind == "svga":
             duration = _svga(source, directory)
         else:
             from . import pag, spine, vap

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .. import stats
-from ..convert import animation_uploads, config, ffmpeg, jobs, net, store, tasks, vap, youtube_native
+from ..convert import animation_uploads, config, ffmpeg, jobs, net, store, tasks, vap, wallpaper_uploads, youtube_native
 from ..convert.net import is_safe_url_async
 from . import limits
 from .auth import SITE_AUTH
@@ -195,6 +195,8 @@ async def api_upload(file: UploadFile = File(...), _ip: str = Depends(limits.upl
     # 扩展名只认常见视频格式，其余一律存成 .mp4（ffmpeg 再按内容认）。用户给的扩展名不能原样用：
     # 传一个 .m3u8 播放列表进来，ffmpeg 会按 HLS 打开，顺着里面写的绝对路径去读服务器上别的视频
     original_suffix = Path(file.filename or "").suffix.lower()
+    if original_suffix in {".pkg", ".tex"}:
+        return await _upload_wallpaper(file, sid, original_suffix, _ip)
     dest = config.UPLOADS_DIR / f"{sid}{original_suffix if original_suffix in _UPLOAD_SUFFIXES else '.mp4'}"
     animation = original_suffix in _ANIMATION_SUFFIXES
     await _save_upload(file, dest, limit=min(config.MAX_UPLOAD_BYTES, _ANIMATION_UPLOAD_BYTES) if animation else None)
@@ -226,6 +228,27 @@ async def api_upload(file: UploadFile = File(...), _ip: str = Depends(limits.upl
         )
     )
     return {"ready": True, "source": src.view()}
+
+
+async def _upload_wallpaper(file: UploadFile, sid: str, suffix: str, ip: str) -> dict:
+    dest = config.UPLOADS_DIR / f"{sid}{suffix}"
+    await _save_upload(file, dest, limit=min(config.MAX_UPLOAD_BYTES, 128 << 20))
+    try:
+        upload = wallpaper_uploads.register(dest, Path(file.filename or "wallpaper").stem, suffix)
+    except ValueError as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(400, str(exc)) from exc
+
+    async def extract(job):
+        await wallpaper_uploads.extract(job, upload.id)
+
+    try:
+        job = _start_job("wallpaper", extract, ip)
+    except BaseException:
+        upload.expires = 0
+        wallpaper_uploads.sweep()
+        raise
+    return {"ready": False, "wallpaper": True, "job": job.view()}
 
 
 class AnimationRequest(BaseModel):

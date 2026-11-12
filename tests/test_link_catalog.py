@@ -15,6 +15,9 @@ from qiuyuantu.parser import VideoSource, detect_source, shortlinks
 from qiuyuantu.parser.direct import direct_media
 
 CATALOG = [
+    ("https://www.pinterest.com/pin/664281013778109217/", VideoSource.Pinterest),
+    ("https://www.pinterest.de/pin/123/sent/?invite_code=test", VideoSource.Pinterest),
+    ("https://pin.it/abc123", VideoSource.Pinterest),
     # Steam：商店游戏页、点数商店、社区作品与个人资料、官方短链
     ("https://store.steampowered.com/app/730/CounterStrike_2/", VideoSource.Steam),
     ("https://store.steampowered.com/agecheck/app/292030/", VideoSource.Steam),

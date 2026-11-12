@@ -63,6 +63,7 @@ class VideoSource(Enum):
     AppleMusic = "applemusic"  # Apple Music 公开封面
     Pixiv = "pixiv"
     PixivSketch = "pixiv-sketch"
+    Pinterest = "pinterest"
     Goofish = "goofish"  # 闲鱼公开商品图片与视频
     Threads = "threads"  # Threads 帖子的图片与视频
     YtDlp = "ytdlp"  # YouTube / TikTok / Instagram 等，交给 yt-dlp

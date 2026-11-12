@@ -114,6 +114,58 @@ PUBLIC_ASSET_EXAMPLES = {
 
 PAGES: list[Page] = [
     Page(
+        slug="pinterest-download",
+        title="Pinterest原图与轮播视频下载_支持GIF与实况转换 - 求原图",
+        description="粘贴 Pinterest 单条 Pin 或 pin.it 分享链接，保存公开图片、轮播与视频；视频可转 GIF、实况照片和安卓动态照片。",
+        h1="Pinterest 原图，<br>视频也能带走。",
+        lead="粘贴单条 Pin 的链接。图片按平台提供的最大规格保存，混合轮播保留顺序，视频下载后可继续转换。",
+        keywords="Pinterest原图下载,Pinterest视频下载,Pinterest轮播下载,pin.it,Pin downloader",
+        placeholder="粘贴 pinterest.com/pin/ 或 pin.it 分享链接…",
+        nav_label="Pinterest 原图",
+        common=["ratelimit", "free"],
+        faq=[
+            ("能下载整个画板吗？", "目前支持公开单条 Pin，不批量抓取画板、搜索结果或账号收藏。"),
+            (
+                "一定是 4K 或 8K 原图吗？",
+                "保存平台实际提供的图片规格，不放大图片，也不保证平台保留了作者上传前的原文件。",
+            ),
+        ],
+        body=[
+            ("图片与轮播", "优先保存平台提供的原始规格，保留轮播里的图片和视频顺序。"),
+            ("视频继续转换", "MP4 可直接下载；只有分段流的视频先在服务器合并，再转 GIF、实况照片或动态照片。"),
+        ],
+        updated="2026-11-12",
+    ),
+    Page(
+        slug="wallpaper-engine",
+        title="Wallpaper Engine壁纸素材提取_PKG与TEX转PNG - 求原图",
+        description="上传本地 Wallpaper Engine PKG 或 TEX 文件，预览和提取包内图片与 MP4，支持静态纹理转 PNG、逐项下载和 ZIP 打包。",
+        h1="壁纸里的原图，<br>也能直接带走。",
+        lead="上传本地 PKG 或 TEX，提取图片和视频。静态纹理转 PNG，独立 MP4 可继续转 GIF 或实况照片。",
+        keywords="Wallpaper Engine原图,PKG在线解包,TEX转PNG,RePKG,壁纸素材提取",
+        nav_label="Wallpaper Engine",
+        common=["ratelimit", "free"],
+        faq=[
+            (
+                "能直接下载创意工坊完整壁纸吗？",
+                "这里提取你上传的本地文件。创意工坊链接仍由 Steam 工具读取公开预览，不等于下载完整壁纸包。",
+            ),
+            (
+                "能把所有场景壁纸转成视频吗？",
+                "不能。这里只提取包内图片与独立视频，不执行场景、脚本或应用，也不重建粒子与交互效果。",
+            ),
+        ],
+        body=[
+            ("上传本地文件", "支持最多 128 MB 的 PKG 或 TEX，提取最多 100 个素材。受当前实例上传与磁盘配额限制。"),
+            (
+                "静态纹理转 PNG",
+                "支持 TEXV0005 中的 RGBA8888、R8 和 DXT1、DXT3、DXT5 静态纹理。动画图集和未知格式会说明原因。",
+            ),
+            ("选择素材下载", "保留包内独立图片和 MP4；可逐项下载或打包 ZIP，视频也可继续使用现有转换工具。"),
+        ],
+        updated="2026-11-12",
+    ),
+    Page(
         slug="stream-emotes",
         title="7TV、BTTV、FFZ表情下载_透明GIF转换 - 求原图",
         description="粘贴 7TV、BetterTTV 或 FrankerFaceZ 公开表情链接，保存原格式，动态表情可转透明 GIF、iPhone 实况包和安卓动态照片。",

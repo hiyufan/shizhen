@@ -1,8 +1,8 @@
 // 动态素材与壁纸：保留图片实际格式，动态图片按需进入现有转换器。
-import { mediaDownload, mediaVideo, proxy, proxyImg, sigOf, sourcesOf, trackDownload } from './api.js';
+import { jobDownload, mediaDownload, mediaVideo, postJSON, proxy, proxyImg, sigOf, sourcesOf, trackDownload, watchJob } from './api.js';
 import { openConverter } from './converter.js';
 import { el } from './dom.js';
-import { t } from './i18n.js';
+import { serverMessage, t } from './i18n.js';
 import { imageButton, oneFile, PHOTOS, photosButton } from './save.js';
 
 export function assetImages(data, title) {
@@ -32,7 +32,7 @@ export function independentAssets(data, title) {
     const preview = assetPreview(asset, title);
     const actions = assetDownloads(asset, name);
     if (isVideo || asset.kind === 'animation') {
-      const request = { url: asset.url, title: name, sig: sigOf(asset.url), image: !isVideo };
+      const request = assetRequest(asset, name);
       actions.push(el('button', { class: 'btn sm', type: 'button', onclick: () => openConverter(request, 'gif') }, t('转 GIF')));
       actions.push(el('button', { class: 'btn sm quiet', type: 'button', onclick: () => openConverter(request, 'livephoto') }, t('做成实况照片')));
     }
@@ -46,6 +46,9 @@ export function independentAssets(data, title) {
 }
 
 function assetPreview(asset, title) {
+  if (/\.m3u8(?:[?#]|$)/i.test(asset.url)) {
+    return streamPreview(asset, title);
+  }
   if (asset.kind === 'video') {
     return mediaVideo(asset.url, { controls: true, playsinline: true, preload: 'none', poster: asset.cover_url ? proxy(asset.cover_url) : null });
   }
@@ -56,7 +59,13 @@ function assetPreview(asset, title) {
   return proxyImg(asset.cover_url || asset.url, { alt: t(asset.label || title), loading: 'lazy' });
 }
 
+function streamPreview(asset, title) {
+  return asset.cover_url ? proxyImg(asset.cover_url, { alt: asset.label || title, loading: 'lazy' })
+    : el('div', { class: 'asset-placeholder' }, el('strong', {}, 'HLS'), el('p', {}, t('下载后播放视频')));
+}
+
 function assetDownloads(asset, name) {
+  if (/\.m3u8(?:[?#]|$)/i.test(asset.url)) return [streamDownload(asset, name)];
   if (['tgs', 'json', 'zip', 'svga', 'pag', 'vap'].includes(asset.ext)) {
     const filename = name + '.' + asset.ext;
     return [el('a', {
@@ -79,4 +88,27 @@ function assetDownloads(asset, name) {
   return PHOTOS && ext === 'mp4'
     ? [photosButton(t('存到相册'), oneFile(() => sourcesOf(asset.url), name, 'video/mp4')), save]
     : [save];
+}
+
+function assetRequest(asset, title) {
+  const key = /\.m3u8(?:[?#]|$)/i.test(asset.url) ? 'page_url' : 'url';
+  const format = key === 'page_url' ? { format_spec: 'bv*+ba/b/bv' } : {};
+  return { [key]: asset.url, title, sig: sigOf(asset.url), image: asset.kind !== 'video', ...format };
+}
+
+function streamDownload(asset, title) {
+  const button = el('button', { class: 'btn sm dark', type: 'button' }, t('下载视频'));
+  button.addEventListener('click', async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const job = await postJSON('/api/download', { page_url: asset.url, format_spec: 'bv*+ba/b/bv', sig: sigOf(asset.url), title });
+      const done = await watchJob(job, state => { button.textContent = serverMessage(state.message, '下载中 '); });
+      button.replaceWith(el('a', { class: 'btn sm dark', ...jobDownload(done) }, t('下载视频')));
+    } catch (error) {
+      button.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+  return button;
 }

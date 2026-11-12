@@ -138,8 +138,10 @@ Pixiv / Sketch 目录使用 `entries: [{url, title, cover_url, kind, available}]
 | `GET` | `/api/parse/stream?url=` | 同一次解析实时发送阶段事件，最后发送与 JSON 接口相同的结果；网页据此显示轻松的阶段提示、等待时间和备用方式标记 |
 | `GET` | `/api/proxy?url=&sig=&filename=&download=1` | 转发直链，支持 Range；只接受解析结果里签过名的地址 |
 | `POST` | `/api/prepare` | `{url \| page_url, sig, title}` 把原视频缓存到服务端，返回 `source_id` 或后台任务 |
-| `POST` | `/api/upload` | multipart 上传视频或动画；普通视频返回 source，动画返回准备任务，Spine ZIP 返回 `animation_upload` 和 `animations` 供选择 |
+| `POST` | `/api/upload` | multipart 上传视频、动画或壁纸文件；普通视频返回 source，动画返回准备任务，Spine ZIP 返回选择，PKG / TEX 返回壁纸提取任务 |
 | `POST` | `/api/animation/prepare` | `{upload_id, animation}` 从已上传 Spine ZIP 选择真实动画名称，返回准备任务 |
+| `GET` | `/api/wallpaper/{upload_id}/{asset_id}?sig=` | 上传 PKG / TEX 提取的图片或视频；`download=1` 下载，`asset_id=all` 获取 ZIP，各引用分别签名并随上传暂存过期 |
+| `POST` | `/api/wallpaper/prepare` | `{upload_id, asset_id, sig}` 把已提取的视频或动态图准备为 source，复用原有转换流程 |
 | `GET` | `/api/source/{id}` · `/strip?n=` | 预览视频 · 缩略图条；`?download=1` 下载已准备的 MP4。source 元数据的 `animation` 表示来自动画准备 |
 | `POST` | `/api/convert` | `{source_id, format: gif\|livephoto\|motionphoto, start, end, fps, width, dither, speed, key_time}` |
 | `POST` | `/api/live` | `{items: [{image_url, video_url, image_sig, video_sig}], format, title}` 平台实况图原样打包 |
@@ -151,6 +153,8 @@ Pixiv / Sketch 目录使用 `entries: [{url, title, cover_url, kind, available}]
 解析状态流为 SSE：`data` 中的 `{type: "progress", stage, fallback}` 表示真实阶段，`{type: "result", result}` 是最终 JSON 结果。部分平台的画质核对较慢（目前是抖音官方播放入口的最高档）：这时 `result` 带 `pending: true`，先给出接口已有的清晰度，核对完成后发送 `{type: "update", result}`（多出画质时）或 `{type: "done"}`，网页就地更新下载按钮。JSON 接口、命令行和账号助手仍等核对完成再返回，结果与原来一致。网页保留轻松的文案，显示实际等待时间，并在进入兜底后持续标记「备用方式已启用」；缓存命中不闪等待条，清空或换链接会停止旧请求和计时。阶段事件不传 Cookie、PO Token 或内部服务信息，原 JSON 解析接口继续可用。
 
 任务接口都返回 `{id, status: queued|running|done|error, progress, message, filename, filesize}`，轮询 `/api/jobs/{id}` 直到 `done` 后取 `/file`。限流触发时返回 `429` 并带 `Retry-After`。
+
+上传 PKG / TEX 时，`/api/upload` 返回 `{ready: false, wallpaper: true, job}`。任务完成后的 `extra` 包含 `wallpaper_upload`、`assets: [{id, name, kind, size, sig}]`、未支持素材的 `skipped` 和整个 ZIP 的签名 `sig`，不包含服务器路径。原文件、提取结果和 ZIP 共用磁盘配额；排队前预留输出预算，解包在受限子进程执行。临时引用不跨进程重启保留。
 
 ## 路线图
 

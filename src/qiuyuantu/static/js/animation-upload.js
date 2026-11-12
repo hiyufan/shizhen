@@ -3,6 +3,7 @@ import { api, postJSON, watchJob } from './api.js';
 import { openConverter } from './converter.js';
 import { $, el, notice } from './dom.js';
 import { serverMessage, t } from './i18n.js';
+import { showWallpaper } from './wallpaper-upload.js';
 
 let version = 0;
 let pending = null;
@@ -57,7 +58,8 @@ export async function uploadFile(file) {
   try {
     const response = await api('/api/upload', { method: 'POST', body, signal: pending.signal });
     if (current !== version) return;
-    if (response.animations) chooseAnimation(response, current);
+    if (response.wallpaper) await showWallpaper(response, () => current === version);
+    else if (response.animations) chooseAnimation(response, current);
     else await showPrepared(response, current);
   } catch (error) {
     if (current === version) notice(t('上传失败：') + error.message);

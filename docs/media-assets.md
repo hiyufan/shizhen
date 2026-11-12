@@ -275,6 +275,22 @@ python scripts/probe_media_candidates.py pixiv https://www.pixiv.net/artworks/15
 
 资料：[Signal 官方网页](https://signal.art/addstickers/)、[SVGA 样例](https://github.com/svga/SVGA-Samples)、[libpag](https://github.com/Tencent/libpag)、[VAP](https://github.com/Tencent/vap)、[Spine JSON 说明](https://esotericsoftware.com/spine-json-format)、[Google 动画 emoji](https://googlefonts.github.io/noto-emoji-animation/)。
 
+## Wallpaper Engine 与 Pinterest（2026-11-12）
+
+本轮新增两个入口：
+
+- `/wallpaper-engine`：上传本地 PKG / TEX，提取包内图片与 MP4，支持 TEXV0005 的静态 RGBA8888、R8、DXT1/3/5、LZ4 和部分内嵌图片 / 视频容器。图片逐项预览与下载，整体 ZIP 下载，独立视频沿用三种转换。拒绝多层与动画图集，不执行场景、脚本或应用；工坊链接仍只由 Steam 工具读取公开预览。
+- `/pinterest-download`：原生解析公开单 Pin、区域域名与 pin.it 分享；兼容旧 JSON 和新版 Relay 页面数据，不执行平台脚本。混合媒体按顺序返回，图片优先使用原始规格，只有尺寸路径可识别且原图探测成功时才升级 URL，否则保留已提供的图片。视频区分 MP4 与 HLS，无声 HLS 选择器保留仅视频回退。
+
+验证范围：
+
+- Wallpaper Engine 使用构造的真实二进制样本验证 PKG 索引、静态纹理像素与透明度、DXT、LZ4、裁切、TEX 内嵌视频、危险路径、重叠范围、输出预算、签名、过期清理及上传到下载的完整链路；浏览器实测 PKG 上传、预览、ZIP 下载、包内 MP4 转 GIF。尚未使用真实用户工坊包验证格式覆盖。
+- Pinterest 真实单图 `858146903966145189`、三页图片 `858146904010573850`、普通 MP4 `664281013778109217` 和无声 HLS `63824519713049795` 已解析。MP4 经正式接口下载并生成 GIF、实况包和动态照片；HLS 在浏览器任务中合并下载成功。三页图片本次原图探测没有升级，保留平台实际返回的 736px 地址；没有声称这些图片已取得原始上传文件。混合轮播的完整顺序另以离线数据验证。
+- Playwright 检查 1440px 桌面与 390px 窄屏，中英文、等待、成功、失败后重选、清空和旧响应隔离均通过，无横向溢出或控制台错误。转换烟测使用临时带 libx264 的 FFmpeg；本机系统 FFmpeg 缺少该编码器。未验证实体手机导入。
+- 本轮既有平台外网回归：抖音成功，小红书旧短链落到首页，X 样例没有返回媒体，B站样例返回内容不可用。后三项未记为成功，也未在本轮扩展任务中改动对应解析器。
+
+格式资料：[RePKG](https://github.com/notscuffed/repkg)、[Wallpaper Engine 场景导出说明](https://help.wallpaperengine.io/en/functionality/export.html)、[Pillow DDS 文档](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#dds)、[yt-dlp 格式选择](https://github.com/yt-dlp/yt-dlp#format-selection)。
+
 ## 其他候选，尚未接入 Web 工具
 
 | 方向 | 可以解决的问题 | 接入前必须验证 |

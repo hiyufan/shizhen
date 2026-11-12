@@ -32,6 +32,8 @@ from .meipai import MeiPai
 from .miyoushe import MiYouShe
 from .music import NetEaseMusic, QQMusic
 from .noto import NotoEmoji
+from .pinterest import DOMAINS as PINTEREST_DOMAINS
+from .pinterest import Pinterest
 from .pipigaoxiao import PiPiGaoXiao
 from .pipixia import PiPiXia
 from .pixiv import Pixiv
@@ -62,6 +64,7 @@ logger = logging.getLogger(__name__)
 
 # 视频来源与解析器的映射关系
 video_source_info_mapping = {
+    VideoSource.Pinterest: {"domain_list": list(PINTEREST_DOMAINS), "parser": Pinterest},
     # 淘宝 / 天猫商品没有匿名取法，接到闲鱼解析器只为直接说明原因（见 goofish.TAOBAO_ITEM_HOSTS）
     VideoSource.Goofish: {
         "domain_list": ["goofish.com", "2.taobao.com", *SHORT_HOSTS, *TAOBAO_ITEM_HOSTS],
