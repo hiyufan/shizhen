@@ -64,6 +64,7 @@ PLATFORM_NAMES = {
     "kuaishou": "快手",
     "bilibili": "B站",
     "weibo": "微博",
+    "toutiao": "今日头条",
     "twitter": "X",
     "youtube": "YouTube",
     "goofish": "闲鱼",

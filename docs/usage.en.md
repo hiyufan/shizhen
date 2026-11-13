@@ -71,6 +71,7 @@
 | Pixiv | MP4 composed from Ugoira | Illustration / manga originals and frame ZIPs | – | Platform-provided images and playback frames | [Images and novels](https://ynvan.com/pixiv-download), [animation](https://ynvan.com/pixiv-ugoira); novel TXT, covers and inserted images are separate. Artist, series, tag, ranking and Collections directories are paged. Conversion ≤600 frames / 30 seconds, with size and pixel limits; no account credentials |
 | Pixiv Sketch | – | Public post originals | – | Returned original images | [Tool](https://ynvan.com/pixiv-sketch); post links and paged artist directories; no live streams, private or age-restricted content |
 | Weibo | ✅ | ✅ | ✅ | All playback tiers supplied by the platform | Single posts, video pages and app share links; original gallery images; Live Photos packaged without re-encoding; live streams and replays are not supported |
+| Toutiao | ✅ | Micro-post images | – | Largest size the page provides | App share links, video pages and micro-posts; videos are extracted by yt-dlp; articles are not supported yet |
 | Xigua, Pipixia, AcFun, TikTok, … | ✅ | Partial | – | | 30+ platforms, with yt-dlp as the fallback for others |
 
 > Extraction depends on each platform's web structure and may temporarily break when it changes. Upstream parse-video-py is updated frequently. Port relevant fixes into `parser/` by comparing changes; do not overwrite local parsers wholesale. See [Contributing](development.en.md#contributing).

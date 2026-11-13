@@ -66,6 +66,7 @@ class VideoSource(Enum):
     Pinterest = "pinterest"
     Goofish = "goofish"  # 闲鱼公开商品图片与视频
     Threads = "threads"  # Threads 帖子的图片与视频
+    TouTiao = "toutiao"  # 今日头条微头条图文
     YtDlp = "ytdlp"  # YouTube / TikTok / Instagram 等，交给 yt-dlp
 
 

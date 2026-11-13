@@ -985,5 +985,6 @@
   "壁纸素材数量超过 100 个，请使用较小的包": "There are more than 100 wallpaper assets. Use a smaller package.",
   "壁纸提取结果超过体积限制": "Extracted wallpaper assets exceed the size limit.",
   "包中没有支持的图片、TEX 或 MP4": "The package contains no supported images, TEX textures or MP4 files.",
-  "壁纸暂存空间不足，请稍后再试": "Wallpaper storage space is insufficient. Please try again later."
+  "壁纸暂存空间不足，请稍后再试": "Wallpaper storage space is insufficient. Please try again later.",
+  "今日头条": "Toutiao"
 }

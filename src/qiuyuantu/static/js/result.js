@@ -18,7 +18,7 @@ import { rememberParsedLink } from './report-link.js';
 
 const PLATFORMS = {
   douyin: t('抖音'), redbook: t('小红书'), kuaishou: t('快手'), youtube: 'YouTube', twitter: 'X', bilibili: t('B站'), weibo: t('微博'),
-  tiktok: 'TikTok', instagram: 'Instagram', threads: 'Threads', xigua: t('西瓜视频'), pipixia: t('皮皮虾'), acfun: 'AcFun', weishi: t('微视'),
+  tiktok: 'TikTok', instagram: 'Instagram', threads: 'Threads', xigua: t('西瓜视频'), toutiao: t('今日头条'), pipixia: t('皮皮虾'), acfun: 'AcFun', weishi: t('微视'),
   lvzhou: t('绿洲'), zuiyou: t('最右'), quanmin: t('度小视'), lishipin: t('梨视频'), pipigaoxiao: t('皮皮搞笑'), huya: t('虎牙'),
   doupai: t('逗拍'), meipai: t('美拍'), quanminkge: t('全民K歌'), sixroom: t('六间房'), xinpianchang: t('新片场'), haokan: t('好看视频'),
   qqvideo: t('腾讯视频'), sohu: t('搜狐视频'), cctv: t('央视网'), vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
