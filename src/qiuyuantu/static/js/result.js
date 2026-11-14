@@ -140,6 +140,7 @@ function coverSection(image, baseName, data) {
 // 网易云的动态封面是另一段视频（有才给档位）；歌单封面本身可能就是动图，按原格式保存就保留动效
 function coverHint(data) {
   if (data.source === 'applemusic') return '静态封面与动态视频分开下载；动态封面以当前公开版本为准。';
+  if (data.source === 'qqmusic' && data.formats.length) return '方形版从中心裁切；完整原版保留全部画面和上下色带。转换默认使用方形版。';
   return data.formats.length ? '静态封面直接下载原图；动态封面是一段无声视频，可单独下载或继续转换。'
     : '按图片原始格式保存，动态封面保留动效。';
 }

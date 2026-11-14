@@ -332,7 +332,10 @@ async def test_qq_dynamic_cover_is_found_from_the_album_and_refreshed_for_downlo
     routes[QQ_GATEWAY] = _qq_dynamic_reply
     info = await parser.parse_video_share_url(short)
     assert info.title == "天外来物" and info.images[0].url == cover
-    assert info.formats == [FormatInfo(label="动态封面", format_spec="qqmusic-artwork", ext="mp4")]
+    assert info.formats == [
+        FormatInfo(label="方形动态封面", format_spec="qqmusic-artwork:square", ext="mp4"),
+        FormatInfo(label="完整原版", format_spec="qqmusic-artwork", ext="mp4"),
+    ]
     assert info.source == "qqmusic" and not info.video_url and not info.music_url
     assert best_video_format(info) is None
     assert await QQMusic().dynamic_cover(canonical) == QQ_DYNAMIC.replace("http:", "https:")

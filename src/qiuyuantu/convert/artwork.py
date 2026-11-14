@@ -173,9 +173,11 @@ async def _netease_source(page: str, directory: Path, report: Report) -> Path:
     return source
 
 
-async def _remux(source: Path, destination: Path) -> None:
+async def _remux(source: Path, destination: Path, *, shift_timestamps: bool = True) -> None:
     """只换封装：去掉音轨、把索引挪到文件头，画面原样保留。"""
-    args = ["-i", str(source), "-map", "0:v:0", "-c", "copy", "-an", "-avoid_negative_ts", "make_zero"]
+    args = ["-i", str(source), "-map", "0:v:0", "-c", "copy", "-an"]
+    # QQ 原片用负 DTS 表达 B 帧预解码，首帧 PTS 已经为零；平移 DTS 会给短循环额外加上起始等待。
+    args += ["-avoid_negative_ts", "make_zero" if shift_timestamps else "disabled"]
     await ffmpeg.run([*args, "-movflags", "+faststart", str(destination)])
 
 
@@ -195,10 +197,51 @@ async def _qq_source(page: str, directory: Path, report: Report) -> Path:
     return source
 
 
-async def _validate_mp4(path: Path) -> None:
+async def _validate_mp4(path: Path) -> FormatInfo:
     measured = await asyncio.to_thread(local_metadata, path)
-    if not measured or not measured[0].width or not 0 < measured[1] <= 120:
+    if not measured or not measured[0].width or not measured[0].height or not 0 < measured[1] <= 120:
         raise ValueError("动态封面没有返回有效的 MP4 视频")
+    return measured[0]
+
+
+async def _square_cover(source: Path, destination: Path, side: int) -> None:
+    # 裁切需要重编码；保留原帧时序，不用升帧或复制帧来制造流畅感。
+    await ffmpeg.run(
+        [
+            "-i",
+            str(source),
+            "-map",
+            "0:v:0",
+            "-vf",
+            f"crop={side}:{side},setsar=1",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-fps_mode",
+            "passthrough",
+            "-an",
+            "-movflags",
+            "+faststart",
+            str(destination),
+        ]
+    )
+
+
+async def _qq_download(page: str, spec: str, directory: Path, destination: Path, report: Report) -> None:
+    source = await _qq_source(page, directory, report)
+    expected = await _validate_mp4(source)
+    if spec == "qqmusic-artwork:square":
+        side = min(expected.width, expected.height) // 2 * 2
+        await _square_cover(source, destination, side)
+        expected = FormatInfo(width=side, height=side, fps=expected.fps)
+    else:
+        await _remux(source, destination, shift_timestamps=False)
+    await _validate_output(destination, expected)
 
 
 async def _validate_output(path: Path, expected: FormatInfo) -> None:
@@ -225,8 +268,7 @@ async def download(page: str, spec: str, out_dir: Path, stem: str, report: Repor
                 await _remux(await _netease_source(page, directory, report), destination)
                 await _validate_mp4(destination)
             elif host == "y.qq.com":
-                await _remux(await _qq_source(page, directory, report), destination)
-                await _validate_mp4(destination)
+                await _qq_download(page, spec, directory, destination, report)
             else:
                 info = await HoYoPlay().parse_share_url(page)
                 if not info.video_url:

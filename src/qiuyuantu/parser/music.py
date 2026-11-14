@@ -270,7 +270,12 @@ class QQMusic(BaseParser):
             logger.info("QQ 音乐动态封面没取到，只给静态封面：%s", type(err).__name__)
             return []
         # CDN 地址带限时签名，沿用服务端档位，在下载时重新读取专辑与视频信息。
-        return [FormatInfo(label="动态封面", format_spec="qqmusic-artwork", ext="mp4")] if url else []
+        if not url:
+            return []
+        return [
+            FormatInfo(label="方形动态封面", format_spec="qqmusic-artwork:square", ext="mp4"),
+            FormatInfo(label="完整原版", format_spec="qqmusic-artwork", ext="mp4"),
+        ]
 
     async def dynamic_cover(self, page_url: str) -> str:
         kind, ident = qq_target(page_url)
