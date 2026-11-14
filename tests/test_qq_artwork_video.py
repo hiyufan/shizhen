@@ -75,6 +75,10 @@ async def test_qq_download_keeps_first_frame_at_zero_and_all_frames(cover_video,
     assert info.fps == 25 and info.duration == pytest.approx(0.64)
     if not square:
         assert result == original
+    else:
+        # avcC 的 AVCProfileIndication：66 是 Baseline，兼容不支持 B 帧的解码器。
+        encoded = output.read_bytes()
+        assert encoded[encoded.index(b"avcC") + 5] == 66
     image = tmp_path / "output.png"
     await ffmpeg.run(["-i", str(output), "-frames:v", "1", str(image)])
     with Image.open(image) as frame:

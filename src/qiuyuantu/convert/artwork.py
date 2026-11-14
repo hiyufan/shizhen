@@ -205,7 +205,7 @@ async def _validate_mp4(path: Path) -> FormatInfo:
 
 
 async def _square_cover(source: Path, destination: Path, side: int) -> None:
-    # 裁切需要重编码；保留原帧时序，不用升帧或复制帧来制造流畅感。
+    # 保留原帧时序；Baseline、单参考帧兼容不支持 B 帧的解码器，减少循环时的参考帧依赖。
     await ffmpeg.run(
         [
             "-i",
@@ -220,6 +220,12 @@ async def _square_cover(source: Path, destination: Path, side: int) -> None:
             "veryfast",
             "-crf",
             "18",
+            "-profile:v",
+            "baseline",
+            "-bf",
+            "0",
+            "-refs",
+            "1",
             "-pix_fmt",
             "yuv420p",
             "-fps_mode",
