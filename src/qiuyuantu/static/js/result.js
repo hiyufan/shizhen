@@ -23,7 +23,7 @@ const PLATFORMS = {
   doupai: t('逗拍'), meipai: t('美拍'), quanminkge: t('全民K歌'), sixroom: t('六间房'), xinpianchang: t('新片场'), haokan: t('好看视频'),
   qqvideo: t('腾讯视频'), sohu: t('搜狐视频'), cctv: t('央视网'), vimeo: 'Vimeo', facebook: 'Facebook', twitch: 'Twitch',
   reddit: 'Reddit', pinterest: 'Pinterest', ytdlp: 'yt-dlp',
-  qqmusic: t('QQ 音乐'), netease: t('网易云音乐'), goofish: t('闲鱼'),
+  qqmusic: t('QQ 音乐'), netease: t('网易云音乐'), huaweimusic: t('华为音乐'), goofish: t('闲鱼'),
   steam: 'Steam', hoyoplay: 'HoYoPlay', applemusic: 'Apple Music', telegram: 'Telegram', discord: 'Discord',
   wutheringwaves: t('鸣潮'), miyoushe: t('米游社'), 'bilibili-assets': t('B站装扮与收藏集'),
   'wechat-channels': t('视频号'), 'wechat-mp': t('公众号'),
@@ -86,7 +86,7 @@ function reportLink(href) {
 
 function resultContent(data, baseName) {
   if (data.streams?.length) return [streamSection(data)];
-  if (['qqmusic', 'netease', 'applemusic'].includes(data.source) && data.images?.[0]?.url) return [coverSection(data.images[0], baseName, data)];
+  if (['qqmusic', 'netease', 'applemusic', 'huaweimusic'].includes(data.source) && data.images?.[0]?.url) return [coverSection(data.images[0], baseName, data)];
   return resultBody(data, baseName);
 }
 
@@ -127,27 +127,39 @@ function resultImages(data, images, baseName, hasVideo) {
 function coverSection(image, baseName, data) {
   const name = baseName + '_cover';
   const jobsBox = el('div', { class: 'jobs' });
+  const native = data.source === 'huaweimusic' ? data.assets?.find(asset => asset.kind === 'animation') : null;
   return el('div', { class: 'res-body cover-result' },
-    el('div', { class: 'cover-media' }, proxyImg(image.url, { alt: t('音乐封面') })),
+    el('div', { class: 'cover-media' }, proxyImg(native?.url || image.url, { alt: t('音乐封面') })),
     el('div', { class: 'side' },
       el('p', { class: 'label' }, t('音乐封面')),
-      el('div', { class: 'group' }, ...coverActions(proxy(image.url, name, true), name),
+      el('div', { class: 'group' }, ...coverDownloads(image.url, native?.url, name),
         data.formats.length ? formatMenu(data, baseName, jobsBox) : null),
       el('p', { class: 'hint' }, t(coverHint(data))),
-      data.source === 'applemusic' && !data.formats.length ? null : coverConversions(image.url, baseName, data), jobsBox));
+      coverConversions(native?.url || image.url, baseName, data, !!native), jobsBox));
+}
+
+function coverDownloads(staticUrl, dynamicUrl, name) {
+  if (!dynamicUrl) return coverActions(proxy(staticUrl, name, true), name);
+  const still = imageButton(t('下载静态封面'), proxy(staticUrl, name + '_static', true), name + '_static', false);
+  still.className = 'btn quiet';
+  return [imageButton(t('下载动态 WebP'), proxy(dynamicUrl, name, true), name, false), still];
 }
 
 // 网易云的动态封面是另一段视频（有才给档位）；歌单封面本身可能就是动图，按原格式保存就保留动效
 function coverHint(data) {
+  if (data.source === 'huaweimusic') return data.assets?.length
+    ? '动态封面原文件为 WebP，直接下载保留原始画质与帧时序，也可转 GIF 或实况照片。'
+    : '静态封面按来源提供的图片格式保存。';
   if (data.source === 'applemusic') return '静态封面与动态视频分开下载；动态封面以当前公开版本为准。';
   if (data.source === 'qqmusic' && data.formats.length) return '方形版优先使用原生方形素材，没有时从中心裁切；完整原版保留全部画面。转换默认使用方形版。';
   return data.formats.length ? '静态封面直接下载原图；动态封面是一段无声视频，可单独下载或继续转换。'
     : '按图片原始格式保存，动态封面保留动效。';
 }
 
-function coverConversions(url, title, data) {
+function coverConversions(url, title, data, native = false) {
+  if (['applemusic', 'huaweimusic'].includes(data.source) && !data.formats.length && !native) return null;
   const request = data.formats.length ? sourceRequest(data, title) : { url, title, sig: sigOf(url), image: true };
-  const options = { artwork: data.source === 'qqmusic' && !!data.formats.length };
+  const options = { artwork: data.source === 'huaweimusic' || (data.source === 'qqmusic' && !!data.formats.length) };
   return el('div', {}, el('div', { class: 'rule' }),
     el('p', { class: 'label' }, t('动态封面继续做')),
     el('div', { class: 'group' },

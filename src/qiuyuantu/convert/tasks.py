@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..parser.huaweimusic import is_dynamic_cover
 from ..utils import bot_checked, gather_or_cancel, run_ytdlp
 from . import animated, artwork, bilibili, cctv, config, fallback_exit, ffmpeg, livephoto, store, ugoira, xinpianchang
 from .fetch import MERGE_FORMAT, download_source, fetch_bytes, ytdlp_download
@@ -162,7 +163,9 @@ async def fetch_source(
         path.replace(original)
         job.set(message="正在读取动态封面的每一帧")
         try:
-            await animated.prepare(original, path, alpha_destination=path.with_suffix(".alpha.mov"))
+            # 华为公开动图实测 1000×1000、144–160 帧，原有通用上限容不下；只为明确的封面地址扩容。
+            limits = {"max_frame_pixels": 200_000_000} if is_dynamic_cover(url) else {}
+            await animated.prepare(original, path, alpha_destination=path.with_suffix(".alpha.mov"), **limits)
         finally:
             original.unlink(missing_ok=True)
 

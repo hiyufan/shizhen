@@ -58,7 +58,7 @@ async def test_cancel_waits_for_decoder_before_removing_temporary_frames(tmp_pat
     started, finished = threading.Event(), threading.Event()
     (tmp_path / "cover").write_bytes(b"RIFF")
 
-    def decode(_source, directory, stopped):
+    def decode(_source, directory, stopped, **_kwargs):
         (directory / "frame.png").write_bytes(b"frame")
         started.set()
         stopped.wait(5)

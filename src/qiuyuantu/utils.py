@@ -45,6 +45,7 @@ CN_SOURCES = {
     "cctv",
     "qqmusic",
     "netease",
+    "huaweimusic",
 }
 
 
@@ -67,6 +68,10 @@ CN_HOST_KEYWORDS = (
     "y.qq.com",
     "y.gtimg.cn",
     "stream.tencentmusic.com",
+    "portal-drcn.music.dbankcloud.cn",
+    "url.cloud.huawei.com",
+    "contentcenter-drcn.dbankcdn.cn",
+    "image.tingmall.com",
     "goofish.com",
     "m.tb.cn",
     "e.tb.cn",

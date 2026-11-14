@@ -12,7 +12,9 @@ from PIL import Image, UnidentifiedImageError
 from . import ffmpeg, special, tgs
 
 
-def _write_frames(source: Path, directory: Path, stopped: threading.Event) -> float:
+def _write_frames(
+    source: Path, directory: Path, stopped: threading.Event, *, max_frame_pixels: int = 100_000_000
+) -> float:
     try:
         image = Image.open(source)
     except UnidentifiedImageError as exc:
@@ -22,7 +24,7 @@ def _write_frames(source: Path, directory: Path, stopped: threading.Event) -> fl
         count = getattr(image, "n_frames", 1) - first
         if count < 2:
             raise ValueError("这张封面是静态图片，可以直接下载原图，无需转换")
-        if count > 600 or image.width * image.height * count > 100_000_000:
+        if count > 600 or image.width * image.height * count > max_frame_pixels:
             raise ValueError("动态图片超过帧数或像素限制")
         duration = 0.0
         entries = []
@@ -44,12 +46,17 @@ def _write_frames(source: Path, directory: Path, stopped: threading.Event) -> fl
 
 
 async def prepare(
-    source: Path, destination: Path, *, alpha_destination: Path | None = None, animation: str = ""
+    source: Path,
+    destination: Path,
+    *,
+    alpha_destination: Path | None = None,
+    animation: str = "",
+    max_frame_pixels: int = 100_000_000,
 ) -> None:
     # 取消时先停止并等解码线程退出，再删除帧目录，避免清理与写入交叉。
     with TemporaryDirectory(prefix="animation-", dir=source.parent) as temporary:
         directory = Path(temporary)
-        duration = await _frames(source, directory, animation)
+        duration = await _frames(source, directory, animation, max_frame_pixels=max_frame_pixels)
         # 清单由上面的固定文件名生成。safe=0 允许 framerate 选项，保留毫秒级帧时长；
         # ffmpeg.run 仍逐输入限制为 file 协议，清单不使用平台返回的文本或文件名。
         inputs = ["-f", "concat", "-safe", "0", "-i", str(directory / "frames.txt")]
@@ -102,7 +109,7 @@ async def prepare(
             raise
 
 
-async def _frames(source: Path, directory: Path, animation: str = "") -> float:
+async def _frames(source: Path, directory: Path, animation: str = "", *, max_frame_pixels: int = 100_000_000) -> float:
     with source.open("rb") as stream:
         prefix = stream.read(4096)
     if prefix.startswith(b"PK\x03\x04"):
@@ -116,7 +123,9 @@ async def _frames(source: Path, directory: Path, animation: str = "") -> float:
     if prefix.startswith(b"\x1f\x8b") or prefix.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"{"):
         return await tgs.render_frames(source, directory)
     stopped = threading.Event()
-    task = asyncio.create_task(asyncio.to_thread(_write_frames, source, directory, stopped))
+    task = asyncio.create_task(
+        asyncio.to_thread(_write_frames, source, directory, stopped, max_frame_pixels=max_frame_pixels)
+    )
     try:
         return await asyncio.shield(task)
     except asyncio.CancelledError:

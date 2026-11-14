@@ -23,6 +23,7 @@ from .errors import ParseError, classify
 from .goofish import SHORT_HOSTS, TAOBAO_ITEM_HOSTS, Goofish
 from .haokan import HaoKan
 from .hoyoplay import HoYoPlay
+from .huaweimusic import HuaweiMusic
 from .huya import HuYa
 from .kuaishou import KuaiShou
 from .line import Line
@@ -96,6 +97,10 @@ video_source_info_mapping = {
     VideoSource.WeChatChannels: {"domain_list": [], "parser": WeChatChannels},
     VideoSource.WeChatMP: {"domain_list": ["mp.weixin.qq.com"], "parser": WeChatMP},
     VideoSource.AppleMusic: {"domain_list": ["music.apple.com"], "parser": AppleMusic},
+    VideoSource.HuaweiMusic: {
+        "domain_list": ["portal-drcn.music.dbankcloud.cn", "url.cloud.huawei.com"],
+        "parser": HuaweiMusic,
+    },
     VideoSource.QQMusic: {
         "domain_list": ["y.qq.com"],
         "parser": QQMusic,

@@ -9,6 +9,7 @@
 | Steam 点数商店 | `/steam-assets`；单个 `/reward/` 物品，公开头像、头像框、贴纸和背景素材 | 精确查询 definitionids 并核对物品与 appid；动画可能在 small 字段，large 可能只是静态预览；下载保留 GIF / APNG / MP4 / WebM |
 | HoYoPlay | `/hoyoplay-wallpaper`；选择原神、星穹铁道、绝区零或崩坏 3，读取当前国服启动器公开背景 | 按 game_id 与 biz 匹配游戏；图片去重，视频按实际返回展示；不提供历史版本档案 |
 | Apple Music | `/apple-music-cover`；歌曲、专辑、歌单的公开网页封面 | 只读取作品 header，不能回退到列表中的其他歌曲；静态图与公开动态视频分别下载，不请求歌曲音频 |
+| 华为音乐 | 首页粘贴歌曲、专辑或歌单分享链接 | 读取 `picture.dynamicImgURL` 的原始 WebP；专辑只接受同专辑、同静态封面的动图，歌单分页选曲；不读取歌曲播放文件，见[验证范围](huawei-music-cover.md) |
 | 鸣潮 | `/wuthering-waves-wallpaper`；当前国际服启动器背景 | 从当前配置的 background 版本读取资源；视频与首帧分别下载；没有视频时只显示图片；不提供历史档案或国服素材 |
 | 米游社 | `/miyoushe-images`；单篇公开帖子的正文图集 | 带站点 Referer，核对 post_id；保留正文顺序、原始地址与 GIF 格式，不混入头像、推荐图或单独封面；不包含 HoYoLAB、评论和主页批量获取 |
 | B站装扮与收藏集 | `/bilibili-assets`；完整装扮或收藏集详情链接 | 装扮需 id，收藏集需 act_id + lottery_id；只读取公开图片与视频，不读取私有缓存或解锁账号权益；专用动画包不作为普通媒体处理 |

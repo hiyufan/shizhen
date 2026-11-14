@@ -44,6 +44,7 @@ class VideoSource(Enum):
     CCTV = "cctv"  # 央视网
     QQMusic = "qqmusic"  # QQ 音乐封面
     NetEaseMusic = "netease"  # 网易云音乐封面
+    HuaweiMusic = "huaweimusic"  # 华为音乐公开静态 / 动态封面
     Steam = "steam"  # Steam 点数商店素材
     HoYoPlay = "hoyoplay"  # HoYoPlay 官方启动器壁纸
     WutheringWaves = "wutheringwaves"  # 鸣潮国际服启动器壁纸

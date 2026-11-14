@@ -991,5 +991,18 @@
   "壁纸提取结果超过体积限制": "Extracted wallpaper assets exceed the size limit.",
   "包中没有支持的图片、TEX 或 MP4": "The package contains no supported images, TEX textures or MP4 files.",
   "壁纸暂存空间不足，请稍后再试": "Wallpaper storage space is insufficient. Please try again later.",
-  "今日头条": "Toutiao"
+  "今日头条": "Toutiao",
+  "华为音乐": "Huawei Music",
+  "静态封面按来源提供的图片格式保存。": "Save the static cover in the image format supplied by its source.",
+  "下载静态封面": "Download static cover",
+  "下载动态 WebP": "Download animated WebP",
+  "动态封面 WebP": "Animated cover WebP",
+  "动态封面原文件为 WebP，直接下载保留原始画质与帧时序，也可转 GIF 或实况照片。": "The original animated cover is WebP. Download it to keep its quality and frame timing, or convert it to GIF or Live Photo.",
+  "这条作品当前未公开动态封面，可下载静态封面。": "This work currently has no public animated cover. You can download its static cover.",
+  "华为音乐链接里没有有效的作品 ID": "The Huawei Music link has no valid work ID",
+  "请使用华为音乐的歌曲、专辑或歌单分享链接": "Use a Huawei Music song, album or playlist share link",
+  "华为音乐目录页码无效": "Invalid Huawei Music directory page",
+  "华为音乐没有提供可用的封面": "Huawei Music did not supply an available cover",
+  "华为音乐暂时没有公开这条作品的信息": "Huawei Music did not make information for this work publicly available",
+  "华为音乐没有返回对应的作品": "Huawei Music did not return the requested work"
 }
