@@ -1004,5 +1004,8 @@
   "华为音乐目录页码无效": "Invalid Huawei Music directory page",
   "华为音乐没有提供可用的封面": "Huawei Music did not supply an available cover",
   "华为音乐暂时没有公开这条作品的信息": "Huawei Music did not make information for this work publicly available",
-  "华为音乐没有返回对应的作品": "Huawei Music did not return the requested work"
+  "华为音乐没有返回对应的作品": "Huawei Music did not return the requested work",
+  "以下媒体来自此帖引用的原帖，作者信息保留原作者。": "This media comes from the quoted post, with the original author credited.",
+  "此帖引用的原帖当前不可公开读取": "The quoted post is not publicly available right now",
+  "引用层级过多，请复制原帖链接": "Too many nested quotes. Copy the original post link instead"
 }

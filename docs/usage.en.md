@@ -49,7 +49,7 @@
 | X (Twitter) | ✅ | ✅ | – | Highest bitrate | fxtwitter fallback for sensitive posts |
 | Bilibili | ✅ | ✅ | ✅ | 480p direct URLs; server-side merging at 720p / 1080p | Supports b23.tv short links, images and Live Photos in dynamic posts; anime series and movies are not supported |
 | Instagram | ✅ | ✅ | – | Platform default | Original images from carousel posts, including posts mixing images and videos |
-| Threads | ✅ | ✅ | – | Platform default | Post links and `/share/` short links; the largest image of each carousel item |
+| Threads | ✅ | ✅ | – | Platform default | Post links and `/share/` short links; the largest image of each carousel item; text-only quote posts can provide public quoted media with the original author credited |
 | Pinterest | ✅ | ✅ | – | Largest size actually supplied | [Tool](https://ynvan.com/pinterest-download); public individual Pins, pin.it short links and ordered mixed carousels; no bulk boards or account collections, no fixed 4K / 8K promise |
 | Wallpaper Engine | Embedded MP4 | Embedded images, TEX to PNG | – | Actual local assets | [Tool](https://ynvan.com/wallpaper-engine); local PKG / TEX upload, individual downloads or ZIP; no full Workshop downloads or scene rendering; up to 128 MB / 100 assets, subject to instance quotas |
 | QQ Music | – | Cover art | – | Album source file when verified; 1000px for playlists | Falls back to verified HD variants; cover art only |

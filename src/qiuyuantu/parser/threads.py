@@ -3,6 +3,7 @@
 未登录用手机浏览器打开帖子页时，服务器直接把整条帖子写进页面内嵌的 JSON，字段和 Instagram 同一套
 （image_versions2 / video_versions / carousel_media）；桌面浏览器拿到的只是要再跑脚本的空壳。
 /share/ 分享短链同样只对手机浏览器跳到帖子页。页面里还有回复和推荐帖，按帖子 code 认出这一条。
+外层只有文字的引用帖，媒体可能位于它明确关联的 quoted_attachment_post，不能当作空帖。
 """
 
 from __future__ import annotations
@@ -64,6 +65,35 @@ def _post_in(obj, code: str) -> dict | None:
     return None
 
 
+def _quoted_post(post: dict) -> dict | None:
+    app_info = post.get("text_post_app_info")
+    if not isinstance(app_info, dict):
+        return None
+    share = app_info.get("share_info")
+    if not isinstance(share, dict):
+        return None
+    if share.get("quoted_attachment_post_unavailable"):
+        raise ParseError("restricted", "此帖引用的原帖当前不可公开读取")
+    quoted = share.get("quoted_attachment_post")
+    return quoted if isinstance(quoted, dict) else None
+
+
+def _media_info(post: dict, code: str) -> tuple[VideoInfo, dict]:
+    # 只沿选中帖子的明确引用关系读取，不扫描回复、推荐或外链预览；最多经过三层引用。
+    for depth in range(4):
+        if info := instagram.to_video_info(post, code):
+            if depth:
+                info.notice = "以下媒体来自此帖引用的原帖，作者信息保留原作者。"
+            return info, post
+        quoted = _quoted_post(post)
+        if quoted is None:
+            break
+        post = quoted
+    else:
+        raise ParseError("unsupported", "引用层级过多，请复制原帖链接")
+    raise ParseError("empty", "这条 Threads 帖子没有图片或视频")
+
+
 class Threads(BaseParser):
     def get_default_headers(self) -> dict[str, str]:
         return {
@@ -93,13 +123,12 @@ class Threads(BaseParser):
         post = find_post(html, video_id)
         if not post:
             raise ParseError("restricted", "Threads 没有公开这条帖子，可能已删除或仅部分人可见")
-        info = instagram.to_video_info(post, video_id)
-        if not info:
-            raise ParseError("empty", "这条 Threads 帖子没有图片或视频")
-        user = post.get("user") or {}
+        info, media_post = _media_info(post, video_id)
+        user = media_post.get("user") or {}
         info.source = "threads"
         info.author.avatar = str(user.get("profile_pic_url") or "")
-        username = str(user.get("username") or "")
+        # 来源页保留用户分享的外层帖子；作者与标题来自实际供图 / 供视频的帖子。
+        username = str((post.get("user") or {}).get("username") or "")
         if not re.fullmatch(r"[\w.]{1,40}", username):
             username = "_"
         info.page_url = f"{ROOT}/@{username}/post/{video_id}"
