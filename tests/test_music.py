@@ -307,7 +307,7 @@ def _qq_dynamic_reply(request):
         assert rpc == {
             "module": "music.stream.MvUrlProxy",
             "method": "GetMvUrls",
-            "param": {"vids": ["0139HwtE4HZbm5"]},
+            "param": {"vids": ["0139HwtE4HZbm5", "differentVideo"]},
         }
         data = {
             "0139HwtE4HZbm5": {
@@ -316,7 +316,11 @@ def _qq_dynamic_reply(request):
                     {"code": 0, "filetype": 40, "freeflow_url": [QQ_DYNAMIC]},
                     {"code": 2000, "filetype": 60, "freeflow_url": []},
                 ]
-            }
+            },
+            "differentVideo": {
+                "duration": 6,
+                "mp4": [{"code": 0, "filetype": 40, "videoType": 8, "freeflow_url": [QQ_DYNAMIC + "&head=1"]}],
+            },
         }
     return httpx.Response(200, json={"code": 0, "req": {"code": 0, "data": data}})
 
@@ -340,6 +344,110 @@ async def test_qq_dynamic_cover_is_found_from_the_album_and_refreshed_for_downlo
     assert best_video_format(info) is None
     assert await QQMusic().dynamic_cover(canonical) == QQ_DYNAMIC.replace("http:", "https:")
     assert len([c for c in calls if str(c.url) == QQ_GATEWAY]) == 4
+
+
+@pytest.mark.parametrize("field", ["headVideoVid", "headMediaList"])
+@pytest.mark.parametrize("kind", ["songDetail", "albumDetail"])
+async def test_qq_finds_shinian_cover_in_album_header_and_refreshes_it(music_http, field, kind):
+    routes, calls = music_http
+    short = "https://c6.y.qq.com/base/fcgi-bin/u?__=51AbYgezqFmF"
+    ident = "001OyHbk2MSIi4" if kind == "songDetail" else "000GDz8k03UOaI"
+    canonical = f"https://y.qq.com/n/ryqq_v2/{kind}/{ident}"
+    cover = "https://y.gtimg.cn/music/photo_new/T002M000000GDz8k03UOaI_2.jpg"
+    vid = "013oQDFj27f1aM"
+    routes[short] = (302, {"Location": canonical})
+    routes[canonical] = f'<meta property="og:image" content="{cover}"><meta property="og:title" content="十年">'
+
+    def reply(request):
+        rpc = json.loads(request.content)["req"]
+        if rpc["method"] == "GetAlbumDetail":
+            assert rpc["param"] == {"albumMid": "000GDz8k03UOaI"}
+            value = vid if field == "headVideoVid" else [{"vid": vid}, {"vid": vid}, {"vid": "../bad"}]
+            data = {"basicInfo": {"dynamicCoverVid": "", field: value, "vid": "unrelatedMv"}}
+        else:
+            assert rpc["method"] == "GetMvUrls" and rpc["param"] == {"vids": [vid]}
+            data = {
+                vid: {
+                    "duration": 6,
+                    "mp4": [
+                        {"code": 0, "filetype": 20, "videoType": 8, "freeflow_url": [QQ_DYNAMIC]},
+                        {"code": 2000, "filetype": 40, "videoType": 8, "freeflow_url": []},
+                    ],
+                }
+            }
+        return httpx.Response(200, json={"code": 0, "req": {"code": 0, "data": data}})
+
+    routes[QQ_GATEWAY] = reply
+    info = await parser.parse_video_share_url(short)
+    assert info.title == "十年" and info.images[0].url == cover
+    assert [fmt.format_spec for fmt in info.formats] == ["qqmusic-artwork:square", "qqmusic-artwork"]
+    assert await QQMusic().dynamic_cover(canonical) == QQ_DYNAMIC.replace("http:", "https:")
+    assert len([c for c in calls if str(c.url) == QQ_GATEWAY]) == 4
+
+
+@pytest.mark.parametrize(
+    ("duration", "video_type"),
+    [
+        (6, 0),
+        (6, None),
+        (121, 8),
+        (0, 8),
+        ("6", 8),
+        (None, 8),
+        (float("nan"), 8),
+    ],
+)
+def test_qq_does_not_treat_unrelated_or_unbounded_header_videos_as_covers(duration, video_type):
+    data = {
+        "head": {
+            "duration": duration,
+            "mp4": [
+                {"code": 0, "filetype": 40, "videoType": video_type, "freeflow_url": [QQ_DYNAMIC]},
+            ],
+        }
+    }
+    assert qqmusic_artwork._best_video(data, "head", artwork_only=True) == ""
+
+
+def test_qq_header_fallback_stays_bounded_and_never_uses_the_album_mv_field():
+    basic = {
+        "dynamicCoverVid": "dynamic",
+        "headVideoVid": "head",
+        "vid": "albumMv",
+        "headMediaList": [{"vid": "head"}, {"vid": "extra1"}, {"vid": "extra2"}, {"vid": "extra3"}],
+    }
+    assert qqmusic_artwork._cover_candidates(basic) == [
+        ("dynamic", False),
+        ("head", True),
+        ("extra1", True),
+        ("extra2", True),
+    ]
+
+
+@pytest.mark.parametrize("primary_available", [False, True])
+async def test_qq_header_is_only_selected_when_the_dedicated_cover_is_unavailable(music_http, primary_available):
+    routes, _ = music_http
+
+    def reply(request):
+        rpc = json.loads(request.content)["req"]
+        if rpc["method"] == "GetAlbumDetail":
+            data = {"basicInfo": {"dynamicCoverVid": "dynamic", "headVideoVid": "head"}}
+        else:
+            assert rpc["param"] == {"vids": ["dynamic", "head"]}
+            data = {
+                "dynamic": {
+                    "mp4": [{"code": 0, "filetype": 40, "freeflow_url": [QQ_DYNAMIC] if primary_available else []}]
+                },
+                "head": {
+                    "duration": 6,
+                    "mp4": [{"code": 0, "filetype": 20, "videoType": 8, "freeflow_url": [QQ_DYNAMIC + "&head=1"]}],
+                },
+            }
+        return httpx.Response(200, json={"code": 0, "req": {"code": 0, "data": data}})
+
+    routes[QQ_GATEWAY] = reply
+    expected = QQ_DYNAMIC + ("" if primary_available else "&head=1")
+    assert await qqmusic_artwork.dynamic_cover(QQMusic(), QQ_COVER) == expected.replace("http:", "https:")
 
 
 @pytest.mark.parametrize("cover", [QQ_COVER, QQ_COVER.replace("R300x300", ""), QQ_COVER.replace("_1", "")])

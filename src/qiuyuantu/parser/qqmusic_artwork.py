@@ -45,21 +45,43 @@ def _video_url(value: str) -> str:
     return urlunparse(parsed._replace(scheme="https", netloc=host, fragment=""))
 
 
-def _best_video(data: dict, vid: str) -> str:
+def _best_video(data: dict, vid: str, *, artwork_only: bool = False) -> str:
     detail = data.get(vid) or {}
     if not isinstance(detail, dict):
         raise ValueError("QQ 音乐动态封面信息不完整")
+    # 专辑头图也可能放宣传片；补取时只收网关标为封面素材（videoType=8）的有限短片。
+    duration = detail.get("duration")
+    if artwork_only and (not isinstance(duration, (int, float)) or not 0 < duration <= 120):
+        return ""
     files = detail.get("mp4") or []
     if not isinstance(files, list) or any(not isinstance(item, dict) for item in files):
         raise ValueError("QQ 音乐动态封面档位无效")
     # filetype 是平台的档位编号；只在成功且有真实地址的档位里选，空的高档位不能盖过可用视频。
     for item in sorted(files, key=lambda row: int(row.get("filetype") or 0), reverse=True):
-        if item.get("code") != 0:
+        if item.get("code") != 0 or (artwork_only and item.get("videoType") != 8):
             continue
         for value in item.get("freeflow_url") or []:
             if url := _video_url(value):
                 return url
     return ""
+
+
+def _cover_candidates(basic: dict) -> list[tuple[str, bool]]:
+    """动态专用字段优先；部分专辑只把封面动画放在头图，头图另核视频类型与时长。"""
+    primary = basic.get("dynamicCoverVid") or ""
+    if primary and (not isinstance(primary, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", primary)):
+        raise ValueError("QQ 音乐动态封面 ID 无效")
+    candidates = [(primary, False)] if primary else []
+    media = basic.get("headMediaList") or []
+    headers = [basic.get("headVideoVid")]
+    if isinstance(media, list):
+        headers += [row.get("vid") for row in media[:4] if isinstance(row, dict)]
+    seen = {primary}
+    for vid in headers:
+        if isinstance(vid, str) and re.fullmatch(r"[A-Za-z0-9]{1,64}", vid) and vid not in seen:
+            candidates.append((vid, True))
+            seen.add(vid)
+    return candidates[:4]
 
 
 async def dynamic_cover(parser: BaseParser, cover: str) -> str:
@@ -70,10 +92,11 @@ async def dynamic_cover(parser: BaseParser, cover: str) -> str:
     basic = album.get("basicInfo")
     if not isinstance(basic, dict):
         raise ValueError("QQ 音乐专辑信息不完整")
-    vid = basic.get("dynamicCoverVid") or ""
-    if not vid:
+    candidates = _cover_candidates(basic)
+    if not candidates:
         return ""
-    if not isinstance(vid, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", vid):
-        raise ValueError("QQ 音乐动态封面 ID 无效")
-    data = await _request(parser, "music.stream.MvUrlProxy", "GetMvUrls", {"vids": [vid]})
-    return _best_video(data, vid)
+    data = await _request(parser, "music.stream.MvUrlProxy", "GetMvUrls", {"vids": [vid for vid, _ in candidates]})
+    for vid, artwork_only in candidates:
+        if url := _best_video(data, vid, artwork_only=artwork_only):
+            return url
+    return ""
