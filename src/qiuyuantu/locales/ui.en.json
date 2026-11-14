@@ -478,6 +478,8 @@
   "动态封面": "Animated cover",
   "静态封面直接下载原图；动态封面是一段无声视频，可单独下载或继续转换。": "Download the full-size still cover directly. The animated cover is a silent video you can download or convert.",
   "这首歌当前没有动态封面": "This song does not have an animated cover right now.",
+  "这张专辑当前没有动态封面": "This album does not have an animated cover right now.",
+  "QQ 音乐暂时没有返回动态封面，请稍后再试": "QQ Music did not return the animated cover. Please try again later.",
   "网易云音乐暂时没有返回动态封面，请稍后再试": "NetEase Cloud Music did not return the animated cover. Please try again later.",
   "动态封面没有返回有效的 MP4 视频": "The animated cover is not a valid MP4 video.",
   "正在准备动态封面": "Preparing the animated cover",

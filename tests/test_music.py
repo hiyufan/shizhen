@@ -2,13 +2,14 @@
 
 import asyncio
 import base64
+import json
 
 import httpx
 import pytest
 
 from qiuyuantu import parser, utils
 from qiuyuantu.convert import net
-from qiuyuantu.parser import base, netease_guest
+from qiuyuantu.parser import base, netease_guest, qqmusic_artwork
 from qiuyuantu.parser.base import FormatInfo, VideoSource
 from qiuyuantu.parser.errors import ParseError
 from qiuyuantu.parser.music import NetEaseMusic, QQMusic, netease_cover, netease_target, qq_cover, qq_target
@@ -19,6 +20,8 @@ NET_REGISTER = "https://music.163.com/weapi/register/anonimous"
 NET_DYNAMIC = "https://music.163.com/api/songplay/dynamic-cover"
 DCOVER = "http://dcover.music.126.net/a/b/c/cover.mp4?wsSecret=sig&wsTime=1"
 QQ_COVER = "https://y.qq.com/music/photo_new/T002R300x300M000albumMID_1.jpg?max_age=2592000"
+QQ_GATEWAY = "https://u.y.qq.com/cgi-bin/musicu.fcg"
+QQ_DYNAMIC = "http://v0.stream.tencentmusic.com/cover.f160030.mp4?dis_k=sig&dis_t=1"
 
 
 @pytest.fixture
@@ -46,6 +49,7 @@ def music_http(monkeypatch):
     monkeypatch.setitem(netease_guest._guest_state, "cookie", "")
     routes[NET_REGISTER] = _guest_reply("guest-1")
     routes[NET_DYNAMIC] = {"code": 200, "data": {}}
+    routes[QQ_GATEWAY] = {"code": 0, "req": {"code": 0, "data": {"basicInfo": {"dynamicCoverVid": ""}}}}
     return routes, calls
 
 
@@ -287,8 +291,122 @@ async def test_qq_uses_public_page_metadata(music_http, kind):
     assert info.images[0].url == original
     assert info.cover_url == info.images[0].url and info.source == "qqmusic"
     assert not info.video_url and not info.music_url and not info.formats
-    assert len(calls) == 2 and calls[0].headers["referer"] == "https://y.qq.com/"
+    assert len(calls) == (2 if kind == "playlist" else 3) and calls[0].headers["referer"] == "https://y.qq.com/"
     assert calls[1].method == "HEAD"
+
+
+def _qq_dynamic_reply(request):
+    body = json.loads(request.content)
+    assert body["comm"] == {"ct": 24, "cv": 0} and not request.headers.get("cookie")
+    rpc = body["req"]
+    if rpc["method"] == "GetAlbumDetail":
+        assert rpc["module"] == "music.musichallAlbum.AlbumInfoServer"
+        assert rpc["param"] == {"albumMid": "000K9Zp13TZp5s"}
+        data = {"basicInfo": {"dynamicCoverVid": "0139HwtE4HZbm5", "headVideoVid": "differentVideo"}}
+    else:
+        assert rpc == {
+            "module": "music.stream.MvUrlProxy",
+            "method": "GetMvUrls",
+            "param": {"vids": ["0139HwtE4HZbm5"]},
+        }
+        data = {
+            "0139HwtE4HZbm5": {
+                "mp4": [
+                    {"code": 0, "filetype": 30, "freeflow_url": [QQ_DYNAMIC.replace("160030", "140030")]},
+                    {"code": 0, "filetype": 40, "freeflow_url": [QQ_DYNAMIC]},
+                    {"code": 2000, "filetype": 60, "freeflow_url": []},
+                ]
+            }
+        }
+    return httpx.Response(200, json={"code": 0, "req": {"code": 0, "data": data}})
+
+
+@pytest.mark.parametrize("kind", ["songDetail", "albumDetail"])
+async def test_qq_dynamic_cover_is_found_from_the_album_and_refreshed_for_download(music_http, kind):
+    routes, calls = music_http
+    short = "https://c6.y.qq.com/base/fcgi-bin/u?__=yvWmWhCzq1y0"
+    canonical = f"https://y.qq.com/n/ryqq_v2/{kind}/0013WPvt4fQH2b"
+    routes[short] = (302, {"Location": canonical})
+    cover = "https://y.gtimg.cn/music/photo_new/T002M000000K9Zp13TZp5s_1.jpg"
+    routes[canonical] = f'<meta property="og:image" content="{cover}"><meta property="og:title" content="天外来物">'
+    routes[QQ_GATEWAY] = _qq_dynamic_reply
+    info = await parser.parse_video_share_url(short)
+    assert info.title == "天外来物" and info.images[0].url == cover
+    assert info.formats == [FormatInfo(label="动态封面", format_spec="qqmusic-artwork", ext="mp4")]
+    assert info.source == "qqmusic" and not info.video_url and not info.music_url
+    assert best_video_format(info) is None
+    assert await QQMusic().dynamic_cover(canonical) == QQ_DYNAMIC.replace("http:", "https:")
+    assert len([c for c in calls if str(c.url) == QQ_GATEWAY]) == 4
+
+
+@pytest.mark.parametrize("cover", [QQ_COVER, QQ_COVER.replace("R300x300", ""), QQ_COVER.replace("_1", "")])
+async def test_qq_album_mid_does_not_include_the_picture_revision(music_http, cover):
+    routes, calls = music_http
+    assert await qqmusic_artwork.dynamic_cover(QQMusic(), cover) == ""
+    body = json.loads(calls[-1].content)
+    assert body["req"]["param"] == {"albumMid": "albumMID"}
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        (500, {}),
+        {"code": -1},
+        {"code": 0, "req": {"code": 2000}},
+        {"code": 0, "req": {"code": 0, "data": []}},
+        {"code": 0, "req": {"code": 0, "data": {"basicInfo": []}}},
+    ],
+)
+async def test_qq_dynamic_cover_failures_keep_the_static_cover(music_http, failure):
+    routes, _ = music_http
+    canonical = "https://y.qq.com/n/ryqq_v2/albumDetail/42"
+    cover = "https://y.gtimg.cn/music/photo_new/T002M000albumMID.jpg"
+    routes[canonical] = f'<meta property="og:image" content="{cover}">'
+    routes[QQ_GATEWAY] = failure
+    info = await QQMusic().parse_share_url(canonical)
+    assert info.images[0].url == cover and not info.formats
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.test/cover.mp4",
+        "https://v0.stream.tencentmusic.com.evil.test/cover.mp4",
+        "http://127.0.0.1/cover.mp4",
+        "ftp://v0.stream.tencentmusic.com/cover.mp4",
+        "https://user:pass@v0.stream.tencentmusic.com/cover.mp4",
+        "https://v0.stream.tencentmusic.com:8080/cover.mp4",
+        "https://v0.stream.tencentmusic.com/song.mp3",
+    ],
+)
+def test_qq_dynamic_cover_only_uses_the_official_video_cdn(url):
+    data = {"vid": {"mp4": [{"code": 0, "filetype": 40, "freeflow_url": [url]}]}}
+    assert qqmusic_artwork._best_video(data, "vid") == ""
+
+
+async def test_qq_slow_dynamic_cover_does_not_hold_the_parse(music_http, monkeypatch):
+    routes, _ = music_http
+    canonical = "https://y.qq.com/n/ryqq_v2/albumDetail/42"
+    cover = "https://y.gtimg.cn/music/photo_new/T002M000albumMID.jpg"
+    routes[canonical] = f'<meta property="og:image" content="{cover}">'
+
+    async def stuck(_parser, _cover):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(qqmusic_artwork, "dynamic_cover", stuck)
+    monkeypatch.setattr("qiuyuantu.parser.music._DYNAMIC_TIMEOUT", 0.01)
+    info = await QQMusic().parse_share_url(canonical)
+    assert info.images[0].url == cover and not info.formats
+
+
+async def test_qq_playlist_never_uses_the_first_songs_album_for_a_dynamic_cover(music_http):
+    routes, calls = music_http
+    canonical = "https://y.qq.com/n/ryqq_v2/playlist/42"
+    cover = "https://y.gtimg.cn/music/photo_new/T002M000albumMID.jpg"
+    routes[canonical] = f'<meta property="og:image" content="{cover}">'
+    info = await QQMusic().parse_share_url(canonical)
+    assert not info.formats and len(calls) == 1
+    assert await QQMusic().dynamic_cover(canonical) == "" and len(calls) == 1
 
 
 async def test_qq_page_without_cover_does_not_return_site_logo(music_http):
@@ -390,6 +508,7 @@ def test_music_metadata_and_images_use_domestic_proxy_and_cdn_referers(monkeypat
         ("netease", NET_COVER, "https://music.163.com/"),
         ("qqmusic", "https://qpic.y.qq.com/music_cover/hash/1000", "https://y.qq.com/"),
         ("qqmusic", "https://y.gtimg.cn/music/photo_new/album.jpg", "https://y.qq.com/"),
+        ("qqmusic", QQ_DYNAMIC, "https://y.qq.com/"),
     ):
         assert utils.proxy_for(source) == "http://cn:8080"
         assert utils.is_cn_url(url)

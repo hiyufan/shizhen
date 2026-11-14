@@ -226,7 +226,7 @@ function downloadStep(d, baseName, jobsBox) {
 
 function formatsLabel(d) {
   if (d.video_url) return t('清晰度');
-  return t(['applemusic', 'netease'].includes(d.source) ? '动态封面' : '下载视频');
+  return t(['applemusic', 'netease', 'qqmusic'].includes(d.source) ? '动态封面' : '下载视频');
 }
 
 const isPortrait = (d) => (d.width && d.height ? d.height > d.width : !['steam', 'hoyoplay', 'wutheringwaves'].includes(d.source));
@@ -331,7 +331,7 @@ function formatMenu(d, baseName, jobsBox) {
   for (const f of downloadFormats(d)) list.append(formatItem(f, d, baseName, jobsBox, close));
   list.append(...formatHints(d.formats));
   const toggle = el('button', { class: 'btn' + (d.video_url ? '' : ' dark'), type: 'button', onclick: () => { list.hidden = !list.hidden; } },
-    d.video_url ? t('其他清晰度 ▾') : t(['applemusic', 'netease'].includes(d.source) ? '下载动态封面 ▾' : '下载视频 ▾'));
+    d.video_url ? t('其他清晰度 ▾') : t(['applemusic', 'netease', 'qqmusic'].includes(d.source) ? '下载动态封面 ▾' : '下载视频 ▾'));
   return el('div', { class: 'menu' }, toggle, list);
 }
 

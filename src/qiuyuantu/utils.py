@@ -66,6 +66,7 @@ CN_HOST_KEYWORDS = (
     "music.126.net",
     "y.qq.com",
     "y.gtimg.cn",
+    "stream.tencentmusic.com",
     "goofish.com",
     "m.tb.cn",
     "e.tb.cn",

@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urljoin, urlparse, urlunparse
 import httpx
 from parsel import Selector
 
-from . import netease_guest
+from . import netease_guest, qqmusic_artwork
 from .base import BaseParser, FormatInfo, ImgInfo, VideoAuthor, VideoInfo
 from .errors import ParseError
 
@@ -258,7 +258,28 @@ class QQMusic(BaseParser):
         title = sel.css('meta[property="og:title"]::attr(content)').get(default="")
         title = re.sub(r"\s*-\s*QQ音乐.*$", "", title).strip()
         author = VideoAuthor(name=sel.css('meta[property="og:music:artist"]::attr(content)').get(default=""))
-        return _cover_info(title, await self._best_cover(cover), author, canonical)
+        info = _cover_info(title, await self._best_cover(cover), author, canonical)
+        if kind != "playlist":
+            info.formats = await self._dynamic_formats(cover)
+        return info
+
+    async def _dynamic_formats(self, cover: str) -> list[FormatInfo]:
+        try:
+            url = await asyncio.wait_for(qqmusic_artwork.dynamic_cover(self, cover), _DYNAMIC_TIMEOUT)
+        except (httpx.HTTPError, ValueError, TypeError, asyncio.TimeoutError) as err:
+            logger.info("QQ 音乐动态封面没取到，只给静态封面：%s", type(err).__name__)
+            return []
+        # CDN 地址带限时签名，沿用服务端档位，在下载时重新读取专辑与视频信息。
+        return [FormatInfo(label="动态封面", format_spec="qqmusic-artwork", ext="mp4")] if url else []
+
+    async def dynamic_cover(self, page_url: str) -> str:
+        kind, ident = qq_target(page_url)
+        if kind == "playlist":
+            return ""
+        canonical = f"https://y.qq.com/n/ryqq_v2/{_QQ_PATHS[kind]}/{ident}"
+        html = await self.get_text(canonical, follow_redirects=True)
+        cover = Selector(html).css('meta[property="og:image"]::attr(content)').get(default="")
+        return await qqmusic_artwork.dynamic_cover(self, cover)
 
     async def parse_video_id(self, video_id: str) -> VideoInfo:
         kind, ident = _legacy_id(video_id)

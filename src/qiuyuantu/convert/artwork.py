@@ -15,7 +15,7 @@ from ..parser.applemusic import AppleMusic, _media, artwork_variants
 from ..parser.base import FormatInfo
 from ..parser.hoyoplay import HoYoPlay
 from ..parser.mp4_probe import local_metadata
-from ..parser.music import NetEaseMusic
+from ..parser.music import NetEaseMusic, QQMusic
 from ..parser.quality import frame_rate, number, short_side
 from ..utils import current_source
 from . import config, ffmpeg
@@ -26,7 +26,7 @@ Report = Callable[[float, str], None]
 
 
 def handles(url: str) -> bool:
-    return urlparse(url).hostname in {"music.apple.com", "music.163.com", "hyp-api.mihoyo.com"}
+    return urlparse(url).hostname in {"music.apple.com", "music.163.com", "y.qq.com", "hyp-api.mihoyo.com"}
 
 
 def _attributes(text: str) -> dict[str, str]:
@@ -179,7 +179,23 @@ async def _remux(source: Path, destination: Path) -> None:
     await ffmpeg.run([*args, "-movflags", "+faststart", str(destination)])
 
 
-async def _validate_netease(path: Path) -> None:
+async def _qq_source(page: str, directory: Path, report: Report) -> Path:
+    token = current_source.set("qqmusic")
+    try:
+        url = await QQMusic().dynamic_cover(page)
+    except (httpx.HTTPError, ValueError, TypeError) as err:
+        raise ValueError("QQ 音乐暂时没有返回动态封面，请稍后再试") from err
+    finally:
+        current_source.reset(token)
+    if not url:
+        raise ValueError("这张专辑当前没有动态封面")
+    source = directory / "source.mp4"
+    await fetch_bytes(url, source, limit=config.MAX_SOURCE_BYTES)
+    report(0.9, "正在准备动态封面")
+    return source
+
+
+async def _validate_mp4(path: Path) -> None:
     measured = await asyncio.to_thread(local_metadata, path)
     if not measured or not measured[0].width or not 0 < measured[1] <= 120:
         raise ValueError("动态封面没有返回有效的 MP4 视频")
@@ -207,7 +223,10 @@ async def download(page: str, spec: str, out_dir: Path, stem: str, report: Repor
                 await _validate_output(destination, expected)
             elif host == "music.163.com":
                 await _remux(await _netease_source(page, directory, report), destination)
-                await _validate_netease(destination)
+                await _validate_mp4(destination)
+            elif host == "y.qq.com":
+                await _remux(await _qq_source(page, directory, report), destination)
+                await _validate_mp4(destination)
             else:
                 info = await HoYoPlay().parse_share_url(page)
                 if not info.video_url:

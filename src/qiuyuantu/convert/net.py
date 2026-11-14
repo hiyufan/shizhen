@@ -62,6 +62,7 @@ _REFERERS = {
     "music.126.net": "https://music.163.com/",
     "y.gtimg.cn": "https://y.qq.com/",
     "y.qq.com": "https://y.qq.com/",
+    "stream.tencentmusic.com": "https://y.qq.com/",
 }
 
 
