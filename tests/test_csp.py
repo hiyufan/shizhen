@@ -1,8 +1,9 @@
-"""内容安全策略：不许跑内联脚本；站长配的统计代码按哈希 / 域名单独放行，无广告例外。"""
+"""主页面禁止内联及广告脚本；普通横幅仅在独立的受限文档执行。"""
 
 import base64
 import hashlib
 
+import pytest
 from fastapi.testclient import TestClient
 
 from qiuyuantu import web
@@ -50,3 +51,48 @@ def test_legacy_ad_configuration_is_ignored(monkeypatch):
         if reply.headers.get("content-type", "").startswith("text/html"):
             assert _directives(csp)["script-src"] == ["'self'"]
     assert client.get("/ads.txt").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("placement", "key", "width", "height"),
+    [
+        ("mobile", "2ea4abab0d473f37f063621df7d49edc", 320, 50),
+        ("desktop", "b08de1e1c36939e9944cc6ba2c9831be", 728, 90),
+    ],
+)
+def test_banner_document_is_sandboxed_and_not_indexed(placement, key, width, height):
+    client = TestClient(web.app)
+    response = client.get(f"/ads/banner/{placement}")
+    assert response.status_code == 200
+    assert f'data-banner-width="{width}" data-banner-height="{height}"' in response.text
+    assert f'src="https://bauval.org/22/{key}"' in response.text
+    assert "<script>" not in response.text and "app.js" not in response.text
+    directives = _directives(response.headers["content-security-policy"])
+    assert directives["script-src"] == ["'self'", "https://bauval.org"]
+    assert directives["frame-ancestors"] == ["'self'"]
+    assert set(directives["sandbox"]) == {"allow-scripts", "allow-popups", "allow-popups-to-escape-sandbox"}
+    assert response.headers["x-frame-options"] == "SAMEORIGIN"
+    assert response.headers["referrer-policy"] == "origin"
+    assert response.headers["x-robots-tag"] == "noindex, nofollow"
+    assert response.headers["cache-control"] == "no-store"
+    head = client.head(f"/ads/banner/{placement}")
+    assert head.status_code == 200 and head.content == b""
+
+
+def test_only_known_banner_placements_are_served():
+    assert TestClient(web.app).get("/ads/banner/unknown").status_code == 404
+
+
+def test_banner_documents_do_not_count_as_page_views(monkeypatch):
+    from qiuyuantu import stats
+
+    seen = []
+    monkeypatch.setattr(stats, "enabled", lambda: True)
+    monkeypatch.setattr(stats, "ignored_ip", lambda ip: False)
+    monkeypatch.setattr(stats, "record", lambda kind, ip, **kw: seen.append(kind))
+    client = TestClient(web.app)
+    for placement in ("mobile", "desktop"):
+        client.get(f"/ads/banner/{placement}", headers={"User-Agent": "Mozilla/5.0"})
+    assert seen == []
+    client.get("/", headers={"User-Agent": "Mozilla/5.0"})
+    assert seen == ["view"]

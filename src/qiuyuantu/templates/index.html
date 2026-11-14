@@ -36,6 +36,9 @@
     <div id="notice" class="notice" aria-live="polite" hidden></div>
     <div id="result"{% if feedback_enabled %} data-feedback="/feedback"{% endif %} hidden></div>
     <div id="converter" hidden></div>
+    <aside class="banner-ad" data-banner data-banner-title="{{ t('广告') }}" aria-label="{{ t('广告') }}" hidden>
+      <span class="banner-ad-label">{{ t('广告') }}</span>
+    </aside>
     {% if page.body %}
     <div class="page-body">
       <div class="grid3">

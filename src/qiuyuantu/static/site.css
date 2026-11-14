@@ -227,6 +227,14 @@ a.card { display: block; text-decoration: none; }
 }
 .supports { margin: 18px auto 0; font-size: 13px; color: var(--ink-3); max-width: 46em; line-height: 1.7; }
 .supports b { color: var(--ink-2); font-weight: 600; }
+
+/* 横幅独立于结果面板；自身可略宽于 .wrap，保证 360px 手机仍能容纳 320px 广告。 */
+.banner-ad { width: min(728px, calc(100vw - 16px)); position: relative; left: 50%; transform: translateX(-50%); margin-top: 40px; text-align: center; }
+.banner-ad-label { display: block; margin-bottom: 8px; color: var(--ink-3); font-size: 11px; line-height: 1.5; }
+.banner-ad iframe { display: block; margin: 0 auto; border: 0; max-width: 100%; }
+/* 缩窄窗口后收起放不下的尺寸，不裁切广告，也不自动请求新广告。 */
+@media (max-width: 743px) { .banner-ad[data-banner-size="desktop"] { display: none; } }
+@media (max-width: 335px) { .banner-ad { display: none; } }
 .notice { margin: 18px auto 0; max-width: 760px; padding: 14px 18px; border-radius: 16px; background: rgba(232,112,42,.08); border: 1px solid rgba(232,112,42,.25); color: var(--warning); font-size: 14px; text-align: left; }
 .notice.info { background: rgba(107,175,223,.1); border-color: rgba(107,175,223,.3); color: var(--ink); }
 .parse-wait:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }

@@ -15,7 +15,20 @@ from .. import failures, feedback, search_reports, site_feedback, stats, status
 from ..convert import animation_uploads, config, jobs, net, relay, signal, store, updater, wallpaper_uploads
 from ..parser import douyin, parse_video_share_url
 from ..utils import extract_url
-from . import access_log, admin, audience, contact, download_host, legacy_api, media, pages, parse, proxy, wallpaper
+from . import (
+    access_log,
+    admin,
+    ads,
+    audience,
+    contact,
+    download_host,
+    legacy_api,
+    media,
+    pages,
+    parse,
+    proxy,
+    wallpaper,
+)
 from .middleware import site_headers
 from .rendering import STATIC_DIR
 
@@ -133,7 +146,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(StarletteHTTPException, download_host.http_error)
     mcp = _mount_mcp(app)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    for module in (legacy_api, parse, proxy, media, wallpaper, admin, audience, contact):
+    for module in (legacy_api, parse, proxy, media, wallpaper, admin, audience, contact, ads):
         app.include_router(module.router)
     # 放在最后：/{slug} 是兜底路由，不能抢在 /robots.txt /sitemap.xml 前面
     app.include_router(pages.router)

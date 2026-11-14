@@ -37,6 +37,16 @@ def test_other_pages_only_load_site_effects(client):
     assert 'href="/#upload"' in html  # 只有工具页能接住上传
 
 
+def test_only_tool_pages_offer_a_single_isolated_banner(client):
+    for path in ("/", "/douyin", "/gif"):
+        html = client.get(path).text
+        assert html.count("data-banner-title=") == 1
+        assert "bauval.org" not in html
+        assert "banner.js" in html
+    for path in ("/guides", "/guide/video-to-gif", "/stats", "/no-such-page"):
+        assert "data-banner-title=" not in client.get(path).text
+
+
 def test_current_version_is_cached_forever_stale_one_is_not(client):
     current = client.get(rendering.js_url("dom.js"))
     assert current.status_code == 200 and current.headers["content-type"].startswith("text/javascript")

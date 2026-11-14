@@ -117,7 +117,7 @@ def _excluded_from_stats(request: Request) -> bool:
 
 def _record_page_view(request: Request, response: Response) -> None:
     path = request.url.path
-    if response.status_code != 200 or path in _UNCOUNTED_PAGES:
+    if response.status_code != 200 or path in _UNCOUNTED_PAGES or path.startswith("/ads/"):
         return
     stats.record("view", limits.client_ip(request), source=path)
 

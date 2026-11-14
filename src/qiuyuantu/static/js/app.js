@@ -4,6 +4,7 @@ import { isEnglish, serverMessage, t } from './i18n.js';
 
 import { parseWithProgress, useSignatures } from './api.js';
 import { cancelUpload, uploadFile } from './animation-upload.js';
+import { initBanner } from './banner.js';
 import { $, el, notice } from './dom.js';
 import { parseHints } from './parse-progress.js';
 import { renderResult, updateResult } from './result.js';
@@ -36,6 +37,7 @@ let activeParse = null;
 let pendingUpdates = null;
 
 askForStarAfterDownload($('#result'), $('#converter'));
+initBanner();
 
 function stopUpdates() {
   pendingUpdates?.abort();
