@@ -45,6 +45,20 @@ def _write_frames(
         return duration
 
 
+def _timing_args(directory: Path, duration: float) -> list[str]:
+    last = next(
+        float(line.split()[1])
+        for line in reversed((directory / "frames.txt").read_text().splitlines())
+        if line.startswith("duration ")
+    )
+    # PNG 清单的包时长是 1 ms；仅靠 -t 无法恢复末帧停留时间。毫秒时基保留不等长帧，
+    # 关闭 B 帧后包顺序与显示顺序一致，修正末包时长不会改变解码时间戳。
+    # 阈值留半毫秒容差，避开累计小数误差。
+    final_start = duration - last - 0.0005
+    packet_duration = f"setts=duration=if(gte(PTS*TB\\,{final_start:.6f})\\,{last:.6f}/TB\\,DURATION)"
+    return ["-enc_time_base", "1:1000", "-bf", "0", "-bsf:v", packet_duration]
+
+
 async def prepare(
     source: Path,
     destination: Path,
@@ -52,6 +66,7 @@ async def prepare(
     alpha_destination: Path | None = None,
     animation: str = "",
     max_frame_pixels: int = 100_000_000,
+    preserve_timing: bool = False,
 ) -> None:
     # 取消时先停止并等解码线程退出，再删除帧目录，避免清理与写入交叉。
     with TemporaryDirectory(prefix="animation-", dir=source.parent) as temporary:
@@ -80,6 +95,7 @@ async def prepare(
                 inputs = ["-i", str(alpha_destination)]
             await ffmpeg.run(
                 inputs
+                + (_timing_args(directory, duration) if preserve_timing else [])
                 + [
                     "-t",
                     f"{duration:.6f}",

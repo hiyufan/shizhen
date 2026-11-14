@@ -14,11 +14,13 @@ import httpx
 from ..parser.applemusic import AppleMusic, _media, artwork_variants
 from ..parser.base import FormatInfo
 from ..parser.hoyoplay import HoYoPlay
+from ..parser.huaweimusic import HOST as HUAWEI_HOST
+from ..parser.huaweimusic import HuaweiMusic, is_dynamic_cover
 from ..parser.mp4_probe import local_metadata
 from ..parser.music import NetEaseMusic, QQMusic
 from ..parser.quality import frame_rate, number, short_side
 from ..utils import current_source
-from . import config, ffmpeg
+from . import animated, config, ffmpeg
 from .fetch import TooLarge, fetch_bytes
 from .net import headers_for, safe_client
 
@@ -26,7 +28,7 @@ Report = Callable[[float, str], None]
 
 
 def handles(url: str) -> bool:
-    return urlparse(url).hostname in {"music.apple.com", "music.163.com", "y.qq.com", "hyp-api.mihoyo.com"}
+    return urlparse(url).hostname in {"music.apple.com", "music.163.com", "y.qq.com", "hyp-api.mihoyo.com", HUAWEI_HOST}
 
 
 def _attributes(text: str) -> dict[str, str]:
@@ -250,6 +252,29 @@ async def _qq_download(page: str, spec: str, directory: Path, destination: Path,
     await _validate_output(destination, expected)
 
 
+async def _huawei_download(page: str, directory: Path, destination: Path, report: Report) -> None:
+    token = current_source.set("huaweimusic")
+    try:
+        info = await HuaweiMusic().parse_share_url(page)
+    finally:
+        current_source.reset(token)
+    url = next((asset.url for asset in info.assets if asset.kind == "animation" and is_dynamic_cover(asset.url)), "")
+    if not url:
+        raise ValueError("这条作品当前未公开动态封面，可下载静态封面。")
+    source = directory / "source.webp"
+    await fetch_bytes(url, source, limit=config.MAX_SOURCE_BYTES)
+    report(0.5, "正在读取动态封面的每一帧")
+    # 无损中间文件保留帧时间戳，也避免编码器把 PNG 清单的 1000 Hz 时基当成播放帧率。
+    await animated.prepare(
+        source,
+        destination,
+        alpha_destination=directory / "frames.mov",
+        max_frame_pixels=200_000_000,
+        preserve_timing=True,
+    )
+    await _validate_mp4(destination)
+
+
 async def _validate_output(path: Path, expected: FormatInfo) -> None:
     # HLS FRAME-RATE 是峰值；变帧率素材不能用平均值判断是否降档。
     measured = await asyncio.to_thread(local_metadata, path, peak_fps=True)
@@ -275,6 +300,8 @@ async def download(page: str, spec: str, out_dir: Path, stem: str, report: Repor
                 await _validate_mp4(destination)
             elif host == "y.qq.com":
                 await _qq_download(page, spec, directory, destination, report)
+            elif host == HUAWEI_HOST:
+                await _huawei_download(page, directory, destination, report)
             else:
                 info = await HoYoPlay().parse_share_url(page)
                 if not info.video_url:

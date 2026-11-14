@@ -3,7 +3,7 @@
 import re
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-from .base import BaseParser, ContentEntry, ImgInfo, MediaAsset, VideoAuthor, VideoInfo
+from .base import BaseParser, ContentEntry, FormatInfo, ImgInfo, MediaAsset, VideoAuthor, VideoInfo
 from .errors import ParseError
 
 HOST = "portal-drcn.music.dbankcloud.cn"
@@ -122,6 +122,7 @@ def _media_info(info: dict, page: str, dynamic: str) -> VideoInfo:
         author=VideoAuthor(name=info.get("artistName") or info.get("subTitle") or ""),
         images=[ImgInfo(url=static)],
         assets=assets,
+        formats=[FormatInfo(label="动态封面 MP4", format_spec="huawei-artwork", ext="mp4")] if dynamic else [],
         page_url=page,
         notice="" if dynamic else "这条作品当前未公开动态封面，可下载静态封面。",
     )

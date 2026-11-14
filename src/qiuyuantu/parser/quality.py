@@ -75,7 +75,7 @@ async def verify_direct_formats(
 
 def best_video_format(info: VideoInfo) -> FormatInfo | None:
     """下载与兼容预览分开；目录、音频和不同构图的动态封面不互相竞争。"""
-    if info.content_kind != "media" or info.source in {"applemusic", "netease", "qqmusic"}:
+    if info.content_kind != "media" or info.source in {"applemusic", "netease", "qqmusic", "huaweimusic"}:
         return None
     formats = [f for f in info.formats if f.ext in {"mp4", "webm", "mov", "mkv"} and (f.height or f.format_spec)]
     if info.video_url and info.video_ext != "m3u8":

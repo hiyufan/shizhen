@@ -133,9 +133,18 @@ function coverSection(image, baseName, data) {
     el('div', { class: 'side' },
       el('p', { class: 'label' }, t('音乐封面')),
       el('div', { class: 'group' }, ...coverDownloads(image.url, native?.url, name),
-        data.formats.length ? formatMenu(data, baseName, jobsBox) : null),
+        coverVideoDownload(data, baseName, jobsBox)),
       el('p', { class: 'hint' }, t(coverHint(data))),
       coverConversions(native?.url || image.url, baseName, data, !!native), jobsBox));
+}
+
+function coverVideoDownload(data, baseName, jobsBox) {
+  if (!data.formats.length) return null;
+  if (data.source !== 'huaweimusic' || data.formats.length !== 1) return formatMenu(data, baseName, jobsBox);
+  const button = primaryDownload(data.formats[0], data, baseName, jobsBox);
+  button.className = 'btn quiet';
+  button.textContent = t('下载 MP4');
+  return button;
 }
 
 function coverDownloads(staticUrl, dynamicUrl, name) {
@@ -148,7 +157,7 @@ function coverDownloads(staticUrl, dynamicUrl, name) {
 // 网易云的动态封面是另一段视频（有才给档位）；歌单封面本身可能就是动图，按原格式保存就保留动效
 function coverHint(data) {
   if (data.source === 'huaweimusic') return data.assets?.length
-    ? '动态封面原文件为 WebP，直接下载保留原始画质与帧时序，也可转 GIF 或实况照片。'
+    ? '动态封面原文件为 WebP，可保留原文件或下载转换后的无声 MP4，也可转 GIF 或实况照片。'
     : '静态封面按来源提供的图片格式保存。';
   if (data.source === 'applemusic') return '静态封面与动态视频分开下载；动态封面以当前公开版本为准。';
   if (data.source === 'qqmusic' && data.formats.length) return '方形版优先使用原生方形素材，没有时从中心裁切；完整原版保留全部画面。转换默认使用方形版。';
@@ -158,7 +167,7 @@ function coverHint(data) {
 
 function coverConversions(url, title, data, native = false) {
   if (['applemusic', 'huaweimusic'].includes(data.source) && !data.formats.length && !native) return null;
-  const request = data.formats.length ? sourceRequest(data, title) : { url, title, sig: sigOf(url), image: true };
+  const request = data.formats.length && !native ? sourceRequest(data, title) : { url, title, sig: sigOf(url), image: true };
   const options = { artwork: data.source === 'huaweimusic' || (data.source === 'qqmusic' && !!data.formats.length) };
   return el('div', {}, el('div', { class: 'rule' }),
     el('p', { class: 'label' }, t('动态封面继续做')),

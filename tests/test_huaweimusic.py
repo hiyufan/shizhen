@@ -11,6 +11,7 @@ from qiuyuantu.convert import animated, ffmpeg, jobs, store, tasks
 from qiuyuantu.parser import base, huaweimusic
 from qiuyuantu.parser.base import VideoSource
 from qiuyuantu.parser.errors import ParseError
+from qiuyuantu.parser.quality import best_video_format
 
 STATIC = "https://contentcenter-drcn.dbankcdn.cn/img/pub_1/HW-Music_cover_100_1/ab/v3/hash/cover.jpg/music_cover_1000x1000.webp"
 DYNAMIC = "https://contentcenter-drcn.dbankcdn.cn/img/pub_1/HW-Music_DynamicCover_100_1/df/v3/hash/cover.webp/music_dynamiccover_1000x1000.webp"
@@ -99,7 +100,10 @@ async def test_short_share_returns_original_webp_and_separate_static_cover(music
     assert info.cover_url == info.images[0].url == STATIC
     assert len(info.assets) == 1 and info.assets[0].url == DYNAMIC
     assert (info.assets[0].kind, info.assets[0].ext) == ("animation", "webp")
-    assert not info.video_url and not info.music_url and not info.formats
+    assert not info.video_url and not info.music_url
+    assert len(info.formats) == 1 and info.formats[0].format_spec == "huawei-artwork"
+    assert info.formats[0].ext == "mp4" and not info.formats[0].url
+    assert best_video_format(info) is None
     assert info.page_url == huaweimusic.page_url("song", "2168177")
     assert len(calls) == 2 and calls[-1].url.params["songCode"] == "2168177"
 
@@ -137,7 +141,7 @@ async def test_static_cover_survives_missing_or_untrusted_animation(music_http, 
     song["picture"]["dynamicImgURL"] = dynamic
     song_reply(replies, song)
     info = await huaweimusic.HuaweiMusic().parse_video_id("2168177")
-    assert info.images[0].url == STATIC and not info.assets
+    assert info.images[0].url == STATIC and not info.assets and not info.formats
     assert "未公开动态封面" in info.notice
 
 
@@ -226,3 +230,133 @@ async def test_native_cover_pixel_budget_does_not_change_other_images(tmp_path, 
     )
     assert result.gif_path and result.width == 1000
     assert not list(tmp_path.glob("*.image"))
+
+
+async def test_mp4_download_refetches_only_the_cover_and_preserves_native_budget(music_http, tmp_path, monkeypatch):
+    from qiuyuantu.convert import artwork
+    from qiuyuantu.utils import current_source
+
+    _, replies = music_http
+    song_reply(replies)
+    contexts = []
+
+    async def fetch(url, path, *, limit):
+        assert url == DYNAMIC and limit == tasks.config.MAX_SOURCE_BYTES
+        path.write_bytes(b"original-webp")
+
+    async def prepare(source, destination, *, alpha_destination, max_frame_pixels, preserve_timing):
+        assert source.suffix == ".webp" and source.read_bytes() == b"original-webp"
+        assert max_frame_pixels == 200_000_000 and preserve_timing
+        alpha_destination.write_bytes(b"lossless-frames")
+        destination.write_bytes(b"mp4")
+
+    original = huaweimusic.HuaweiMusic.parse_share_url
+
+    async def lookup(self, page):
+        contexts.append(current_source.get())
+        return await original(self, page)
+
+    monkeypatch.setattr(huaweimusic.HuaweiMusic, "parse_share_url", lookup)
+    monkeypatch.setattr(artwork, "fetch_bytes", fetch)
+    monkeypatch.setattr(animated, "prepare", prepare)
+    monkeypatch.setattr(artwork, "local_metadata", lambda _path: (base.FormatInfo(width=1000, height=1000), 9.6))
+    result = await tasks._ytdlp(
+        jobs.Job(id="huawei-mp4", type="download"),
+        huaweimusic.page_url("song", "2168177"),
+        "huawei-artwork",
+        tmp_path,
+        "out",
+    )
+    assert result.read_bytes() == b"mp4" and list(tmp_path.iterdir()) == [result]
+    assert contexts == ["huaweimusic"] and current_source.get() == ""
+
+
+@pytest.mark.parametrize("dynamic", ["", "https://evil.test/cover.webp", STATIC])
+async def test_mp4_download_never_substitutes_static_or_unrelated_media(music_http, tmp_path, monkeypatch, dynamic):
+    from qiuyuantu.convert import artwork
+
+    _, replies = music_http
+    song = copy.deepcopy(SONG)
+    song["picture"]["dynamicImgURL"] = dynamic
+    song_reply(replies, song)
+
+    async def unexpected(*_args, **_kwargs):
+        pytest.fail("没有有效动态封面时不应下载音频、预览或静态图片")
+
+    monkeypatch.setattr(artwork, "fetch_bytes", unexpected)
+    with pytest.raises(ValueError, match="未公开动态封面"):
+        await artwork.download(
+            huaweimusic.page_url("song", "2168177"), "huawei-artwork", tmp_path, "out", lambda *_: None
+        )
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_failed_mp4_render_cleans_partial_output_and_source(music_http, tmp_path, monkeypatch, cancelled):
+    import asyncio
+
+    from qiuyuantu.convert import artwork
+    from qiuyuantu.utils import current_source
+
+    _, replies = music_http
+    song_reply(replies)
+    error = asyncio.CancelledError if cancelled else ValueError
+
+    async def fetch(_url, path, **_kwargs):
+        path.write_bytes(b"original-webp")
+
+    async def prepare(_source, destination, **_kwargs):
+        destination.write_bytes(b"partial-video")
+        raise error("stopped")
+
+    monkeypatch.setattr(artwork, "fetch_bytes", fetch)
+    monkeypatch.setattr(animated, "prepare", prepare)
+    with pytest.raises(error):
+        await artwork.download(
+            huaweimusic.page_url("song", "2168177"), "huawei-artwork", tmp_path, "out", lambda *_: None
+        )
+    assert not list(tmp_path.iterdir()) and current_source.get() == ""
+
+
+@pytest.mark.parametrize("durations", [(60, 60, 60, 60), (40, 200, 80)])
+async def test_mp4_has_native_dimensions_all_frames_and_full_last_frame_duration(
+    music_http, tmp_path, monkeypatch, durations
+):
+    import imageio_ffmpeg
+    from PIL import Image
+
+    from qiuyuantu.convert import artwork
+    from qiuyuantu.parser.mp4_probe import local_metadata
+
+    _, replies = music_http
+    song_reply(replies)
+    native = tmp_path / "native.webp"
+    frames = [Image.new("RGB", (64, 64), (50 + i * 40, 90, 200 - i * 30)) for i in range(len(durations))]
+    frames[0].save(native, save_all=True, append_images=frames[1:], duration=list(durations), lossless=True)
+
+    async def fetch(url, path, **_kwargs):
+        assert url == DYNAMIC
+        path.write_bytes(native.read_bytes())
+
+    monkeypatch.setattr(artwork, "fetch_bytes", fetch)
+    monkeypatch.setattr(ffmpeg, "ffmpeg_path", imageio_ffmpeg.get_ffmpeg_exe)
+    output = await artwork.download(
+        huaweimusic.page_url("song", "2168177"), "huawei-artwork", tmp_path, "output", lambda *_: None
+    )
+    info, duration = local_metadata(output)
+    assert (info.width, info.height) == (64, 64)
+    assert duration == pytest.approx(sum(durations) / 1000, abs=0.001)
+    assert info.fps * duration == pytest.approx(len(durations))
+    measured = await ffmpeg.probe(output)
+    assert not measured.has_audio
+    decoded = tmp_path / "decoded.md5"
+    await ffmpeg.run(
+        ["-i", str(output), "-fps_mode", "passthrough", "-enc_time_base", "1:1000", "-f", "framemd5", str(decoded)]
+    )
+    rows = [row.split(",") for row in decoded.read_text().splitlines() if not row.startswith("#")]
+    assert len(rows) == len(durations)
+    assert [int(row[2]) / 1000 for row in rows] == pytest.approx(
+        [sum(durations[:i]) / 1000 for i in range(len(durations))]
+    )
+    assert len({row[-1] for row in rows}) == len(durations)
+    assert not list(tmp_path.glob("output-artwork-*"))
