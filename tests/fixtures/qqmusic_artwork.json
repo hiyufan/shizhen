@@ -1,0 +1,722 @@
+{
+  "checked_at": "2026-11-14",
+  "note": "公开响应的封面字段与 MP4 档位；CDN 文件名和签名已替换为离线占位地址。",
+  "albums": [
+    {
+      "name": "天外来物",
+      "album_mid": "000K9Zp13TZp5s",
+      "basicInfo": {
+        "dynamicCoverVid": "0139HwtE4HZbm5",
+        "headVideoVid": "0139cXDZ12ZNNX",
+        "headMediaList": [
+          {
+            "vid": "0139cXDZ12ZNNX",
+            "magicColor": "",
+            "frame": "http://img.tencentmusic.com/T002R1080x1080M000004JDfBJ2uXqLH.jpg?imageView2/4/w/750/h/750"
+          }
+        ]
+      },
+      "videos": {
+        "0139HwtE4HZbm5": {
+          "duration": 3,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 70899,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139HwtE4HZbm5.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 121269,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139HwtE4HZbm5.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 257168,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139HwtE4HZbm5.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 401648,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139HwtE4HZbm5.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            }
+          ]
+        },
+        "0139cXDZ12ZNNX": {
+          "duration": 3,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 89139,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139cXDZ12ZNNX.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 200726,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139cXDZ12ZNNX.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 376041,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139cXDZ12ZNNX.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 631901,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0139cXDZ12ZNNX.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            }
+          ]
+        }
+      },
+      "expected_vid": "0139HwtE4HZbm5",
+      "expected_filetype": 40
+    },
+    {
+      "name": "黑白灰",
+      "album_mid": "000GDz8k03UOaI",
+      "basicInfo": {
+        "dynamicCoverVid": "",
+        "headVideoVid": "013oQDFj27f1aM",
+        "headMediaList": [
+          {
+            "vid": "013oQDFj27f1aM",
+            "magicColor": "",
+            "frame": "http://img.tencentmusic.com/T002R500x500M000003J6nxI10FMrZ.jpg?imageView2/4/w/750/h/750"
+          }
+        ]
+      },
+      "videos": {
+        "013oQDFj27f1aM": {
+          "duration": 6,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 67037,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/013oQDFj27f1aM.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 85143,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/013oQDFj27f1aM.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            }
+          ]
+        }
+      },
+      "expected_vid": "013oQDFj27f1aM",
+      "expected_filetype": 20
+    },
+    {
+      "name": "喜欢你",
+      "album_mid": "000cFPKx3ZGzks",
+      "basicInfo": {
+        "dynamicCoverVid": "012OVntq1I2OH2",
+        "headVideoVid": "010JPyPW0dRk5G",
+        "headMediaList": [
+          {
+            "vid": "010JPyPW0dRk5G",
+            "magicColor": "",
+            "frame": "http://img.tencentmusic.com/T002R1290x1290M000000i7Z9K37yqc9.jpg?imageView2/4/w/750/h/750"
+          }
+        ]
+      },
+      "videos": {
+        "010JPyPW0dRk5G": {
+          "duration": 6,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 64160,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010JPyPW0dRk5G.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 87124,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010JPyPW0dRk5G.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 151611,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010JPyPW0dRk5G.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 270757,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010JPyPW0dRk5G.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            }
+          ]
+        },
+        "012OVntq1I2OH2": {
+          "duration": 6,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 104649,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012OVntq1I2OH2.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 141768,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012OVntq1I2OH2.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 171520,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012OVntq1I2OH2.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 280876,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012OVntq1I2OH2.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            }
+          ]
+        }
+      },
+      "expected_vid": "012OVntq1I2OH2",
+      "expected_filetype": 40
+    },
+    {
+      "name": "新的心跳",
+      "album_mid": "003c616O2Zlswm",
+      "basicInfo": {
+        "dynamicCoverVid": "012e8lv40lOr6b",
+        "headVideoVid": "0126g9JF18kac3",
+        "headMediaList": [
+          {
+            "vid": "0126g9JF18kac3",
+            "magicColor": "",
+            "frame": "http://img.tencentmusic.com/T002R1080x1080M0000043E0F62aeNaI.jpg?imageView2/4/w/750/h/750"
+          }
+        ]
+      },
+      "videos": {
+        "0126g9JF18kac3": {
+          "duration": 6,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 132487,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0126g9JF18kac3.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 187916,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0126g9JF18kac3.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 349029,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0126g9JF18kac3.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 717783,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/0126g9JF18kac3.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            }
+          ]
+        },
+        "012e8lv40lOr6b": {
+          "duration": 6,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 134631,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012e8lv40lOr6b.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 181467,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012e8lv40lOr6b.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 259676,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012e8lv40lOr6b.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 474342,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/012e8lv40lOr6b.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 2000,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            }
+          ]
+        }
+      },
+      "expected_vid": "012e8lv40lOr6b",
+      "expected_filetype": 40
+    },
+    {
+      "name": "30",
+      "album_mid": "004gAmZG1Gg2YD",
+      "basicInfo": {
+        "dynamicCoverVid": "010XZtkb27SNll",
+        "headVideoVid": "010iRo1W4J5iDG",
+        "headMediaList": [
+          {
+            "vid": "010iRo1W4J5iDG",
+            "magicColor": "",
+            "frame": "http://img.tencentmusic.com/T002R1080x1080M000001sqYf43RSlQ8.jpg?imageView2/4/w/750/h/750"
+          }
+        ]
+      },
+      "videos": {
+        "010XZtkb27SNll": {
+          "duration": 15,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 83968,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010XZtkb27SNll.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 122934,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010XZtkb27SNll.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 295123,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010XZtkb27SNll.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 592465,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010XZtkb27SNll.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 1983070,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010XZtkb27SNll.60.mp4?fixture=1"
+              ]
+            }
+          ]
+        },
+        "010iRo1W4J5iDG": {
+          "duration": 15,
+          "mp4": [
+            {
+              "code": 2000,
+              "filetype": 0,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 10,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 147340,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010iRo1W4J5iDG.10.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 20,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 237455,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010iRo1W4J5iDG.20.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 30,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 524705,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010iRo1W4J5iDG.30.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 0,
+              "filetype": 40,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 1280270,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010iRo1W4J5iDG.40.mp4?fixture=1"
+              ]
+            },
+            {
+              "code": 2000,
+              "filetype": 50,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 0,
+              "freeflow_url": []
+            },
+            {
+              "code": 0,
+              "filetype": 60,
+              "videoType": 8,
+              "format": 264,
+              "fileSize": 9150018,
+              "freeflow_url": [
+                "https://v0.stream.tencentmusic.com/010iRo1W4J5iDG.60.mp4?fixture=1"
+              ]
+            }
+          ]
+        }
+      },
+      "expected_vid": "010XZtkb27SNll",
+      "expected_filetype": 60
+    }
+  ]
+}

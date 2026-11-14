@@ -8,7 +8,9 @@ from urllib.parse import urlparse, urlunparse
 from .base import BaseParser
 
 _GATEWAY = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-_COVER_MID = re.compile(r"/music/photo_new/T002(?:R[0-9]+x[0-9]+)?M000([A-Za-z0-9]+)(?:_[0-9]+)?\.jpg$")
+_COVER_MID = re.compile(
+    r"/music/photo_new/T002(?:R[0-9]+x[0-9]+)?M000([A-Za-z0-9]+)(?:_[0-9]+)?\.(?:jpg|jpeg|png|webp|avif)$"
+)
 
 
 async def _request(parser: BaseParser, module: str, method: str, param: dict) -> dict:
@@ -31,54 +33,83 @@ async def _request(parser: BaseParser, module: str, method: str, param: dict) ->
 def _video_url(value: str) -> str:
     if not isinstance(value, str):
         return ""
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+        port = parsed.port
+    except ValueError:
+        return ""
     host = (parsed.hostname or "").lower()
     if (
         parsed.scheme not in {"http", "https"}
         or not host.endswith(".stream.tencentmusic.com")
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.port not in {None, 80, 443}
+        or port not in {None, 80, 443}
         or not parsed.path.endswith(".mp4")
     ):
         return ""
     return urlunparse(parsed._replace(scheme="https", netloc=host, fragment=""))
 
 
-def _best_video(data: dict, vid: str, *, artwork_only: bool = False) -> str:
-    detail = data.get(vid) or {}
-    if not isinstance(detail, dict):
-        raise ValueError("QQ 音乐动态封面信息不完整")
-    # 专辑头图也可能放宣传片；补取时只收网关标为封面素材（videoType=8）的有限短片。
-    duration = detail.get("duration")
-    if artwork_only and (not isinstance(duration, (int, float)) or not 0 < duration <= 120):
-        return ""
-    files = detail.get("mp4") or []
-    if not isinstance(files, list) or any(not isinstance(item, dict) for item in files):
-        raise ValueError("QQ 音乐动态封面档位无效")
-    # filetype 是平台的档位编号；只在成功且有真实地址的档位里选，空的高档位不能盖过可用视频。
-    for item in sorted(files, key=lambda row: int(row.get("filetype") or 0), reverse=True):
-        if item.get("code") != 0 or (artwork_only and item.get("videoType") != 8):
+def _file_rank(item: dict) -> int:
+    value = item.get("filetype")
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"[0-9]{1,4}", value):
+        return int(value)
+    return -1
+
+
+def _file_url(item: dict) -> str:
+    # 网关同时定义流量优惠、普通和公共地址；逐个校验，不能因首个地址失效就漏掉同档备用。
+    for key in ("freeflow_url", "url", "comm_url", "validUrl"):
+        values = item.get(key)
+        if isinstance(values, str):
+            values = [values]
+        if not isinstance(values, list):
             continue
-        for value in item.get("freeflow_url") or []:
+        for value in values:
             if url := _video_url(value):
                 return url
     return ""
 
 
+def _best_video(data: dict, vid: str, *, artwork_only: bool = False) -> str:
+    detail = data.get(vid) or {}
+    if not isinstance(detail, dict):
+        return ""
+    # 专辑头图也可能放宣传片；补取时只收网关标为封面素材（videoType=8）的有限短片。
+    duration = detail.get("duration")
+    if artwork_only and (type(duration) not in {int, float} or not 0 < duration <= 120):
+        return ""
+    files = detail.get("mp4") or []
+    if not isinstance(files, list):
+        return ""
+    # filetype 是平台的档位编号；只在成功且有真实地址的档位里选，空的高档位不能盖过可用视频。
+    for item in sorted((row for row in files if isinstance(row, dict)), key=_file_rank, reverse=True):
+        if _file_rank(item) < 0 or item.get("code") != 0 or (artwork_only and item.get("videoType") != 8):
+            continue
+        if url := _file_url(item):
+            return url
+    return ""
+
+
+def _valid_vid(value: str) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9]{1,64}", value) is not None
+
+
 def _cover_candidates(basic: dict) -> list[tuple[str, bool]]:
     """动态专用字段优先；部分专辑只把封面动画放在头图，头图另核视频类型与时长。"""
     primary = basic.get("dynamicCoverVid") or ""
-    if primary and (not isinstance(primary, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", primary)):
-        raise ValueError("QQ 音乐动态封面 ID 无效")
-    candidates = [(primary, False)] if primary else []
+    candidates = [(primary, False)] if _valid_vid(primary) else []
     media = basic.get("headMediaList") or []
     headers = [basic.get("headVideoVid")]
     if isinstance(media, list):
-        headers += [row.get("vid") for row in media[:4] if isinstance(row, dict)]
-    seen = {primary}
+        # 先去掉空值与重复项再限制 VID 数，避免占位项挤掉后面的真实封面；扫描本身也有界。
+        headers += [row.get("vid") for row in media[:32] if isinstance(row, dict)]
+    seen = {vid for vid, _ in candidates}
     for vid in headers:
-        if isinstance(vid, str) and re.fullmatch(r"[A-Za-z0-9]{1,64}", vid) and vid not in seen:
+        if _valid_vid(vid) and vid not in seen:
             candidates.append((vid, True))
             seen.add(vid)
     return candidates[:4]
