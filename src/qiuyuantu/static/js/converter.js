@@ -29,7 +29,7 @@ export function closeConverter() {
  * req 含准备参数与本地 preview_url；预览地址不发给服务端。本地上传可直接给 { ready: source }。
  * switches：编辑区里可以改做哪些格式（小链接）。视频结果页由上方的标签切换 GIF / 实况，只留实况与动态照片互换。
  */
-export async function openConverter(req, format, { switches = Object.keys(FORMAT_NAMES) } = {}) {
+export async function openConverter(req, format, { switches = Object.keys(FORMAT_NAMES), artwork = false } = {}) {
   closeConverter();
   const current = opening;
   const { preview_url: previewUrl, ...request } = req;
@@ -53,7 +53,7 @@ export async function openConverter(req, format, { switches = Object.keys(FORMAT
   }
   if (current !== opening) return;
   conv.replaceChildren();
-  teardown = buildConverter(conv, source, format, previewUrl, switches);
+  teardown = buildConverter(conv, source, format, { previewUrl, switches, artwork });
 }
 
 async function prepareSource(req, card) {
@@ -79,7 +79,8 @@ function gifOptions(state) {
     el('option', { value: 'bayer' }, translate('有序抖动，文件小')),
     el('option', { value: 'sierra2_4a' }, translate('误差扩散，更细腻')),
     el('option', { value: 'none' }, translate('不抖动，色块风')));
-  const fit = el('input', { type: 'checkbox', checked: true, onchange: (e) => { state.fit = e.target.checked; } });
+  dither.value = state.dither;
+  const fit = el('input', { type: 'checkbox', checked: state.fit, onchange: (e) => { state.fit = e.target.checked; } });
   return el('div', {},
     slider(translate('帧率'), { min: 5, max: 30, step: 1, value: state.fps }, (v) => v + ' fps', (v) => { state.fps = v; }),
     slider(translate('宽度'), { min: 160, max: 960, step: 40, value: state.width }, (v) => v + ' px', (v) => { state.width = v; }),
@@ -161,12 +162,18 @@ function conversionPreview(src, previewUrl) {
   return video;
 }
 
-function buildConverter(conv, src, format, previewUrl, switches) {
-  // fit：压到 GIF_TARGET 以内，帧率和宽度变成上限，超了服务端自动往下降
-  const state = {
+function conversionDefaults(src, format, artwork) {
+  return {
     format, start: 0, end: Math.min(src.duration, LIMITS[format]),
-    fps: 12, width: defaultWidth(src), speed: 1, keyTime: null, dither: 'bayer', fit: true,
+    fps: artwork ? Math.max(5, Math.min(30, Math.round(src.fps) || 12)) : 12,
+    width: artwork ? Math.max(160, Math.min(960, Math.floor(src.width / 40) * 40)) : defaultWidth(src),
+    speed: 1, keyTime: null, dither: artwork ? 'sierra2_4a' : 'bayer', fit: !artwork,
   };
+}
+
+function buildConverter(conv, src, format, { previewUrl, switches, artwork }) {
+  // fit：压到 GIF_TARGET 以内，帧率和宽度变成上限；音乐封面由调用方选择保留清晰度。
+  const state = conversionDefaults(src, format, artwork);
 
   // 格式在结果页点「转 GIF / 做成实况照片」时已经选过了，这里不再摆一排标签让人再选一遍，
   // 只留个小链接给偶尔想换的人

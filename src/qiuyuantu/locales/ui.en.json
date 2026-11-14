@@ -478,7 +478,7 @@
   "动态封面": "Animated cover",
   "方形动态封面": "Square animated cover",
   "完整原版": "Full original video",
-  "方形版从中心裁切；完整原版保留全部画面和上下色带。转换默认使用方形版。": "The square version is center-cropped. The full original keeps the entire frame, including any top and bottom color bands. Conversions use the square version by default.",
+  "方形版优先使用原生方形素材，没有时从中心裁切；完整原版保留全部画面。转换默认使用方形版。": "The square version uses native square artwork when available, otherwise a center crop. The full original keeps the entire frame. Conversions use the square version by default.",
   "静态封面直接下载原图；动态封面是一段无声视频，可单独下载或继续转换。": "Download the full-size still cover directly. The animated cover is a silent video you can download or convert.",
   "这首歌当前没有动态封面": "This song does not have an animated cover right now.",
   "这张专辑当前没有动态封面": "This album does not have an animated cover right now.",

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from qiuyuantu.parser import qqmusic_artwork as artwork
+from qiuyuantu.parser.base import FormatInfo
 from qiuyuantu.parser.music import QQMusic
 
 URL = "https://v0.stream.tencentmusic.com/cover.mp4?fixture=1"
@@ -116,3 +117,55 @@ def test_3d_pages_and_album_mvs_are_not_downloadable_cover_videos():
 def test_backups_cannot_bypass_header_artwork_type_check(key):
     data = {"head": {"duration": 6, "mp4": [{"code": 0, "videoType": 0, "filetype": 40, key: [URL]}]}}
     assert artwork._best_video(data, "head", artwork_only=True) == ""
+
+
+@pytest.mark.parametrize(
+    ("baseline", "header", "prefer_header"),
+    [
+        ((1080, 1440, 25), (1080, 1080, 25), True),
+        ((2160, 2880, 25), (2160, 2160, 25), True),
+        ((480, 480, 25), (1080, 1080, 25), True),
+        ((1080, 1440, 25), (480, 480, 25), False),
+        ((1080, 1440, 30), (1080, 1080, 25), False),
+        ((1080, 1440, 25), (1920, 1080, 25), False),
+        ((1080, 1080, 25), (1080, 1080, 25), False),
+        ((1080, 1440, 25), None, False),
+        (None, (1080, 1080, 25), False),
+    ],
+)
+async def test_square_source_uses_measured_native_artwork_without_lowering_quality(
+    monkeypatch, baseline, header, prefer_header
+):
+    urls = [URL + "&portrait=1", URL + "&square=1"]
+    values = dict(zip(urls, [baseline, header], strict=True))
+
+    async def probe(url, headers, *, via_relay):
+        assert via_relay and headers["Referer"] == "https://y.qq.com/"
+        value = values[url]
+        return FormatInfo(width=value[0], height=value[1], fps=value[2]) if value else None
+
+    monkeypatch.setattr(artwork.mp4_probe, "probe", probe)
+    assert await artwork._square_url(urls, QQMusic()) == urls[int(prefer_header)]
+
+
+@pytest.mark.parametrize("square", [False, True])
+async def test_square_selection_does_not_replace_the_full_original(monkeypatch, square):
+    async def request(_parser, _module, method, _param):
+        if method == "GetAlbumDetail":
+            return {"basicInfo": {"dynamicCoverVid": "portrait", "headVideoVid": "native"}}
+        return {
+            "portrait": {"mp4": [{"code": 0, "filetype": 40, "freeflow_url": [URL]}]},
+            "native": {
+                "duration": 6,
+                "mp4": [{"code": 0, "filetype": 40, "videoType": 8, "freeflow_url": [URL + "&native=1"]}],
+            },
+        }
+
+    async def probe(url, *_args, **_kwargs):
+        assert square, "完整原版不应启动额外的方形素材探测"
+        return FormatInfo(width=1080, height=1080 if "native" in url else 1440, fps=25)
+
+    monkeypatch.setattr(artwork, "_request", request)
+    monkeypatch.setattr(artwork.mp4_probe, "probe", probe)
+    cover = "https://y.gtimg.cn/music/photo_new/T002M000albumMID.jpg"
+    assert await artwork.dynamic_cover(QQMusic(), cover, square=square) == URL + ("&native=1" if square else "")

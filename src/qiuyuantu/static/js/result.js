@@ -140,18 +140,19 @@ function coverSection(image, baseName, data) {
 // 网易云的动态封面是另一段视频（有才给档位）；歌单封面本身可能就是动图，按原格式保存就保留动效
 function coverHint(data) {
   if (data.source === 'applemusic') return '静态封面与动态视频分开下载；动态封面以当前公开版本为准。';
-  if (data.source === 'qqmusic' && data.formats.length) return '方形版从中心裁切；完整原版保留全部画面和上下色带。转换默认使用方形版。';
+  if (data.source === 'qqmusic' && data.formats.length) return '方形版优先使用原生方形素材，没有时从中心裁切；完整原版保留全部画面。转换默认使用方形版。';
   return data.formats.length ? '静态封面直接下载原图；动态封面是一段无声视频，可单独下载或继续转换。'
     : '按图片原始格式保存，动态封面保留动效。';
 }
 
 function coverConversions(url, title, data) {
   const request = data.formats.length ? sourceRequest(data, title) : { url, title, sig: sigOf(url), image: true };
+  const options = { artwork: data.source === 'qqmusic' && !!data.formats.length };
   return el('div', {}, el('div', { class: 'rule' }),
     el('p', { class: 'label' }, t('动态封面继续做')),
     el('div', { class: 'group' },
-      el('button', { class: 'btn', type: 'button', onclick: () => openConverter(request, 'gif') }, t('转 GIF')),
-      el('button', { class: 'btn', type: 'button', onclick: () => openConverter(request, 'livephoto') }, t('做成实况照片'))),
+      el('button', { class: 'btn', type: 'button', onclick: () => openConverter(request, 'gif', options) }, t('转 GIF')),
+      el('button', { class: 'btn', type: 'button', onclick: () => openConverter(request, 'livephoto', options) }, t('做成实况照片'))),
     el('p', { class: 'hint' }, t('仅动态封面支持转换；静态封面可直接下载原图。')));
 }
 

@@ -1,5 +1,6 @@
 """真实编码回归：QQ 原片的 B 帧时序，以及方形版的中心裁切。"""
 
+import random
 import shutil
 
 import imageio_ffmpeg
@@ -57,7 +58,7 @@ async def _frames(path):
 
 @pytest.mark.parametrize("square", [False, True])
 async def test_qq_download_keeps_first_frame_at_zero_and_all_frames(cover_video, tmp_path, monkeypatch, square):
-    async def source(_page, directory, _report):
+    async def source(_page, directory, _report, *, square=False):
         target = directory / "source.mp4"
         shutil.copyfile(cover_video, target)
         return target
@@ -92,3 +93,59 @@ async def test_default_remux_retains_the_existing_timestamp_policy(cover_video, 
     original, result = await _frames(cover_video), await _frames(output)
     assert result[0][0] > original[0][0]
     assert [checksum for _, checksum in result] == [checksum for _, checksum in original]
+
+
+async def test_square_encoding_retains_more_fine_texture_than_the_previous_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(ffmpeg, "ffmpeg_path", imageio_ffmpeg.get_ffmpeg_exe)
+    rng = random.Random(42)
+    texture = bytes(110 + rng.randrange(40) for _ in range(256 * 256))
+    image = tmp_path / "texture.png"
+    Image.frombytes("L", (256, 256), texture).convert("RGB").save(image)
+    source, previous, current = (tmp_path / name for name in ("source.mp4", "previous.mp4", "current.mp4"))
+    await ffmpeg.run(
+        [
+            "-loop",
+            "1",
+            "-i",
+            str(image),
+            "-t",
+            "0.32",
+            "-c:v",
+            "libx264",
+            "-qp",
+            "0",
+            "-pix_fmt",
+            "yuv420p",
+            str(source),
+        ]
+    )
+    await ffmpeg.run(
+        [
+            "-i",
+            str(source),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-profile:v",
+            "baseline",
+            "-bf",
+            "0",
+            "-refs",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            str(previous),
+        ]
+    )
+    await artwork._square_cover(source, current, 256)
+
+    async def similarity(path):
+        stats = path.with_suffix(".ssim")
+        await ffmpeg.run(["-i", str(source), "-i", str(path), "-lavfi", f"ssim=stats_file={stats}", "-f", "null", "-"])
+        values = [float(row.split("All:")[1].split()[0]) for row in stats.read_text().splitlines()]
+        return sum(values) / len(values)
+
+    assert await similarity(current) > await similarity(previous) + 0.002

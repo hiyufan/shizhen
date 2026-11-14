@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse, urlunparse
 
+from ..utils import gather_or_cancel
+from . import mp4_probe
 from .base import BaseParser
 
 _GATEWAY = "https://u.y.qq.com/cgi-bin/musicu.fcg"
@@ -115,7 +117,27 @@ def _cover_candidates(basic: dict) -> list[tuple[str, bool]]:
     return candidates[:4]
 
 
-async def dynamic_cover(parser: BaseParser, cover: str) -> str:
+async def _square_url(urls: list[str], parser: BaseParser) -> str:
+    """原生方形素材免去竖版裁切；只在实测尺寸、帧率都不低于默认源时采用。"""
+    if len(urls) == 1:
+        return urls[0]
+    measured = await gather_or_cancel(
+        *(mp4_probe.probe(url, parser.get_default_headers(), via_relay=True) for url in urls)
+    )
+    baseline = measured[0]
+    if baseline is None:
+        return urls[0]
+    side = min(baseline.width, baseline.height)
+    candidates = [
+        (url, fmt)
+        for url, fmt in zip(urls, measured, strict=True)
+        if fmt is not None and fmt.width == fmt.height and fmt.width >= side and fmt.fps + 0.1 >= baseline.fps
+    ]
+    best = max(candidates, key=lambda row: (row[1].width, row[1].fps), default=None)
+    return best[0] if best else urls[0]
+
+
+async def dynamic_cover(parser: BaseParser, cover: str, *, square: bool = False) -> str:
     match = _COVER_MID.fullmatch(urlparse(cover).path)
     if not match:
         return ""
@@ -127,7 +149,9 @@ async def dynamic_cover(parser: BaseParser, cover: str) -> str:
     if not candidates:
         return ""
     data = await _request(parser, "music.stream.MvUrlProxy", "GetMvUrls", {"vids": [vid for vid, _ in candidates]})
-    for vid, artwork_only in candidates:
-        if url := _best_video(data, vid, artwork_only=artwork_only):
-            return url
-    return ""
+    urls = list(
+        dict.fromkeys(url for vid, header in candidates if (url := _best_video(data, vid, artwork_only=header)))
+    )
+    if not urls:
+        return ""
+    return await _square_url(urls, parser) if square else urls[0]

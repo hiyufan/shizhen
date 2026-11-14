@@ -181,10 +181,10 @@ async def _remux(source: Path, destination: Path, *, shift_timestamps: bool = Tr
     await ffmpeg.run([*args, "-movflags", "+faststart", str(destination)])
 
 
-async def _qq_source(page: str, directory: Path, report: Report) -> Path:
+async def _qq_source(page: str, directory: Path, report: Report, *, square: bool = False) -> Path:
     token = current_source.set("qqmusic")
     try:
-        url = await QQMusic().dynamic_cover(page)
+        url = await QQMusic().dynamic_cover(page, square=True) if square else await QQMusic().dynamic_cover(page)
     except (httpx.HTTPError, ValueError, TypeError) as err:
         raise ValueError("QQ 音乐暂时没有返回动态封面，请稍后再试") from err
     finally:
@@ -217,9 +217,9 @@ async def _square_cover(source: Path, destination: Path, side: int) -> None:
             "-c:v",
             "libx264",
             "-preset",
-            "veryfast",
+            "medium",
             "-crf",
-            "18",
+            "14",
             "-profile:v",
             "baseline",
             "-bf",
@@ -239,7 +239,7 @@ async def _square_cover(source: Path, destination: Path, side: int) -> None:
 
 
 async def _qq_download(page: str, spec: str, directory: Path, destination: Path, report: Report) -> None:
-    source = await _qq_source(page, directory, report)
+    source = await _qq_source(page, directory, report, square=spec == "qqmusic-artwork:square")
     expected = await _validate_mp4(source)
     if spec == "qqmusic-artwork:square":
         side = min(expected.width, expected.height) // 2 * 2
