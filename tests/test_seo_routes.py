@@ -171,7 +171,7 @@ def test_sitemap_page_revision_does_not_redate_other_pages(client, monkeypatch):
     assert dates["http://testserver/"] == seo.PAGE_BY_SLUG[""].updated
 
 
-@pytest.mark.parametrize("slug", ["qq-music-cover", "netease-music-cover"])
+@pytest.mark.parametrize("slug", ["qq-music-cover", "netease-music-cover", "apple-music-cover", "huawei-music-cover"])
 def test_music_search_entry_has_matching_metadata_and_crawlable_tool_links(client, slug):
     import json
 
@@ -193,3 +193,98 @@ def test_music_search_entry_has_matching_metadata_and_crawlable_tool_links(clien
     for referring in ["/", "/guide/music-cover-download"]:
         assert page.path in html.fromstring(client.get(referring).text).xpath("//a/@href")
     assert page.path in client.get("/sitemap.xml").text
+
+
+def test_registered_parser_sources_all_have_platform_search_entries():
+    from qiuyuantu.parser import video_source_info_mapping
+    from qiuyuantu.seo import PAGES
+
+    registered = {source.value for source in video_source_info_mapping}
+    covered = {source for page in PAGES for source in page.sources}
+    assert covered == registered, {"missing": registered - covered, "unknown": covered - registered}
+    for page in PAGES:
+        if page.sources or page.domains:
+            assert page.slug and page.nav_label and page.body and page.faq and page.guides, page.slug
+
+
+def test_explicit_ytdlp_domains_all_have_search_entries():
+    from qiuyuantu.parser import video_source_info_mapping
+    from qiuyuantu.parser.base import VideoSource
+    from qiuyuantu.seo import PAGES
+
+    registered = set(video_source_info_mapping[VideoSource.YtDlp]["domain_list"])
+    covered = {domain for page in PAGES for domain in page.domains}
+    assert covered == registered, {"missing": registered - covered, "unknown": covered - registered}
+
+
+@pytest.mark.parametrize(
+    "slug",
+    [
+        "huawei-music-cover",
+        "threads",
+        "weibo",
+        "wechat-article",
+        "xianyu-images",
+        "toutiao",
+        "instagram",
+        "tiktok",
+        "short-video-download",
+        "public-video-download",
+        "more-video-sites",
+        "telegram-post-download",
+    ],
+)
+def test_added_search_entries_are_indexable_and_discoverable(client, slug):
+    import json
+
+    from lxml import html
+
+    from qiuyuantu import seo
+
+    page = seo.PAGE_BY_SLUG[slug]
+    response = client.get(page.path)
+    assert response.status_code == client.head(page.path).status_code == 200
+    doc = html.fromstring(response.text)
+    assert doc.xpath("//title/text()") == [page.title]
+    assert doc.xpath('//meta[@name="description"]/@content') == [page.description]
+    assert doc.xpath('//meta[@property="og:title"]/@content') == [page.title]
+    assert doc.xpath('//meta[@property="og:description"]/@content') == [page.description]
+    assert doc.xpath('//link[@rel="canonical"]/@href') == ["http://testserver" + page.path]
+    assert doc.xpath('//meta[@name="robots"]/@content') == ["index,follow,max-image-preview:large"]
+    assert doc.xpath('//form[@id="paste-form"]//textarea[@id="url"]/@placeholder') == [page.placeholder]
+    nodes = json.loads(doc.xpath('//script[@type="application/ld+json"]/text()')[0])
+    assert {node["@type"] for node in nodes} == {"WebApplication", "FAQPage", "BreadcrumbList"}
+    faq = next(node for node in nodes if node["@type"] == "FAQPage")
+    assert [item["name"] for item in faq["mainEntity"]] == [q for q, _ in page.all_faq]
+    assert page.path in html.fromstring(client.get("/").text).xpath("//section[@id='platforms']//a/@href")
+    assert page.path in html.fromstring(client.get("/gif").text).xpath("//a/@href")
+    assert page.path in seo.all_paths() and page.path in client.get("/sitemap.xml").text
+    assert f"<lastmod>{page.updated}</lastmod>" in client.get("/sitemap.xml").text
+
+
+def test_music_metadata_describes_actual_animated_formats(client):
+    qq = client.get("/qq-music-cover").text
+    huawei = client.get("/huawei-music-cover").text
+    assert "方形版" in qq and "完整原版" in qq and "MP4" in qq
+    assert "原始 WebP" in huawei and "无声 MP4" in huawei and "转换结果" in huawei
+    assert "/huawei-music-cover" in client.get("/guide/music-cover-download").text
+
+
+def test_added_guides_link_back_to_their_tools(client):
+    from lxml import html
+
+    from qiuyuantu.guides import GUIDE_BY_SLUG
+
+    for slug in ("huawei-music-cover-download", "social-post-download", "share-link-download"):
+        guide = GUIDE_BY_SLUG[slug]
+        doc = html.fromstring(client.get(guide.path).text)
+        assert "/" + guide.tool in doc.xpath("//a/@href")
+
+
+def test_telegram_posts_and_stickers_have_distinct_search_entries(client):
+    from qiuyuantu.seo import PAGES
+
+    assert {p.slug for p in PAGES if "telegram" in p.sources} == {"telegram-stickers", "telegram-post-download"}
+    post = client.get("/telegram-post-download").text
+    assert "800 像素" in post and "私有频道" in post and "网页版大小上限" in post
+    assert "/telegram-post-download" in client.get("/guide/social-post-download").text

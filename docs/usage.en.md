@@ -48,13 +48,13 @@
 | YouTube | ✅ | – | – | Readable direct URLs; merges the HD formats actually returned | Docker includes a native session / SABR fallback |
 | X (Twitter) | ✅ | ✅ | – | Highest bitrate | fxtwitter fallback for sensitive posts |
 | Bilibili | ✅ | ✅ | ✅ | 480p direct URLs; server-side merging at 720p / 1080p | Supports b23.tv short links, images and Live Photos in dynamic posts; anime series and movies are not supported |
-| Instagram | ✅ | ✅ | – | Platform default | Original images from carousel posts, including posts mixing images and videos |
-| Threads | ✅ | ✅ | – | Platform default | Post links and `/share/` short links; the largest image of each carousel item; text-only quote posts can provide public quoted media with the original author credited |
+| Instagram | ✅ | ✅ | – | Platform default | [Tool](https://ynvan.com/instagram); original images from carousel posts, including posts mixing images and videos |
+| Threads | ✅ | ✅ | – | Platform default | [Tool](https://ynvan.com/threads); post links and `/share/` short links; the largest image of each carousel item; text-only quote posts can provide public quoted media with the original author credited |
 | Pinterest | ✅ | ✅ | – | Largest size actually supplied | [Tool](https://ynvan.com/pinterest-download); public individual Pins, pin.it short links and ordered mixed carousels; no bulk boards or account collections, no fixed 4K / 8K promise |
 | Wallpaper Engine | Embedded MP4 | Embedded images, TEX to PNG | – | Actual local assets | [Tool](https://ynvan.com/wallpaper-engine); local PKG / TEX upload, individual downloads or ZIP; no full Workshop downloads or scene rendering; up to 128 MB / 100 assets, subject to instance quotas |
-| QQ Music | – | Cover art | – | Album source file when verified; 1000px for playlists | Falls back to verified HD variants; cover art only |
+| QQ Music | Animated artwork | Cover art | – | Album source file when verified; 1000px for playlists | [Tool](https://ynvan.com/qq-music-cover); square and full-original MP4 when available; GIF / Live Photo conversion; no song audio |
 | NetEase Cloud Music | – | Cover art | – | Original dimensions supplied by the platform | Song, album and playlist share links; download animated covers in their original format or convert to GIF / Live Photo / Motion Photo |
-| Huawei Music | Animated WebP / converted MP4 | Cover art | – | Original public assets; tested animations are 1000×1000 | Song and album shares; playlists show a paginated song directory; keep the WebP, download a converted silent MP4, or convert to GIF / Live Photo / Motion Photo; [verified scope](huawei-music-cover.md) |
+| Huawei Music | Animated WebP / converted MP4 | Cover art | – | Original public assets; tested animations are 1000×1000 | [Tool](https://ynvan.com/huawei-music-cover); song and album shares; playlists show a paginated song directory; keep the WebP, download a converted silent MP4, or convert to GIF / Live Photo / Motion Photo; [verified scope](huawei-music-cover.md) |
 | Steam | ✅ | Original screenshots, GIF / APNG assets | – | Original assets supplied by Steam | Store game pages (screenshots and main trailer), Points Shop items and per-game item pages, Community items, profiles (avatar, frame, backgrounds); animated avatars, transparent frames, stickers and MP4 / WebM backgrounds; animations can be converted |
 | HoYoPlay | ✅ | Current launcher wallpapers | – | Original assets supplied by the platform | Choose one of four games for current China-launcher backgrounds; available videos can be converted; no historical archive |
 | Wuthering Waves | Current background video | First frame or still | – | Current international launcher assets | [Tool](https://ynvan.com/wuthering-waves-wallpaper); no historical archive; video converts to all three formats |
@@ -73,7 +73,11 @@
 | Pixiv Sketch | – | Public post originals | – | Returned original images | [Tool](https://ynvan.com/pixiv-sketch); post links and paged artist directories; no live streams, private or age-restricted content |
 | Weibo | ✅ | ✅ | ✅ | All playback tiers supplied by the platform | Single posts, video pages and app share links; original gallery images; Live Photos packaged without re-encoding; live streams and replays are not supported |
 | Toutiao | ✅ | Micro-post images | – | Largest size the page provides | App share links, video pages and micro-posts; videos are extracted by yt-dlp; articles are not supported yet |
-| Xigua, Pipixia, AcFun, TikTok, … | ✅ | Partial | – | | 30+ platforms, with yt-dlp as the fallback for others |
+| TikTok | Public videos | Public photo posts | – | Actual supplied formats | [Tool](https://ynvan.com/tiktok); access restrictions may apply |
+| WeChat article media | Public videos | Article images | – | Available source files | [Tool](https://ynvan.com/wechat-article); extracts media, not full article text or embedded Channels posts |
+| Xianyu | Available item video | Public item images | – | Platform files, including existing watermarks | [Tool](https://ynvan.com/xianyu-images); individual public items; excludes Taobao and Tmall |
+| Telegram public posts | Available web video | Web preview images | – | Images up to 800px on the long edge | [Tool](https://ynvan.com/telegram-post-download); individual public posts; private or protected media and oversized web video are unavailable |
+| Xigua, Pipixia, AcFun, TikTok, … | ✅ | Partial | – | | [Chinese short videos](https://ynvan.com/short-video-download), [CCTV / Tencent / Sohu](https://ynvan.com/public-video-download), [more international sites](https://ynvan.com/more-video-sites); see the [coverage inventory](seo-coverage.md) |
 
 > Extraction depends on each platform's web structure and may temporarily break when it changes. Upstream parse-video-py is updated frequently. Port relevant fixes into `parser/` by comparing changes; do not overwrite local parsers wholesale. See [Contributing](development.en.md#contributing).
 

@@ -30,8 +30,8 @@
     {% if sticker_examples %}
     <p class="supports">{{ t('试试公开素材：') }}{% for name, url in sticker_examples %}<a href="{{ page.path }}?url={{ url | urlencode }}">{{ name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
     {% endif %}
-    <p class="supports" data-reveal style="--i:4"><b>{{ t("支持") }}</b> {{ t("抖音、小红书、快手、YouTube、X、B站、微博、TikTok、Instagram、西瓜、皮皮虾、AcFun 等 30 多个平台，其它站点交给 yt-dlp 试一试。免费，不用登录。") }}</p>
-    <p class="supports music-supports" data-reveal style="--i:4">{{ t('音乐封面也能取：') }}<a href="/qq-music-cover">{{ t('QQ 音乐封面') }}</a> · <a href="/netease-music-cover">{{ t('网易云音乐封面') }}</a>{{ t('。') }}{{ t('动态封面可保留原格式，或转成 GIF 与实况照片。') }}</p>
+    <p class="supports" data-reveal style="--i:4"><b>{{ t("支持") }}</b> {{ t("支持抖音、小红书、快手、YouTube、X、微博、Threads、音乐封面与公开素材等多个平台；其他站点可尝试解析，是否成功以来源访问条件为准。") }}</p>
+    <p class="supports music-supports" data-reveal style="--i:4">{{ t('音乐封面也能取：') }}<a href="/qq-music-cover">{{ t('QQ 音乐封面') }}</a> · <a href="/netease-music-cover">{{ t('网易云音乐封面') }}</a> · <a href="/huawei-music-cover">{{ t('华为音乐封面') }}</a>{{ t('。') }}{{ t('动态封面可保留原格式，或转成 GIF 与实况照片。') }}</p>
     <p class="supports music-supports" data-reveal style="--i:4"><a href="/steam-assets">{{ t('Steam 动态素材') }}</a> · <a href="/hoyoplay-wallpaper">{{ t('HoYoPlay 壁纸') }}</a> · <a href="/apple-music-cover">{{ t('Apple Music 封面') }}</a> · <a href="/pinterest-download">{{ t('Pinterest 原图') }}</a> · <a href="/wallpaper-engine">Wallpaper Engine</a></p>
     <div id="notice" class="notice" aria-live="polite" hidden></div>
     <div id="result"{% if feedback_enabled %} data-feedback="/feedback"{% endif %} hidden></div>
@@ -93,6 +93,12 @@
       <a class="card" href="/douyin-live-stream" data-reveal="card" style="--i:21"><h3>{{ t('抖音直播流地址') }}</h3><p>{{ t('正在直播的直播间，列出各清晰度的 FLV 与 HLS 地址，复制到播放器观看。') }}</p><span class="spec">FLV · HLS</span></a>
       <div class="card" data-reveal="card" style="--i:22"><h3>{{ t('公开贴纸与 Emoji') }}</h3><p>{{ t('LINE、Signal 与 Noto，保留公开原文件，或选择动态素材转换。') }}</p><p><a href="/line-stickers">LINE</a> · <a href="/signal-stickers">Signal</a> · <a href="/animated-emoji">Noto Emoji</a></p></div>
       <div class="card" data-reveal="card" style="--i:23"><h3>{{ t('特殊动画转换') }}</h3><p>{{ t('SVGA、PAG、VAP 与 Spine 区域附件动画，上传文件后预览和转换。') }}</p><p><a href="/svga-to-gif">SVGA</a> · <a href="/animation-converter">PAG / VAP / Spine</a></p></div>
+      <a class="card" href="/huawei-music-cover" data-reveal="card" style="--i:24"><h3>{{ t('华为音乐封面') }}</h3><p>{{ t('保留动态 WebP 原文件，下载无声 MP4，或继续转 GIF 与实况。') }}</p><span class="spec">WebP · MP4 · GIF</span></a>
+      <div class="card" data-reveal="card" style="--i:25"><h3>{{ t('社交图片与视频') }}</h3><p>{{ t('单帖、轮播和公开引用媒体，按平台选择入口。') }}</p><p><a href="/threads">Threads</a> · <a href="/weibo">{{ t('微博') }}</a> · <a href="/instagram">Instagram</a> · <a href="/tiktok">TikTok</a> · <a href="/toutiao">{{ t('今日头条') }}</a></p></div>
+      <a class="card" href="/wechat-article" data-reveal="card" style="--i:26"><h3>{{ t('公众号图片视频') }}</h3><p>{{ t('复制公众号文章链接，保存公开正文图片和可用视频。') }}</p><span class="spec">{{ t('正文图片 · 视频 · 图集') }}</span></a>
+      <a class="card" href="/xianyu-images" data-reveal="card" style="--i:27"><h3>{{ t('闲鱼商品图片') }}</h3><p>{{ t('单个公开商品的图片和视频，保留平台实际文件与已有水印。') }}</p><span class="spec">{{ t('商品图片 · 公开视频') }}</span></a>
+      <a class="card" href="/telegram-post-download" data-reveal="card" style="--i:29"><h3>{{ t('Telegram 公开帖子') }}</h3><p>{{ t('公开频道和群的单条帖子，保存网页图片、图集和可用视频。') }}</p><span class="spec">{{ t('公开帖子 · 网页预览') }}</span></a>
+      <div class="card" data-reveal="card" style="--i:28"><h3>{{ t('更多分享平台') }}</h3><p>{{ t('相近平台共用入口，先核对作品和可用格式。') }}</p><p><a href="/short-video-download">{{ t('国内短视频与图集') }}</a> · <a href="/public-video-download">{{ t('央视腾讯搜狐视频') }}</a> · <a href="/more-video-sites">{{ t('更多海外视频站') }}</a></p></div>
     </div>
     {% else %}
     <div class="sec-head">
@@ -102,7 +108,7 @@
         {% for p in pages if p.slug and p.slug != page.slug and p.nav_label %}
         <a href="{{ p.path }}">{{ p.nav_label | t }}</a>{% if not loop.last %} · {% endif %}
         {% endfor %}
-        {{ t("，其它 30 多个站点交给") }} <em>yt-dlp</em> {{ t("兜底。") }}
+        {{ t("，更多站点可尝试") }} <em>yt-dlp</em> {{ t("解析。") }}
       </p>
     </div>
     {% endif %}

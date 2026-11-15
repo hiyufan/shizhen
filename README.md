@@ -37,13 +37,13 @@
 
 ## 支持的平台
 
-支持 30 多个平台，具体格式与清晰度以来源提供的资源为准：
+支持多个平台，具体格式与清晰度以来源提供的资源为准：
 
 | 素材 | 平台 |
 | --- | --- |
 | 视频与图片 | 抖音、小红书、快手、YouTube、X、B站、Instagram、Threads、TikTok（含图文）、公众号文章、Telegram 公开频道帖子等 |
 | 直播流地址 | [抖音直播间](https://ynvan.com/douyin-live-stream?utm_source=github&utm_medium=referral&utm_campaign=readme)：正在直播时给出各清晰度的 FLV / HLS 地址与原始推流，复制到 VLC、OBS 等播放器；只给地址，不下载、不录制 |
-| 静态与动态封面 | [QQ 音乐](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[网易云音乐](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[华为音乐](docs/huawei-music-cover.md) |
+| 静态与动态封面 | [QQ 音乐](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[网易云音乐](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme)、[华为音乐](https://ynvan.com/huawei-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | 游戏素材 | [Steam 动态头像、头像框与背景](https://ynvan.com/steam-assets?utm_source=github&utm_medium=referral&utm_campaign=readme)、[HoYoPlay 启动器壁纸](https://ynvan.com/hoyoplay-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme)、[鸣潮国际服壁纸](https://ynvan.com/wuthering-waves-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | 壁纸包提取 | [Wallpaper Engine PKG / TEX](https://ynvan.com/wallpaper-engine?utm_source=github&utm_medium=referral&utm_campaign=readme)：上传本地文件，静态纹理转 PNG，图片与 MP4 逐项下载或打包 ZIP；不执行场景或脚本 |
 | Pinterest | [原图、轮播与视频](https://ynvan.com/pinterest-download?utm_source=github&utm_medium=referral&utm_campaign=readme)：单条 Pin 与 pin.it 分享链接，混合素材保留顺序，视频可继续转换 |
@@ -54,7 +54,7 @@
 | 直播表情与公开贴图 | [7TV / BTTV / FFZ](https://ynvan.com/stream-emotes?utm_source=github&utm_medium=referral&utm_campaign=readme)、[LINE 商店预览](https://ynvan.com/line-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Signal 公开包](https://ynvan.com/signal-stickers?utm_source=github&utm_medium=referral&utm_campaign=readme)、[Noto 动态 Emoji](https://ynvan.com/animated-emoji?utm_source=github&utm_medium=referral&utm_campaign=readme)；原文件下载与动画转换 |
 | 特殊动画 | [SVGA 与 B站装扮动画](https://ynvan.com/svga-to-gif?utm_source=github&utm_medium=referral&utm_campaign=readme)、[PAG / VAP / Spine](https://ynvan.com/animation-converter?utm_source=github&utm_medium=referral&utm_campaign=readme)；上传、预览、透明 GIF / MP4 / 实况；Spine 当前支持区域附件，复杂约束与网格明确报不支持 |
 
-支持的视频、图集、实况类型与清晰度见[完整平台表](docs/usage.md#支持的平台)。音乐工具只提取封面。
+支持的视频、图集、实况类型与清晰度见[完整平台表](docs/usage.md#支持的平台)。音乐工具只提取封面；各来源的独立或共用搜索入口见 [SEO 覆盖表](docs/seo-coverage.md)。
 
 ## 快速开始
 

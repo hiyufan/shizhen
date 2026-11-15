@@ -37,13 +37,13 @@ Save videos and original images from Douyin, Xiaohongshu, YouTube, X, Bilibili a
 
 ## Supported platforms
 
-Supports 30+ platforms. Available formats and quality depend on the source:
+Supports multiple platforms. Available formats and quality depend on the source:
 
 | Media | Platforms |
 | --- | --- |
 | Videos and images | Douyin, Xiaohongshu, Kuaishou, YouTube, X, Bilibili, Instagram, Threads and more |
 | Live stream addresses | [Douyin live rooms](https://ynvan.com/douyin-live-stream?utm_source=github&utm_medium=referral&utm_campaign=readme): FLV / HLS addresses for each quality plus the original push stream while a room is live, ready for VLC or OBS; addresses only, no downloading or recording |
-| Still and animated artwork | [QQ Music](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [NetEase Cloud Music](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme) |
+| Still and animated artwork | [QQ Music](https://ynvan.com/qq-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [NetEase Cloud Music](https://ynvan.com/netease-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [Apple Music](https://ynvan.com/apple-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme), [Huawei Music](https://ynvan.com/huawei-music-cover?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | Game assets | [Steam animated avatars, frames and backgrounds](https://ynvan.com/steam-assets?utm_source=github&utm_medium=referral&utm_campaign=readme), [HoYoPlay launcher wallpapers](https://ynvan.com/hoyoplay-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme), [Wuthering Waves international wallpaper](https://ynvan.com/wuthering-waves-wallpaper?utm_source=github&utm_medium=referral&utm_campaign=readme) |
 | Wallpaper extraction | [Wallpaper Engine PKG / TEX](https://ynvan.com/wallpaper-engine?utm_source=github&utm_medium=referral&utm_campaign=readme): upload local files, convert static textures to PNG, and download images and MP4s individually or as a ZIP; scenes and scripts are not executed |
 | Pinterest | [Images, carousels and videos](https://ynvan.com/pinterest-download?utm_source=github&utm_medium=referral&utm_campaign=readme): individual Pins and pin.it links, ordered mixed media, and video conversion |
@@ -55,6 +55,8 @@ Supports 30+ platforms. Available formats and quality depend on the source:
 | Animation formats | [SVGA and Bilibili animations](https://ynvan.com/svga-to-gif?utm_source=github&utm_medium=referral&utm_campaign=readme), [PAG / VAP / Spine](https://ynvan.com/animation-converter?utm_source=github&utm_medium=referral&utm_campaign=readme); upload, preview and export transparent GIF / MP4 / Live Photos; Spine supports region attachments and explicitly rejects unsupported meshes and constraints |
 
 See the [platform and format matrix](docs/usage.en.md#supported-platforms) for supported media types, quality options and limitations. Music tools extract artwork only.
+
+The [SEO coverage inventory](docs/seo-coverage.md) maps registered sources and explicit fallback domains to their shared or dedicated tool pages.
 
 ## Quick start
 

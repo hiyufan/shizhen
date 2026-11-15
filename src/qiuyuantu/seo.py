@@ -44,6 +44,8 @@ class Page:
     # 否则 600 多字的通用问答在 9 个页面上一字不差地重复，把各页独有内容稀释成一成左右。
     common: list[str] = field(default_factory=lambda: list(DEFAULT_COMMON))
     updated: str = UPDATED  # 单页修订只更新自己的 sitemap 日期
+    sources: tuple[str, ...] = ()  # 对应已注册解析来源，允许同一来源覆盖多个搜索意图
+    domains: tuple[str, ...] = ()  # yt-dlp 显式接入域名的搜索入口，新增域名需同步覆盖
 
     @property
     def path(self) -> str:
@@ -57,7 +59,7 @@ class Page:
 COMMON_FAQ: dict[str, tuple[str, str]] = {
     "links": (
         "支持哪些链接？",
-        "抖音、小红书、快手、微博、B站、西瓜、皮皮虾、AcFun，以及 YouTube、X（Twitter）、TikTok、Instagram 等平台，还支持 QQ 音乐、网易云音乐的歌曲、专辑和歌单封面。直接粘贴 App 里「复制链接」得到的整段文字即可。",
+        "支持抖音、小红书、快手、微博、Threads、Instagram、TikTok 等作品，公众号文章媒体、闲鱼商品，以及 QQ 音乐、网易云、Apple Music 和华为音乐封面。相近功能有共用入口，按平台公开资源提供结果。",
     ),
     "watermark": (
         "视频有水印吗？图片是原图吗？",
@@ -102,7 +104,468 @@ PUBLIC_ASSET_EXAMPLES = {
 
 PAGES: list[Page] = [
     Page(
+        slug="telegram-post-download",
+        sources=("telegram",),
+        title="Telegram公开频道图片视频下载_单条帖子图集提取 - 求原图",
+        description="粘贴 Telegram 公开频道或公开群的单条帖子链接，保存网页提供的图片、相册与视频。图片为网页预览规格，私有和受保护内容不可读取。",
+        h1="Telegram 公开图片，<br>视频与图集一起保存。",
+        lead="复制 t.me 中具体帖子的链接。无需账号或 Bot；先检查网页实际公开的图片和视频，频道主页不能代替单条帖子。",
+        keywords="Telegram频道图片下载,Telegram公开视频下载,t.me帖子下载,Telegram图集保存",
+        placeholder="粘贴 t.me/频道名/帖子编号 等公开单帖链接…",
+        nav_label="Telegram 公开帖子",
+        body=[
+            (
+                "公开频道与群的单帖",
+                "支持 t.me、telegram.me 或 telegram.dog 的公开帖子，包括带 /s/ 的预览地址与公开话题消息。相册图片和视频分别展示，不抓取整个频道。",
+            ),
+            (
+                "图片是网页预览尺寸",
+                "Telegram 嵌入页提供的图片最长边为 800 像素。这里保存的是网页实际文件，不是 App 中的原尺寸；想要原尺寸请在 Telegram 里保存。",
+            ),
+            (
+                "视频大小与可见性限制",
+                "网页公开提供的视频可以下载或转换；超过网页版大小上限的视频可能只显示封面。私有频道、受保护内容和不可公开访问的消息不会被解锁。",
+            ),
+        ],
+        faq=[
+            ("t.me/c/ 私有消息链接可以读取吗？", "不能。私有频道或群的消息只对成员可见，匿名工具无法读取。"),
+            (
+                "这是 Telegram 贴纸下载工具吗？",
+                "这是公开帖子入口；贴纸包或 TGS、WebP 贴纸请使用 Telegram 贴纸工具，两个入口读取的素材不同。",
+            ),
+        ],
+        common=["ratelimit", "free"],
+        guides=["social-post-download", "video-to-gif"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="huawei-music-cover",
+        sources=("huaweimusic",),
+        title="华为音乐动态封面提取_WebP原图与MP4视频下载 - 求原图",
+        description="粘贴华为音乐歌曲、专辑或歌单分享链接，提取公开动态 WebP 和静态封面，可下载转换后的无声 MP4，或转 GIF、实况照片。",
+        h1="华为音乐封面，<br>静态动态都能留。",
+        lead="复制华为音乐分享链接。动态封面可保留原始 WebP，也能下载无声 MP4；没有公开动画时只提供静态封面。",
+        keywords="华为音乐动态封面提取,华为音乐封面下载,华为音乐动态封面MP4,WebP转视频",
+        placeholder="粘贴华为音乐歌曲、专辑或歌单分享链接…",
+        nav_label="华为音乐封面",
+        body=[
+            (
+                "歌曲和专辑封面",
+                "支持华为音乐歌曲与专辑分享页，以及 url.cloud.huawei.com 音乐短链。专辑只取自身或同专辑同封面的动画，不替换成推荐歌曲。",
+            ),
+            (
+                "WebP 与 MP4 分别下载",
+                "「下载动态 WebP」保留平台原文件；「下载 MP4」逐帧生成无声视频，保留实际尺寸和帧时序。MP4 是转换结果，不是歌曲、MV 或空间音频预览。",
+            ),
+            (
+                "歌单先选曲再保存",
+                "歌单按页列出歌曲，选中一首后再提取其封面；不自动下载整份歌单。动态素材可继续转 GIF、iPhone 实况包或安卓动态照片。",
+            ),
+        ],
+        faq=[
+            (
+                "App 里会动，这里为什么只有静态封面？",
+                "只有分享页公开了动态封面文件时才能提取。客户端专有特效或未公开素材无法还原，也不会把静态图伪造成动画。",
+            ),
+            (
+                "华为音乐封面都是 1000 像素吗？",
+                "已验证的动态样本为 1000×1000，但不能据此保证所有作品相同。下载以平台实际素材为准，不放大成所谓高清。",
+            ),
+        ],
+        guides=["huawei-music-cover-download", "music-cover-download", "video-to-live-photo"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="threads",
+        sources=("threads",),
+        title="Threads图片视频下载_分享短链与引用原帖媒体提取 - 求原图",
+        description="解析 Threads 帖子与分享短链，保存公开图片和视频。外层仅有文字的引用帖可读取公开原帖媒体，保留原作者，视频可继续转换。",
+        h1="Threads 图片视频，<br>分享链接直接保存。",
+        lead="粘贴帖子或 /share/ 分享短链，检查标题、作者和媒体。引用帖的图片视频来自原帖时，结果会明确说明。",
+        keywords="Threads图片下载,Threads视频下载,Threads引用帖下载,threads.net分享链接",
+        placeholder="粘贴 threads.com、threads.net 帖子或分享短链…",
+        nav_label="Threads 图片视频",
+        body=[
+            (
+                "单帖与轮播",
+                "支持 threads.com、threads.net 的公开帖子与 /share/ 短链。图片按实际尺寸选取可用大图，混合轮播保留图片与视频。",
+            ),
+            (
+                "引用帖保留原作者",
+                "外层帖子没有媒体时，仅沿它明确引用的原帖取图或视频，最多三层。不会把回复、推荐帖或外链预览当作目标作品。",
+            ),
+            (
+                "视频下载后继续转换",
+                "公开 MP4 可下载，或截取片段转 GIF、实况包和动态照片。隐私、年龄或地区限制可能让原帖不可公开读取。",
+            ),
+        ],
+        faq=[
+            (
+                "为什么引用帖会显示另一个作者？",
+                "作者信息对应实际提供媒体的原帖，来源页面仍保留你粘贴的外层帖子，避免把转引者当作原作者。",
+            ),
+            (
+                "能批量下载账号或回复中的媒体吗？",
+                "这里只处理当前分享帖子及其明确引用关系，不批量抓取账号、回复或推荐列表。",
+            ),
+        ],
+        guides=["social-post-download", "video-to-gif"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="weibo",
+        sources=("weibo", "lvzhou"),
+        title="微博原图视频与实况图下载_支持公开分享链接解析 - 求原图",
+        description="粘贴单条微博、视频页或 App 分享链接，提取公开图集、视频与自带实况图。保存实际图片规格，视频可转 GIF 或实况照片。",
+        h1="微博原图与视频，<br>实况图也能保存。",
+        lead="复制一条微博的分享链接，保存正文图片和实际视频档位。图集自带实况时，可下载配对文件。",
+        keywords="微博原图下载,微博视频下载,微博实况图保存,绿洲图片提取",
+        placeholder="粘贴微博单帖、视频页或 App 分享链接…",
+        nav_label="微博原图与实况",
+        body=[
+            (
+                "微博正文图集",
+                "微博图集优先选择可验证的大图规格，下载以平台实际文件为准；GIF 保留原格式，不因预览静止就转成单张图片。",
+            ),
+            (
+                "视频和自带实况",
+                "视频列出当前公开播放档位，自带实况图可配对保存。直播与直播回放不支持；不保证每条微博都有高分辨率或实况文件。",
+            ),
+            (
+                "绿洲分享链接兼容",
+                "同一入口也可尝试 oasis.weibo.cn 的公开绿洲分享页。旧页面必须仍可访问；不会恢复已删除作品或承诺历史链接始终可用。",
+            ),
+        ],
+        faq=[
+            ("可以下载整个微博账号吗？", "请使用单条作品链接。工具不会自动抓取账号主页、全部转发或评论。"),
+            (
+                "微博实况图为什么只显示静态照片？",
+                "实况照片由图片和视频组成。请保留配对文件，并使用支持相应格式的相册导入；普通图片查看器通常只显示照片。",
+            ),
+        ],
+        guides=["social-post-download", "video-to-live-photo"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="wechat-article",
+        sources=("wechat-mp",),
+        title="微信公众号文章图片视频提取_正文原图在线下载 - 求原图",
+        description="粘贴 mp.weixin.qq.com 公众号文章链接，提取公开正文图片、图片消息与可用 MP4 视频。图集逐张保存，视频支持 GIF 和实况转换。",
+        h1="微信公众号，<br>原图与视频一起保存。",
+        lead="在微信文章菜单里复制完整链接，提取正文图片和文章公开提供的视频。请使用文章地址，不要粘贴公众号主页。",
+        keywords="微信公众号图片提取,公众号文章原图下载,微信文章视频下载,mp.weixin.qq.com图片",
+        placeholder="粘贴 mp.weixin.qq.com 公众号文章链接…",
+        nav_label="公众号图片视频",
+        body=[
+            (
+                "正文图与图片消息",
+                "普通图文读取正文中的图片，图片消息保留公开图集；按来源可用规格提供下载，已有图片水印不会被清除。",
+            ),
+            (
+                "文章视频单独保存",
+                "文章自有视频按实际公开档位提供下载或转换。文章嵌入的视频号和音频可能不在公开数据里；视频号分享链接请使用视频号工具。",
+            ),
+            (
+                "完整链接更可靠",
+                "支持常见 /s/ 短路径和包含文章参数的链接。复制不完整、文章删除或微信要求验证时可能失败，请从微信文章菜单重新复制。",
+            ),
+        ],
+        faq=[
+            ("能把整篇文章保存成文档吗？", "这个入口提取媒体，不导出公众号正文文档，也不批量抓取整个账号。"),
+            (
+                "提示未知错误或需要验证怎么办？",
+                "先从微信文章菜单复制完整链接再试。需要平台验证的页面不能保证匿名读取，不要求你上传账号 Cookie 或系统证书。",
+            ),
+        ],
+        guides=["share-link-download", "video-to-live-photo"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="xianyu-images",
+        sources=("goofish",),
+        title="闲鱼商品图片视频下载_公开商品分享链接原图提取 - 求原图",
+        description="解析闲鱼公开商品和分享短链，提取商品图片及可用视频，保留平台实际文件。仅支持单个公开商品，淘宝天猫商品暂不支持。",
+        h1="闲鱼原图，<br>视频也能直接下载。",
+        lead="复制闲鱼单个商品的分享链接，预览图片和视频，再选择要保存的文件。已有水印会随原文件保留。",
+        keywords="闲鱼商品图片下载,闲鱼原图提取,闲鱼视频下载,goofish分享链接",
+        placeholder="粘贴闲鱼商品链接或闲鱼分享短链…",
+        nav_label="闲鱼商品图片",
+        body=[
+            (
+                "公开商品图片和视频",
+                "读取对应商品公开提供的图片和播放文件，按真实格式保存。不会根据后缀猜出不存在的高清原图，也不会自动去除商品图片水印。",
+            ),
+            (
+                "分享短链先核对商品",
+                "闲鱼短链会先定位到商品页。淘宝与天猫商品没有同样的匿名入口，即使使用相似短链，也不会被当作闲鱼商品解析。",
+            ),
+            (
+                "只处理你选中的商品",
+                "不抓取卖家全部商品、聊天、订单或账号信息。商品下架、删除或平台要求登录时，可能无法读取公开媒体。",
+            ),
+        ],
+        faq=[
+            ("淘宝、天猫商品也能下载吗？", "暂不支持。相似的分享短链不代表同一平台，也不代表商品详情可匿名访问。"),
+            (
+                "下载的商品图片为什么还有水印？",
+                "工具保存平台提供的文件；水印已写进图片时会保留，不能承诺无水印或恢复卖家上传前的原文件。",
+            ),
+        ],
+        guides=["share-link-download", "video-to-gif"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="toutiao",
+        sources=("toutiao",),
+        title="今日头条视频与微头条图片下载_公开分享链接解析 - 求原图",
+        description="解析今日头条视频页、微头条图文和 App 分享短链，保存平台实际提供的图片与视频。头条文章和微头条内嵌视频暂不支持。",
+        h1="微头条图片，<br>视频分享也能解析。",
+        lead="复制微头条或视频本身的分享链接。图文保存页面给出的图片，视频页读取可用播放档位；头条文章暂不支持。",
+        keywords="微头条图片下载,今日头条视频下载,头条分享链接解析,微头条原图",
+        placeholder="粘贴今日头条视频或微头条分享链接…",
+        nav_label="头条视频与图片",
+        body=[
+            (
+                "微头条按帖保存图片",
+                "微头条保留当前帖子公开图片和顺序。图片可能带签名，只保存页面实际可用的规格，不移除参数后冒充更高清原图。",
+            ),
+            (
+                "视频请分享视频本身",
+                "普通视频页可提取公开播放地址；微头条里仅以内嵌形式存在的视频暂不支持，请打开视频本身再复制分享链接。",
+            ),
+            (
+                "文章与账号目录不在范围内",
+                "/article/ 等头条文章暂不提取正文或媒体，也不自动下载账号全部内容。App 分享短链会先解析到对应作品。",
+            ),
+        ],
+        faq=[
+            (
+                "头条文章链接为什么不能解析？",
+                "当前入口支持视频页与微头条图文，文章使用不同页面结构，暂不支持。请核对分享的是哪种内容。",
+            ),
+            ("能保证每张图片都比预览大吗？", "不能。图片尺寸由页面公开资源决定，保存现有文件不会补出更大的源文件。"),
+        ],
+        guides=["social-post-download", "share-link-download"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="instagram",
+        domains=("instagram.com",),
+        title="Instagram图片视频下载_Reels与混合轮播公开帖提取 - 求原图",
+        description="粘贴 Instagram 公开帖子、Reels 或轮播链接，保存可读取的图片和视频。混合轮播按顺序展示，视频可转 GIF 与实况照片。",
+        h1="Instagram 原图，<br>视频也能直接保存。",
+        lead="复制单篇帖子或 Reels 链接，检查轮播里的图片与视频后分别下载。私密、限龄或要求登录的内容可能无法读取。",
+        keywords="Instagram图片下载,Instagram视频下载,Reels下载,Instagram轮播下载",
+        placeholder="粘贴 Instagram 帖子、Reels 或轮播链接…",
+        nav_label="Instagram 图片视频",
+        body=[
+            (
+                "单图、视频和混合轮播",
+                "图片与视频混排时逐项展示，保留帖子顺序。图片取公开数据中可用的大图，视频列出实际可读取的文件或档位。",
+            ),
+            (
+                "Reels 下载与转换",
+                "可读取的 Reels 或帖子视频可以下载，也能选择短片段转 GIF、实况包或安卓动态照片。转换不会提高原视频清晰度。",
+            ),
+            (
+                "公开链接也可能受限",
+                "Instagram 可能对地区、年龄或服务器访问作限制。工具不批量抓取账号，也不承诺读取私密帖、Stories 或登录后才可见的内容。",
+            ),
+        ],
+        faq=[
+            (
+                "为什么公开帖子仍提示需要登录？",
+                "平台可以限制匿名访问。请先确认帖子在普通浏览器可公开查看；即使如此，服务器也可能暂时受限。",
+            ),
+            (
+                "轮播可以一次看到全部图片和视频吗？",
+                "公开数据完整时会按原顺序展示；隐藏或未公开返回的项目无法补取，不能把首个视频当作整个轮播。",
+            ),
+        ],
+        guides=["social-post-download", "video-to-gif"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="tiktok",
+        domains=("tiktok.com", "tt.site"),
+        title="TikTok视频与图文下载_公开分享链接转GIF和实况 - 求原图",
+        description="粘贴 TikTok 视频、图文或分享短链，读取公开图片与可用视频档位。下载后可截取片段转 GIF、iPhone 实况或安卓动态照片。",
+        h1="TikTok 图片视频，<br>分享链接直接保存。",
+        lead="复制 TikTok 作品分享链接。视频按平台可用档位下载，图文保留公开图片；是否可读取取决于地区和平台访问限制。",
+        keywords="TikTok视频下载,TikTok图文下载,TikTok分享链接解析,TikTok转GIF",
+        placeholder="粘贴 TikTok 作品链接或分享短链…",
+        nav_label="TikTok 视频图文",
+        body=[
+            (
+                "视频和图文分别处理",
+                "视频显示实际可读取的播放文件，图文帖展示公开图片。分享短链先定位到作品，不把个人主页当作一个视频。",
+            ),
+            (
+                "选好片段再转换",
+                "下载视频后可继续转 GIF 或实况照片，按片段长度、尺寸和帧率控制体积。静态图片不会被伪造成原作没有的动画。",
+            ),
+            (
+                "地区与访问限制",
+                "平台的地区、年龄和访问策略可能导致失败。工具不绕过账号权限，不承诺每条公开链接都能解析，也不批量下载账号。",
+            ),
+        ],
+        faq=[
+            (
+                "TikTok 和抖音使用同一个入口吗？",
+                "都可以在首页粘贴，但两者是不同平台。TikTok 使用此页，抖音使用抖音工具，各自按作品公开数据解析。",
+            ),
+            (
+                "图文里的音乐会一起下载吗？",
+                "以解析结果实际提供的媒体为准。图片下载不等于已经获取配乐，也不合成并不存在的图文视频。",
+            ),
+        ],
+        guides=["social-post-download", "video-to-live-photo"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="short-video-download",
+        sources=(
+            "acfun",
+            "xigua",
+            "weishi",
+            "haokan",
+            "pipixia",
+            "pipigaoxiao",
+            "zuiyou",
+            "quanmin",
+            "doupai",
+            "meipai",
+            "quanminkge",
+            "sixroom",
+            "huya",
+            "lishipin",
+            "xinpianchang",
+        ),
+        title="西瓜微视AcFun等分享视频下载_国内短视频与图集解析 - 求原图",
+        description="汇集西瓜、微视、好看、AcFun、皮皮虾、最右等平台的单条分享解析入口，另兼容梨视频、新片场、虎牙视频与全民K歌等公开作品。",
+        h1="分享视频与图集，<br>链接直接下载。",
+        lead="粘贴单条作品的分享文字即可识别链接。先检查平台、标题和预览，再保存返回的图片、视频或转换片段。",
+        keywords="西瓜视频下载,微视视频下载,AcFun下载,好看视频下载,皮皮虾图集,最右视频保存,梨视频下载,新片场视频提取",
+        placeholder="粘贴西瓜、微视、好看、AcFun 等单条作品分享链接…",
+        nav_label="国内短视频与图集",
+        body=[
+            (
+                "短视频与社区图集",
+                "西瓜、微视、好看视频、AcFun、皮皮虾、皮皮搞笑、最右使用同一输入框；不同平台提供的视频、图集或实况类型并不相同，以结果为准。",
+            ),
+            (
+                "其他公开作品链接",
+                "也可尝试梨视频、新片场、虎牙视频、全民K歌、六间房、逗拍和美拍的单条作品。虎牙只处理视频作品，不提供直播录制；需登录或失效的作品可能无法读取。",
+            ),
+            (
+                "旧链接与实际清晰度",
+                "度小视（原全民小视频）旧分享入口保留兼容，但只有页面仍公开提供媒体时才能保存。各平台只列实际返回的规格，不保证所有作品无水印、4K 或原始上传文件。",
+            ),
+        ],
+        faq=[
+            (
+                "这里支持整个平台批量下载吗？",
+                "不支持。请复制具体视频或图文作品，不使用主页、搜索页、账号合集或直播间代替单条作品链接。",
+            ),
+            (
+                "为什么不同平台显示的按钮不一样？",
+                "结果只展示来源实际提供的媒体。只有视频就提供视频操作；图集按图片显示，缺少实况文件时不会补造实况。",
+            ),
+        ],
+        guides=["share-link-download", "video-to-gif", "video-to-live-photo"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="public-video-download",
+        sources=("cctv", "qqvideo", "sohu"),
+        title="央视网腾讯搜狐公开网页视频下载_实际清晰度解析 - 求原图",
+        description="粘贴央视网、腾讯视频或搜狐视频的公开作品页，读取实际可用档位。央视完整 MP4 分段可合并，付费、加密及账号受限内容不保证可用。",
+        h1="公开视频，<br>下载后也能转 GIF。",
+        lead="输入单条公开作品页链接，检查平台实际返回的清晰度。需要合并的档位由服务器处理，不把播放清单当作完整视频保存。",
+        keywords="央视网视频下载,腾讯公开视频下载,搜狐视频下载,央视MP4分段合并",
+        placeholder="粘贴央视网、腾讯视频或搜狐公开作品页链接…",
+        nav_label="央视腾讯搜狐视频",
+        body=[
+            (
+                "央视网完整分段",
+                "央视网有完整 MP4 分段时，可选择实际验证的档位并合并成一个视频。缺少尾段、编码不一致或高档未公开时，不能把部分片段冒充完整节目。",
+            ),
+            (
+                "腾讯与搜狐作品页",
+                "支持解析器能识别的公开作品页。清晰度按来源返回的地址或档位展示，不把高清标签等同于作者上传原文件。",
+            ),
+            (
+                "加密与账号权限",
+                "需要购买、账号授权或加密播放的内容不保证可用，不提供权限解锁。只有可读取的视频才可以下载并继续做 GIF、实况包或动态照片。",
+            ),
+        ],
+        faq=[
+            (
+                "能下载全部付费电影和电视剧吗？",
+                "不能。公开作品页不等于媒体文件可公开下载，付费、加密和账号限制不能靠粘贴链接解除。",
+            ),
+            (
+                "为什么最高档有时不可用？",
+                "平台可能只公开部分档位，也可能让高档文件加密或暂时失效。工具只展示可读取结果，不猜测或伪造更高清地址。",
+            ),
+        ],
+        guides=["share-link-download", "video-to-gif"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
+        slug="more-video-sites",
+        sources=("ytdlp",),
+        domains=("vimeo.com", "facebook.com", "fb.watch", "twitch.tv", "reddit.com", "dailymotion.com"),
+        title="FacebookVimeo等公开视频下载_多站点分享链接解析 - 求原图",
+        description="尝试解析 Facebook、Vimeo、Twitch、Reddit、Dailymotion 的公开单条视频链接，下载可用格式或转 GIF 与实况；具体支持取决于来源访问限制。",
+        h1="更多公开视频，<br>一条链接直接解析。",
+        lead="这里汇集通过 yt-dlp 读取的公开视频入口。粘贴具体作品链接，成功后再选择实际格式；不承诺每个站点和每条链接始终可用。",
+        keywords="Facebook视频下载,Vimeo视频下载,Twitch视频下载,Reddit视频下载,Dailymotion下载",
+        placeholder="粘贴 Facebook、Vimeo、Twitch、Reddit 或 Dailymotion 单条视频链接…",
+        nav_label="更多海外视频站",
+        body=[
+            (
+                "公开作品与分享短链",
+                "可以尝试 Facebook 或 fb.watch、Vimeo、Twitch、Reddit 和 Dailymotion 的具体视频或作品页。不是为账号主页、搜索结果或整站抓取设计的入口。",
+            ),
+            (
+                "播放预览与下载格式",
+                "浏览器预览可能使用兼容版本；需要合并的高清档位通过后台下载任务生成。结果只列来源实际返回的规格，不统一承诺 4K、无水印或原始上传文件。",
+            ),
+            (
+                "权限和临时访问限制",
+                "公开视频仍可能有地区、年龄、登录或服务器访问限制。Twitch 直播录制不在此工具提供的范围内；付费、私密或未公开内容不会被解锁。",
+            ),
+        ],
+        faq=[
+            (
+                "列在这里就保证能下载吗？",
+                "不保证。这里表示可以按已接入的解析路径尝试，最终是否可读取取决于平台当时返回的数据与访问规则。",
+            ),
+            (
+                "解析失败会要求我提供密码吗？",
+                "不会要求你把账号密码粘贴到这里。若来源需要登录或拒绝服务器访问，结果会说明失败原因。",
+            ),
+        ],
+        guides=["share-link-download", "video-to-gif"],
+        common=["ratelimit", "free"],
+        updated="2026-11-14",
+    ),
+    Page(
         slug="pinterest-download",
+        guides=["share-link-download", "video-to-gif"],
+        domains=("pinterest.com", "pin.it"),
+        sources=("pinterest",),
         title="Pinterest原图与轮播视频下载_支持GIF与实况转换 - 求原图",
         description="粘贴 Pinterest 单条 Pin 或 pin.it 分享链接，保存公开图片、轮播与视频；视频可转 GIF、实况照片和安卓动态照片。",
         h1="Pinterest 原图，<br>视频也能带走。",
@@ -122,7 +585,7 @@ PAGES: list[Page] = [
             ("图片与轮播", "优先保存平台提供的原始规格，保留轮播里的图片和视频顺序。"),
             ("视频继续转换", "MP4 可直接下载；只有分段流的视频先在服务器合并，再转 GIF、实况照片或动态照片。"),
         ],
-        updated="2026-11-12",
+        updated="2026-11-14",
     ),
     Page(
         slug="wallpaper-engine",
@@ -155,6 +618,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="stream-emotes",
+        sources=("7tv", "bttv", "ffz"),
         title="7TV、BTTV、FFZ表情下载_透明GIF转换 - 求原图",
         description="粘贴 7TV、BetterTTV 或 FrankerFaceZ 公开表情链接，保存原格式，动态表情可转透明 GIF、iPhone 实况包和安卓动态照片。",
         h1="直播表情，<br>保存后接着动。",
@@ -186,6 +650,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="line-stickers",
+        sources=("line",),
         title="LINE动态贴图下载_APNG转透明GIF与实况 - 求原图",
         description="读取 LINE 商店公开贴图预览，保存 PNG、APNG，动态贴图可转透明 GIF、实况包和安卓动态照片。无需登录。",
         h1="LINE 动态贴图，<br>换个地方接着动。",
@@ -214,6 +679,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="signal-stickers",
+        sources=("signal",),
         title="Signal贴纸包下载_公开链接保存原图与动图 - 求原图",
         description="粘贴完整 Signal 公开贴纸包分享链接，选择贴纸并保存图片。动态贴纸可转换，无需 Signal 账号或 Bot。",
         h1="Signal 贴纸，<br>从分享链接保存。",
@@ -245,6 +711,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="animated-emoji",
+        sources=("noto-emoji",),
         title="Noto动态Emoji下载_WebP与GIF转换 - 求原图",
         description="保存 Google Noto 官方动态 emoji 的 WebP、GIF 和 Lottie 原文件，WebP 动画可转透明 GIF、实况包与动态照片。保留 CC BY 4.0 署名。",
         h1="动态 Emoji，<br>找到喜欢的那个。",
@@ -272,6 +739,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="svga-to-gif",
+        sources=("animation", "bilibili-assets"),
         title="SVGA转GIF与MP4_B站装扮动画下载与转换 - 求原图",
         description="上传 SVGA 或粘贴公开文件、B站装扮链接，逐帧还原动画，转透明 GIF、MP4、实况包与动态照片。支持有界的无声 SVGA 1.x 和 2.x。",
         h1="SVGA 动画，<br>转成能保存的格式。",
@@ -303,6 +771,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="animation-converter",
+        sources=("animation",),
         title="PAG、VAP、Spine动画转GIF与视频 - 求原图",
         description="上传 PAG、VAP 或 Spine JSON图集ZIP，预览并转换为透明 GIF、MP4、实况与动态照片。Spine 可选择动画，复杂类型明确提示。",
         h1="特殊动画，<br>预览后再保存。",
@@ -334,6 +803,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="pixiv-download",
+        sources=("pixiv",),
         title="Pixiv原图下载_漫画、小说与动图在线解析 - 求原图",
         description="解析 Pixiv 公开插画、漫画、小说和 Ugoira。保存原图、TXT 与帧包，作者、系列、标签、榜单和集合按页选择作品，无需账号。",
         h1="Pixiv 的作品，<br>原图与动画一起保存。",
@@ -366,6 +836,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="pixiv-ugoira",
+        sources=("pixiv",),
         title="Pixiv动图下载_Ugoira转GIF与实况照片 - 求原图",
         description="下载 Pixiv Ugoira 帧包与逐帧时序 JSON，转为 MP4、GIF、iPhone 实况包或安卓动态照片。保留播放节奏，无需登录。",
         h1="Pixiv 动图，<br>把帧包变成 <em>GIF</em>。",
@@ -389,6 +860,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="pixiv-sketch",
+        sources=("pixiv-sketch",),
         title="Pixiv Sketch原图下载_公开帖子图片提取 - 求原图",
         description="粘贴 Pixiv Sketch 公开帖子或作者链接，按页选择帖子，保存平台提供的原始图片。不需要 Pixiv 账号。",
         h1="Sketch 里的画，<br>按原始格式保存。",
@@ -413,6 +885,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="discord-stickers",
+        sources=("discord",),
         title="Discord动态贴纸下载_APNG与Lottie转透明GIF - 求原图",
         description="粘贴 Discord 公开贴纸包或贴纸素材链接，下载 APNG、Lottie JSON 原文件，转透明 GIF、iPhone 实况包和安卓动态照片。匿名读取官方公开目录，无需 Token。",
         h1="Discord 贴纸，<br>换个地方接着动。",
@@ -445,6 +918,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="telegram-stickers",
+        sources=("telegram",),
         title="Telegram贴纸下载_TGS转GIF与实况照片 - 求原图",
         description="粘贴 Telegram 贴纸包链接，提取公开目录已收录的 TGS 与 WebP 素材。TGS 可转透明 GIF、iPhone 实况包和安卓动态照片，无需账号或 Bot Token。",
         h1="Telegram 贴纸，<br>保存后接着动。",
@@ -474,6 +948,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="wechat-channels",
+        sources=("wechat-channels",),
         title="微信视频号视频下载_匿名解析分享链接与封面图片 - 求原图",
         description="粘贴视频号 sph 分享链接，匿名解析视频与封面，支持下载、转 GIF、实况与动态照片。官方预览核对作品，BugPk 公益接口补充视频，无需微信或元宝凭证。",
         h1="视频号的片段，<br>下载或做成实况。",
@@ -502,6 +977,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="wuthering-waves-wallpaper",
+        sources=("wutheringwaves",),
         title="鸣潮国际服启动器壁纸下载_动态背景转GIF与实况 - 求原图",
         description="下载鸣潮国际服当前启动器的公开壁纸与背景视频。静态首帧按原图保存，动态背景可截取片段，转 GIF、iPhone 实况包或安卓动态照片。",
         h1="鸣潮启动器的风景，<br>也能随身收藏。",
@@ -530,6 +1006,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="miyoushe-images",
+        sources=("miyoushe",),
         title="米游社帖子原图下载_高清图集与动态GIF保存 - 求原图",
         description="粘贴米游社单篇帖子链接，提取正文图片并按原始格式逐张保存。支持原神、星穹铁道、绝区零等社区帖子，GIF 保留动效，也能继续转换。",
         h1="米游社里的好图，<br>按原格式保存。",
@@ -558,6 +1035,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="bilibili-assets",
+        sources=("bilibili-assets",),
         title="B站装扮与收藏集公开素材下载_动态卡片转GIF - 求原图",
         description="粘贴 B 站装扮或收藏集详情链接，下载公开展示的背景、卡片图片与动态视频。每份素材独立预览、下载，动态素材可转 GIF、实况与动态照片。",
         h1="B站的动态卡片，<br>下载后继续创作。",
@@ -590,6 +1068,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="steam-assets",
+        sources=("steam",),
         title="Steam动态头像与头像框下载_APNG转GIF - 求原图",
         description="粘贴 Steam 点数商店单个物品链接，下载动态头像、透明头像框、贴纸与背景视频。保留 GIF、APNG、MP4 或 WebM，动态图片还能转 GIF 与实况照片。",
         h1="Steam 动态素材，<br>原样保存。",
@@ -623,6 +1102,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="hoyoplay-wallpaper",
+        sources=("hoyoplay",),
         title="HoYoPlay壁纸下载_原神星穹铁道绝区零动态背景 - 求原图",
         description="选择原神、崩坏星穹铁道、绝区零或崩坏3，提取当前国服 HoYoPlay 启动器公开壁纸。静态原图直接保存，动态背景可下载视频、转 GIF 或实况照片。",
         h1="启动器里的风景，<br>留在你的相册。",
@@ -655,6 +1135,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="apple-music-cover",
+        sources=("applemusic",),
         title="Apple Music封面下载_动态专辑封面转GIF - 求原图",
         description="粘贴 Apple Music 歌曲、专辑或歌单链接，下载高清封面。作品提供公开动态封面时，可下载 MP4，或转换为 GIF、实况照片与安卓动态照片。",
         h1="Apple Music 封面，<br>静态与动态都能留。",
@@ -696,9 +1177,11 @@ PAGES: list[Page] = [
         nav_label="首页",
         common=ALL_COMMON,  # 首页承载完整问答，落地页各挑最相关的 3 条
         guides=["xiaohongshu-live-photo-iphone", "video-to-gif", "video-to-live-photo"],
+        updated="2026-11-14",
     ),
     Page(
         slug="netease-music-cover",
+        sources=("netease",),
         title="网易云音乐封面提取_歌单专辑原图下载_动态封面转GIF - 求原图",
         description="粘贴网易云音乐歌曲、专辑或歌单分享链接，在线提取封面原图。动态 WebP 封面保留原格式，也能转 GIF、iPhone 实况或安卓动态照片。免费不用登录。",
         h1="网易云音乐封面，<br>会动的也能带走。",
@@ -735,10 +1218,11 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="qq-music-cover",
-        title="QQ音乐封面提取_歌曲专辑歌单高清封面下载_免登录 - 求原图",
-        description="在线提取 QQ 音乐歌曲、专辑和歌单封面，优先保存平台公开的源文件，没有源文件时提供可用的高清版本。粘贴分享链接即可下载，免费不用登录。",
+        sources=("qqmusic",),
+        title="QQ音乐动态封面下载_歌曲专辑歌单原图与MP4提取 - 求原图",
+        description="提取 QQ 音乐歌曲、专辑和歌单封面，静态图优先验证公开源文件，动态封面提供方形版与完整原版 MP4，可继续转 GIF 或实况照片。",
         h1="QQ 音乐封面，<br>贴链接，取原图。",
-        lead="在 QQ 音乐里复制歌曲、专辑或歌单分享链接，直接贴进来。预览对应封面，再按图片实际格式下载，不用安装插件。",
+        lead="复制 QQ 音乐歌曲、专辑或歌单分享链接。静态封面保留实际格式，有公开动态视频时可选方形版或完整原版，再做 GIF 与实况。",
         keywords="QQ音乐封面提取,QQ音乐封面下载,QQ音乐歌单封面,QQ音乐专辑封面原图,QQ音乐高清封面,QQ音乐歌曲封面保存",
         placeholder="粘贴 QQ 音乐歌曲、专辑或歌单分享链接…",
         nav_label="QQ 音乐封面下载",
@@ -753,7 +1237,7 @@ PAGES: list[Page] = [
             ),
             (
                 "下载后还能做什么",
-                '静态封面按 JPEG、PNG 等实际格式直接保存。平台返回多帧图片时，可继续转 GIF 或实况照片。网易云动态歌单封面也可用<a href="/netease-music-cover">网易云封面工具</a>提取。',
+                '静态封面按真实格式保存。动态视频可下载方形版或完整原版；方形版优先使用平台方形素材，没有时中心裁切，转换默认用方形版。另有<a href="/huawei-music-cover">华为音乐动态封面</a>与<a href="/netease-music-cover">网易云封面</a>入口。',
             ),
         ],
         faq=[
@@ -763,14 +1247,16 @@ PAGES: list[Page] = [
             ),
             (
                 "QQ 音乐封面支持转 GIF 或实况吗？",
-                "取决于平台返回的图片。静态封面直接下载即可；平台提供多帧动态封面时，可使用 GIF、实况或动态照片转换功能。",
+                "平台公开动态素材时，可以下载视频并转 GIF、实况包或动态照片。静态封面只保存原图，不会伪造动态效果；不是每张专辑都有公开动画。",
             ),
         ],
         common=["ratelimit", "free"],
         guides=["music-cover-download", "video-to-gif"],
+        updated="2026-11-14",
     ),
     Page(
         slug="douyin",
+        sources=("douyin",),
         title="抖音去水印下载_无水印视频_图集原图_实况图提取 - 求原图",
         description="在线解析抖音分享链接：无水印视频（含 H.265 高清档）、图集无水印原图、实况图打包成 iPhone 实况或安卓动态照片、背景音乐。免费不用登录。",
         h1="抖音去水印，<br>图集与实况一键拿走。",
@@ -808,6 +1294,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="douyin-live-stream",
+        sources=("douyin",),
         title="抖音直播流地址解析_直播源 FLV / M3U8 在线提取 - 求原图",
         description="粘贴抖音直播间链接，在线取出各清晰度的直播流地址（FLV / M3U8）和原始推流，复制到 VLC、PotPlayer 或 OBS 里观看、录制。免费不用登录。",
         h1="抖音直播流地址，<br>复制就能播。",
@@ -853,6 +1340,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="xiaohongshu",
+        sources=("redbook",),
         title="小红书图片原图下载_视频去水印_实况图保存到相册 - 求原图",
         description="粘贴小红书分享链接，取出笔记原图（原始分辨率）、无水印视频和实况图。实况图可打包成 iPhone 实况照片或安卓动态照片。免费不用登录。",
         h1="小红书原图、视频与实况，<br>整篇取出来。",
@@ -889,6 +1377,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="kuaishou",
+        sources=("kuaishou",),
         title="快手视频去水印下载_图集原图提取_转 GIF 和实况 - 求原图",
         description="粘贴快手分享链接，在线下载无水印视频和图集原图，可截一段转 GIF 或实况照片。免费不用登录。",
         h1="快手去水印，<br>视频图集直接存。",
@@ -925,6 +1414,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="youtube",
+        domains=("youtube.com", "youtu.be"),
         title="YouTube 视频下载_1080p 4K_仅音频 - 求原图",
         description="粘贴 YouTube 链接，在线下载 1080p、1440p、4K 视频或仅音频 m4a，还能截一段做 GIF 或实况照片。免费不用登录。",
         h1="<em>YouTube</em> 下载，<br>1080p 到 4K 都能选。",
@@ -953,6 +1443,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="x",
+        sources=("twitter",),
         title="X (Twitter) 视频下载_推文图片原图 - 求原图",
         description="粘贴 X / Twitter 推文链接，在线下载推文里的视频（最高码率）和图片原图，可转 GIF 或实况照片。免费不用登录。",
         h1="<em>X</em> 推文里的视频与图片，<br>直接保存。",
@@ -989,6 +1480,7 @@ PAGES: list[Page] = [
     ),
     Page(
         slug="bilibili",
+        sources=("bilibili",),
         title="B站视频下载_1080p 高清_仅音频提取_b23 短链解析 - 求原图",
         description="粘贴 B站 视频链接，在线下载 1080p / 720p 视频或仅音频，可截一段做 GIF 或实况照片。b23.tv 短链也支持。免费不用登录。",
         h1="B站视频下载，<br>1080p 高清直接选。",
@@ -1135,6 +1627,9 @@ def json_ld(page: Page, base: str) -> str:
                 "QQ 音乐与网易云封面提取",
                 "Steam 动态素材与 HoYoPlay 壁纸提取",
                 "Apple Music 静态与动态封面提取",
+                "华为音乐静态与动态封面、WebP 转 MP4",
+                "Threads 引用帖、微博与 Instagram 图片视频",
+                "公众号文章媒体与闲鱼公开商品图片",
                 "动态封面转 GIF 与实况",
                 "视频转 GIF",
                 "视频转实况照片",

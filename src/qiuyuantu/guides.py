@@ -46,6 +46,141 @@ class Guide:
 
 GUIDES: list[Guide] = [
     Guide(
+        slug="huawei-music-cover-download",
+        title="华为音乐动态封面怎么下载，WebP转MP4与GIF教程",
+        description="从歌曲、专辑或歌单分享链接提取华为音乐封面，保留原始 WebP，下载无声 MP4，或生成 GIF、实况包和动态照片。",
+        keywords="华为音乐动态封面怎么下载,华为音乐封面转MP4,华为音乐WebP转GIF",
+        h1="华为音乐动态封面怎么下载",
+        intro="先保留原文件，再按使用场景选择格式。华为公开动态封面当前以 WebP 提供，下载 MP4 是逐帧转换，不是下载歌曲视频。",
+        steps=[
+            (
+                "从华为音乐复制链接",
+                "打开歌曲或专辑，点分享后复制完整链接。歌单链接先打开歌曲目录，再选择一首歌的封面。",
+            ),
+            (
+                "核对封面与动态预览",
+                "在华为音乐封面工具粘贴链接并解析。确认标题和预览；如果提示没有公开动态封面，就保存静态图。",
+            ),
+            (
+                "选择 WebP 或 MP4",
+                "「下载动态 WebP」保留原始文件；「下载 MP4」生成无声视频。两个按钮用途不同，改后缀不能替代转换。",
+            ),
+            (
+                "需要时再做 GIF 或实况",
+                "动态封面可继续转 GIF、iPhone 实况包或安卓动态照片。GIF 读取原始动图，不经过下载的 MP4 再压缩。",
+            ),
+        ],
+        sections=[
+            (
+                "为什么下载视频没有声音",
+                "动态封面本身是循环视觉素材，不包含歌曲音轨。工具不会把歌曲、MV 或空间音频预览拼进封面视频。",
+            ),
+            (
+                "MP4 与透明动图的区别",
+                "普通 MP4 不保留透明通道。需要透明度或最接近来源的素材时，保留原始 WebP；转换无法恢复平台没有提供的细节。",
+            ),
+            (
+                "手机相册中的实况导入",
+                "网页不能直接把配对文件写入 iPhone 相册实况。有 Mac 时把 JPG 与 MOV 一起导入「照片」；安卓动态照片需要兼容相册。",
+            ),
+        ],
+        faq=[("歌单里每首歌都有动态封面吗？", "不一定。歌单只是选曲目录，每首歌仍以自己当前公开的封面字段为准。")],
+        tool="huawei-music-cover",
+        tool_label="打开华为音乐封面工具",
+        related=["music-cover-download", "video-to-live-photo"],
+        published="2026-11-14",
+        updated="2026-11-14",
+    ),
+    Guide(
+        slug="social-post-download",
+        title="Threads微博Instagram等公开图集怎么下载",
+        description="区分单帖、轮播与引用帖，核对实际作者和图片视频顺序，保存公开社交媒体作品，说明私密、登录限制和实况文件的边界。",
+        keywords="Threads图集下载,微博图片保存,Instagram轮播下载,TikTok图文保存",
+        h1="公开图集与视频怎么保存",
+        intro="先复制具体作品链接，再核对媒体来自哪里。相同的输入框可以解析多个平台，但每个平台的图片、视频和实况能力不一样。",
+        steps=[
+            (
+                "复制单条作品的分享链接",
+                "从 Threads、微博、Instagram、TikTok 或微头条的作品分享菜单复制链接。主页和搜索结果不能代替具体作品。",
+            ),
+            (
+                "核对顺序、作者和引用提示",
+                "解析后检查标题与作者。轮播里的图片和视频分别展示；Threads 引用帖会标明媒体来自原帖，并保留原作者。",
+            ),
+            (
+                "按原格式保存或转换",
+                "图片按实际文件格式保存；可用视频可以下载或转 GIF、实况包。原帖缺少实况视频时，不能直接当作自带实况下载。",
+            ),
+        ],
+        sections=[
+            (
+                "按平台选择入口",
+                '<a href="/threads">Threads 图片视频</a>、<a href="/weibo">微博原图与实况</a>、<a href="/instagram">Instagram 轮播</a>、<a href="/tiktok">TikTok 图文</a>、<a href="/toutiao">微头条图片</a>与<a href="/telegram-post-download">Telegram 公开帖子</a>都可粘贴单帖分享链接。',
+            ),
+            (
+                "可见帖子与公开媒体不同",
+                "平台可能只向登录用户、特定年龄或地区返回完整数据。公开标题仍可见时，图片或引用原帖也可能已经不可读取。",
+            ),
+        ],
+        faq=[("能自动下载账号全部内容吗？", "这些入口面向单篇公开作品，不抓取账号主页、全部回复或推荐列表。")],
+        tool="threads",
+        tool_label="打开 Threads 图片视频工具",
+        related=["share-link-download", "video-to-live-photo"],
+        published="2026-11-14",
+        updated="2026-11-14",
+    ),
+    Guide(
+        slug="share-link-download",
+        title="分享链接怎么下载图片视频，选择平台与格式教程",
+        description="从具体作品复制分享链接，识别图片、视频、公开文档和目录结果，再选择直接下载或转换；说明各平台访问与画质限制。",
+        keywords="分享链接下载视频,分享文字提取图片,公开作品下载教程,视频清晰度选择",
+        h1="一条分享链接，怎么保存图片视频",
+        intro="解析成功的标准是拿到对应作品的真实媒体。不要把可打开的页面、清晰度标签或一个播放清单当成已经下载好的文件。",
+        steps=[
+            (
+                "选择具体作品",
+                "复制单条视频、图文、商品或文章的分享链接，通常可以连分享文字一起粘贴。不要改成账号主页或搜索页。",
+            ),
+            ("检查解析结果", "核对平台、标题、作者和预览。目录先选择一项再继续；只有图片的内容不会自动变成视频。"),
+            (
+                "下载所需格式",
+                "有直链的媒体可直接保存；需要合并或渲染的格式会创建任务，完成后再下载文件。不要把开始下载当成已经保存成功。",
+            ),
+            (
+                "需要时转换片段",
+                "视频可以选择片段做 GIF、实况包或动态照片。转换会受时长、尺寸、并发和存储限制，不保证任何素材都能压到同一体积。",
+            ),
+        ],
+        sections=[
+            (
+                "相近平台共用入口",
+                '<a href="/short-video-download">国内短视频与图集</a>汇集多个单条作品平台；<a '
+                'href="/public-video-download">央视腾讯搜狐视频</a>说明公开网页视频的档位和分段；<a '
+                'href="/more-video-sites">更多海外视频站</a>说明访问限制。',
+            ),
+            (
+                "商品和文章使用各自入口",
+                '<a href="/xianyu-images">闲鱼商品图片</a>只处理公开商品，不读取订单或聊天；<a '
+                'href="/wechat-article">公众号图片视频</a>读取文章媒体，不导出整篇文章文档。',
+            ),
+            (
+                "最高档与原文件不是同一承诺",
+                "工具按来源实际返回的数据列出档位，不根据文件名猜高清，不把小图放大后称为原图。平台没有公开的付费、加密或私密内容不能靠转换恢复。",
+            ),
+        ],
+        faq=[
+            (
+                "这里能解除平台登录或购买限制吗？",
+                "不能。能否解析取决于当前公开资源和访问条件，已接入平台也可能暂时受限。",
+            )
+        ],
+        tool="short-video-download",
+        tool_label="打开分享链接解析工具",
+        related=["social-post-download", "video-to-gif"],
+        published="2026-11-14",
+        updated="2026-11-14",
+    ),
+    Guide(
         slug="stream-emotes-to-gif",
         title="7TV、BTTV和FFZ表情怎么保存为透明GIF",
         description="从公开表情链接保存原文件，辨认静态与动态素材，再转透明 GIF 或实况照片。",
@@ -572,7 +707,7 @@ GUIDES: list[Guide] = [
         sections=[
             (
                 "先选对入口",
-                '<p><a href="/qq-music-cover">QQ 音乐封面提取</a>支持歌曲、专辑和歌单；<a href="/netease-music-cover">网易云音乐封面提取</a>也支持这三类链接。两个入口使用同一套工具，不用先找封面图片直链。</p>',
+                '<p><a href="/qq-music-cover">QQ 音乐</a>与<a href="/netease-music-cover">网易云音乐</a>支持歌曲、专辑和歌单封面；另有<a href="/apple-music-cover">Apple Music</a>与<a href="/huawei-music-cover">华为音乐</a>入口。动态素材按平台实际文件分别下载或转换。</p>',
             ),
             (
                 "为什么 .jpg 地址会下载成动态 WebP",
@@ -604,7 +739,7 @@ GUIDES: list[Guide] = [
         tool="netease-music-cover",
         tool_label="去提取音乐封面",
         related=["wechat-gif-1mb", "video-to-live-photo", "android-motion-photo"],
-        updated="2026-10-26",
+        updated="2026-11-14",
         published="2026-10-26",
     ),
     Guide(
