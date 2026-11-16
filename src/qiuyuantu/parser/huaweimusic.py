@@ -7,9 +7,21 @@ from .base import BaseParser, ContentEntry, FormatInfo, ImgInfo, MediaAsset, Vid
 from .errors import ParseError
 
 HOST = "portal-drcn.music.dbankcloud.cn"
+SHARE_HOSTS = {
+    HOST,
+    "portal-drcn.music.cloud.huawei.com",
+    "api-drcn.music.hicloud.com",
+    "portal-drcn.music.hicloud.com",
+}
 SHORT_HOST = "url.cloud.huawei.com"
 ORIGIN = f"https://{HOST}"
 PAGE = ORIGIN + "/music-apph5-service/h5/index.html"
+_SHARE_PATHS = {
+    "/music-apph5-service/h5/index.html",
+    "/music-apph5-service/musich5/index.html",
+    "/music-apph5-service/h5/",
+    "/music-apph5-service/musich5/",
+}
 _KINDS = {"1": "song", "2": "album", "4": "playlist", "5": "playlist"}
 _IMAGE_HOSTS = {"contentcenter-drcn.dbankcdn.cn", "ccimg-drcn.dbankcdn.cn", "image.tingmall.com"}
 _PAGE_SIZE = 20
@@ -25,16 +37,12 @@ def _identifier(value: str) -> str:
 def target(url: str) -> tuple[str, str, int]:
     parsed = urlparse(url)
     route = urlparse(parsed.fragment)
-    match = re.fullmatch(r"/musicshare/([1245])/?", route.path)
-    if (
-        parsed.scheme != "https"
-        or parsed.netloc != HOST
-        or parsed.path != "/music-apph5-service/h5/index.html"
-        or not match
-    ):
+    # 官方路由将 /musicshare 重定向到 /musicshare/1，保留同一个查询中的作品编号。
+    match = re.fullmatch(r"/musicshare(?:/([1245]))?/?", route.path)
+    if parsed.scheme != "https" or parsed.netloc not in SHARE_HOSTS or parsed.path not in _SHARE_PATHS or not match:
         raise ParseError("unsupported", "请使用华为音乐的歌曲、专辑或歌单分享链接")
     query = parse_qs(route.query)
-    kind = _KINDS[match[1]]
+    kind = _KINDS[match[1] or "1"]
     ident = query.get("listid", [""])[0] if kind == "playlist" else ""
     ident = _identifier(ident or query.get("id", [""])[0])
     start = query.get("start", ["0"])[0]

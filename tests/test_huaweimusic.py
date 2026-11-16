@@ -16,6 +16,9 @@ from qiuyuantu.parser.quality import best_video_format
 STATIC = "https://contentcenter-drcn.dbankcdn.cn/img/pub_1/HW-Music_cover_100_1/ab/v3/hash/cover.jpg/music_cover_1000x1000.webp"
 DYNAMIC = "https://contentcenter-drcn.dbankcdn.cn/img/pub_1/HW-Music_DynamicCover_100_1/df/v3/hash/cover.webp/music_dynamiccover_1000x1000.webp"
 SHORT = "https://url.cloud.huawei.com/example"
+ALTERNATE_PAGE = "https://portal-drcn.music.cloud.huawei.com/music-apph5-service/musich5/index.html"
+LEGACY_PAGE = "https://api-drcn.music.hicloud.com/music-apph5-service/h5/index.html"
+LEGACY_PORTAL_PAGE = "https://portal-drcn.music.hicloud.com/music-apph5-service/h5/index.html"
 SONG = {
     "contentID": "2168177",
     "contentName": "大鱼",
@@ -69,6 +72,42 @@ def test_share_routes_and_opaque_ids(route, expected):
 
 
 @pytest.mark.parametrize(
+    "host",
+    [
+        huaweimusic.HOST,
+        "portal-drcn.music.cloud.huawei.com",
+        "api-drcn.music.hicloud.com",
+        "portal-drcn.music.hicloud.com",
+    ],
+)
+@pytest.mark.parametrize("path", ["h5/index.html", "musich5/index.html", "h5/", "musich5/"])
+@pytest.mark.parametrize(
+    ("route", "expected"),
+    [
+        ("1?id=1036947&listid=&ishm=true&shareChannel=1", ("song", "1036947", 0)),
+        ("2?id=168016&ishm=true", ("album", "168016", 0)),
+        ("4?id=opaque_1&start=20", ("playlist", "opaque_1", 20)),
+        ("5?id=unused&listid=u.opaque_1-2", ("playlist", "u.opaque_1-2", 0)),
+    ],
+)
+def test_official_share_domains_and_paths(host, path, route, expected):
+    url = f"https://{host}/music-apph5-service/{path}#/musicshare/{route}"
+    assert huaweimusic.target(url) == expected
+    assert parser.detect_source(url) is VideoSource.HuaweiMusic
+
+
+@pytest.mark.parametrize("route", ["/musicshare", "/musicshare/", "/musicshare/1/"])
+@pytest.mark.parametrize("page", [LEGACY_PAGE, LEGACY_PORTAL_PAGE])
+async def test_default_song_route_preserves_id_and_returns_canonical_page(music_http, route, page):
+    calls, replies = music_http
+    song_reply(replies)
+    info = await parser.parse_video_share_url(page + "#" + route + "?id=2168177&shareChannel=qq")
+    assert info.title == "大鱼" and info.source == "huaweimusic" and info.assets[0].url == DYNAMIC
+    assert info.page_url == huaweimusic.page_url("song", "2168177")
+    assert calls[0].url.params["songCode"] == "2168177"
+
+
+@pytest.mark.parametrize(
     "url",
     [
         huaweimusic.PAGE.replace("https:", "http:") + "#/musicshare/1?id=1",
@@ -83,6 +122,19 @@ def test_share_routes_and_opaque_ids(route, expected):
         huaweimusic.PAGE + "#/musicshare/4?id=1&start=-1",
         huaweimusic.PAGE + "#/musicshare/1",
         huaweimusic.PAGE + "#/musicshare/1?id=" + "a" * 65,
+        ALTERNATE_PAGE.replace("https:", "http:") + "#/musicshare/1?id=1",
+        ALTERNATE_PAGE.replace(".huawei.com", ".huawei.com.evil.test") + "#/musicshare/1?id=1",
+        ALTERNATE_PAGE.replace("https://", "https://user@") + "#/musicshare/1?id=1",
+        ALTERNATE_PAGE.replace(".com/", ".com:8443/") + "#/musicshare/1?id=1",
+        ALTERNATE_PAGE.replace("/musich5/", "/other/") + "#/musicshare/1?id=1",
+        LEGACY_PAGE.replace("hicloud.com", "hicloud.com.evil.test") + "#/musicshare/1?id=1",
+        LEGACY_PAGE.replace("https://", "https://user@") + "#/musicshare/1?id=1",
+        LEGACY_PAGE.replace("/h5/index.html", "/h5") + "#/musicshare/1?id=1",
+        LEGACY_PAGE + "#/musicshare",
+        LEGACY_PAGE + "#/musicshare/hifi?id=1",
+        LEGACY_PAGE + "#/musicshare/7?id=1",
+        LEGACY_PAGE.replace("api-drcn.music.hicloud.com", "api-drcn.music.dbankcloud.cn") + "#/musicshare/1?id=1",
+        LEGACY_PORTAL_PAGE.replace("hicloud.com", "hicloud.com.evil.test") + "#/musicshare/1?id=1",
     ],
 )
 def test_unrelated_or_invalid_pages_are_rejected(url):
@@ -90,9 +142,13 @@ def test_unrelated_or_invalid_pages_are_rejected(url):
         huaweimusic.target(url)
 
 
-async def test_short_share_returns_original_webp_and_separate_static_cover(music_http):
+@pytest.mark.parametrize(
+    "page",
+    [huaweimusic.PAGE, ALTERNATE_PAGE, LEGACY_PAGE, LEGACY_PORTAL_PAGE, ALTERNATE_PAGE.removesuffix("index.html")],
+)
+async def test_short_share_returns_original_webp_and_separate_static_cover(music_http, page):
     calls, replies = music_http
-    replies["/example"] = lambda _: httpx.Response(302, headers={"Location": huaweimusic.page_url("song", "2168177")})
+    replies["/example"] = lambda _: httpx.Response(302, headers={"Location": page + "#/musicshare/1?id=2168177"})
     song_reply(replies)
     info = await parser.parse_video_share_url(SHORT)
     assert parser.detect_source(SHORT) is VideoSource.HuaweiMusic
@@ -106,6 +162,20 @@ async def test_short_share_returns_original_webp_and_separate_static_cover(music
     assert best_video_format(info) is None
     assert info.page_url == huaweimusic.page_url("song", "2168177")
     assert len(calls) == 2 and calls[-1].url.params["songCode"] == "2168177"
+
+
+async def test_alternate_share_uses_canonical_page_for_mp4_download(music_http):
+    from qiuyuantu.convert import artwork
+
+    calls, replies = music_http
+    song_reply(replies)
+    url = ALTERNATE_PAGE + "#/musicshare/1?id=2168177&listid=&ishm=true&shareChannel=1"
+    assert parser.detect_source(url) is VideoSource.HuaweiMusic
+    info = await parser.parse_video_share_url(url)
+    assert info.source == "huaweimusic" and info.assets[0].url == DYNAMIC
+    assert info.page_url == huaweimusic.page_url("song", "2168177")
+    assert artwork.handles(info.page_url) and info.formats[0].format_spec == "huawei-artwork"
+    assert len(calls) == 1 and calls[0].url.host == huaweimusic.HOST
 
 
 async def test_unrelated_cloud_short_url_does_not_follow_off_platform_redirect(music_http):
