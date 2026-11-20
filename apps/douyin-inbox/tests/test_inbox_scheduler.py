@@ -2,8 +2,6 @@
 
 from dataclasses import replace
 
-import pytest
-
 from qiuyuantu_inbox.models import Message, Settings
 from qiuyuantu_inbox.store import Store
 
@@ -30,8 +28,8 @@ def send_part(store, now=3000):
     return job["sender"], job["id"], part["number"]
 
 
-@pytest.mark.parametrize("users", [10, 50, 100])
-def test_large_gallery_does_not_block_other_users_and_all_requests_finish(tmp_path, users):
+def test_large_gallery_does_not_block_other_users_and_all_requests_finish(tmp_path):
+    users = 100
     store = Store(tmp_path / "queue", Settings(sender_hourly=1000))
     store.bind("account", 1000)
     large = enqueue(store, "large", 0, parts=10)

@@ -18,9 +18,9 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 - **分层**：`parser/` 只管「链接 → VideoInfo」，不碰 HTTP 接口；`convert/` 是下载、转换、任务队列，不认识 FastAPI；`web/` 只做参数校验、鉴权、限流，把活交给前两层。前端脚本在 `static/js/`，按功能分模块，不往模板里写内联脚本。
 - **加平台**：在 `src/qiuyuantu/parser/` 写一个 `BaseParser` 子类，在 `parser/__init__.py` 注册域名。返回 `VideoInfo`，直链多档清晰度放 `formats`（带 `url`），需要服务端合并的放 `format_spec`。
 - **平台 SEO**：新增解析来源或显式 yt-dlp 域名时，在 `seo.Page.sources` / `domains` 登记独立或共用工具页，同步正文、问答、英文、教程和内链；路由测试会对照注册表防漏，见 [SEO 覆盖表](seo-coverage.md)。
-- **补链接格式**：`python scripts/link_gaps.py` 只读 `data/failures.db`，把最近 7 天「不支持」和「页面结构变了」的失败按站点与路径样式汇总，并标出按当前代码会交给哪个解析器。补上一种样式后，把它加进 `tests/test_link_catalog.py`。专用解析器报不支持、而 yt-dlp 有专门认这个链接的提取器时，会让 yt-dlp 再试一次；t.cn 等通用短链先跟到落地地址再选解析器。
-- **改文案**：落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
-- **同步上游**：`parser/` 里的解析器都已按本项目的写法重写过（统一用 `BaseParser.get_json / get_text` 发请求、失败抛带原因的 `ParseError`），不能再拿上游文件直接覆盖；上游修了某个平台时对照着改，并补上 `tests/test_small_parsers.py` 里的离线用例。
+- **补链接格式**：`python scripts/link_gaps.py` 只读 `data/failures.db`，把最近 7 天「不支持」和「页面结构变了」的失败按站点与路径样式汇总，并标出按当前代码会交给哪个解析器。补上一种样式后，在对应的平台测试或 `tests/parser/test_link_catalog.py` 里用真实样本校验分流。专用解析器报不支持、而 yt-dlp 有专门认这个链接的提取器时，会让 yt-dlp 再试一次；t.cn 等通用短链先跟到落地地址再选解析器。
+- **改文案**：落地页在 `seo.py`，教程在 `guides.py`。改完跑 `python scripts/subset_fonts.py --src <NotoSerifCJK OTF 目录>` 重建衬线字体子集（900 字重只收各页大标题，`tests/web/test_fonts.py` 会查缺字）。字体 URL 自动带内容哈希，不用管缓存。
+- **同步上游**：`parser/` 里的解析器都已按本项目的写法重写过（统一用 `BaseParser.get_json / get_text` 发请求、失败抛带原因的 `ParseError`），不能再拿上游文件直接覆盖；上游修了某个平台时对照着改，并补上 `tests/parser/test_small_parsers.py` 里的离线用例。
 - **发起出站请求**：一律用 `utils.create_async_client()` 或 `convert.net.safe_client()`，它们带 SSRF 逐跳检查并复用连接池。不要直接 `httpx.AsyncClient()`。
 - **普通账号工作流**：独立应用见 [apps/douyin-inbox/README.md](../apps/douyin-inbox/README.md)，源码、测试、部署与运维文档都在该目录；主包与 Web 镜像不包含账号助手。
 - 提交前用真实链接验证：抖音、小红书、X、B站 各一条，三种转换格式各一次。
@@ -29,12 +29,14 @@ python -m venv .venv && .venv/bin/pip install -e ".[web,cli,dev]"
 
 在仓库根目录、已激活的开发虚拟环境中执行。CI 使用 Python 3.12、Node.js 22，完整命令以 [CI 工作流](../.github/workflows/ci.yml) 为准。
 
+核心测试按目录运行，例如 `python -m pytest -q tests/parser`。四组分别覆盖链接解析（`tests/parser/`）、下载与转换（`tests/media/`）、接口和站点（`tests/web/`）、出站网络与包兼容（`tests/infra/`）。无目录参数时运行全部核心测试。前端英文提示测试使用 Node.js，本机缺少时会跳过。
+
 | 改动 | 检查 |
 | --- | --- |
 | Python、测试或依赖 | `python -m ruff format --check .`、`python -m ruff check .`、`python -m pytest -q` |
 | 账号助手或共享解析 / 转换代码 | 另跑 `python -m pytest -q apps/douyin-inbox/tests` |
 | 前端 JavaScript | `npx --yes eslint@10 src/qiuyuantu/static/js`，以及浏览器交互检查 |
-| 模板、样式、资源或页面文案 | `python -m pytest -q tests/test_assets.py tests/test_fonts.py tests/test_csp.py tests/test_seo_routes.py`，以及桌面 / 手机检查 |
+| 模板、样式、资源或页面文案 | `python -m pytest -q tests/web/test_assets.py tests/web/test_fonts.py tests/web/test_csp.py tests/web/test_seo_routes.py`，以及桌面 / 手机检查 |
 | 部署脚本 | `shellcheck scripts/deploy.sh` |
 | Dockerfile 或依赖 | 具备 Docker 环境时执行 `docker build -t shizhen-ci .` |
 | 纯文档 | 核对事实、本地链接，运行 `git diff --check` |

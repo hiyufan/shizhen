@@ -839,7 +839,7 @@ def _load_worker(monkeypatch):
     monkeypatch.setitem(sys.modules, "deno", types.SimpleNamespace(find_deno_bin=lambda: "deno"))
     monkeypatch.setitem(sys.modules, "playwright", types.ModuleType("playwright"))
     monkeypatch.setitem(sys.modules, "playwright.async_api", types.SimpleNamespace(async_playwright=None))
-    path = Path(__file__).parents[1] / "docker/youtube/worker.py"
+    path = Path(__file__).parents[2] / "docker/youtube/worker.py"
     spec = importlib.util.spec_from_file_location("youtube_worker_under_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

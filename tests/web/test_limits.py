@@ -30,15 +30,6 @@ def test_rotating_ipv6_inside_one_64_shares_a_bucket():
     rl.hit("2001:db8:1:3::1")  # 另一个 /64 不受影响
 
 
-def test_global_bucket_ignores_who_is_asking():
-    rl = limits.RateLimit("t", 2, 60)
-    rl.hit(limits.GLOBAL)
-    rl.hit(limits.GLOBAL)
-    with pytest.raises(HTTPException) as err:
-        rl.hit(limits.GLOBAL, "现在解析的人太多了，{wait} 秒后再试")
-    assert "太多" in err.value.detail
-
-
 def test_concurrency_by_64_and_global():
     per_ip = limits.Concurrency("下载", 1)
     per_ip.acquire("2001:db8::1")

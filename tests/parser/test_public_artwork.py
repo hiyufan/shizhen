@@ -495,21 +495,22 @@ def apple_html(*, animated=True, tall=False, kind="containerDetailHeaderLockup",
 
 
 @pytest.mark.parametrize(
-    ("path", "kind", "animated"),
+    ("canonical", "query", "kind", "animated"),
     [
-        ("album/example/100?i=200", "containerDetailHeaderLockup", True),
-        ("song/100", "songDetailHeader", False),
-        ("playlist/example/pl.abcdef", "containerDetailHeaderLockup", True),
+        (APPLE_PAGE, "?i=200", "containerDetailHeaderLockup", True),
+        ("https://music.apple.com/us/song/100", "", "songDetailHeader", False),
+        ("https://music.apple.com/us/playlist/example/pl.abcdef", "", "containerDetailHeaderLockup", True),
     ],
 )
-async def test_apple_reads_work_header_not_first_track(public_http, path, kind, animated):
+async def test_apple_reads_work_header_not_first_track(public_http, canonical, query, kind, animated):
     routes, calls = public_http
-    url = "https://music.apple.com/us/" + path
-    routes[page_url(url)] = apple_html(kind=kind, animated=animated)
+    url = canonical + query
+    routes[canonical] = apple_html(kind=kind, animated=animated)
     info = await AppleMusic().parse_share_url(url)
     assert info.title == "Selected work" and info.cover_url.endswith("/3000x3000.jpg")
     assert not info.video_url and not info.music_url
-    assert info.page_url == page_url(url) and len(calls) == 1
+    assert info.page_url == canonical
+    assert [str(request.url) for request in calls] == [canonical]
     assert bool(info.formats) is animated
     if animated:
         assert info.formats[0].format_spec == "apple-artwork:motionDetailSquare"

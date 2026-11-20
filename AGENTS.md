@@ -28,7 +28,7 @@
 - 保留 `VideoInfo` 的语义：可直接下载的清晰度放 `formats` 并带 `url`，需服务端合并的格式放 `format_spec`。
 - 目录使用 `entries`、`entry_total`、`next_page_url` 与 `content_kind=directory`，不当成媒体批量递归下载；小说等纯文本使用 `documents`，前端按文本呈现。Ugoira 的原始帧包放 `assets`，合成 MP4 放 `formats`，逐帧时序为 `animation_frames`；转换时从平台重新读取并校验帧包与时序。
 - 直播间使用 `streams` 与 `content_kind=live`，只把拉流地址交给用户的播放器：地址不签名，不进代理、下载、转换或录制。
-- 新增解析来源或显式 yt-dlp 域名时，在 `seo.Page.sources` / `domains` 登记独立或共用搜索入口，并同步正文、问答、英文与内链；`tests/test_seo_routes.py` 对照注册表防止漏项。同一来源的不同能力也要检查搜索意图，完整对照见 [SEO 覆盖表](docs/seo-coverage.md)。
+- 新增解析来源或显式 yt-dlp 域名时，在 `seo.Page.sources` / `domains` 登记独立或共用搜索入口，并同步正文、问答、英文与内链；`tests/web/test_seo_routes.py` 对照注册表防止漏项。同一来源的不同能力也要检查搜索意图，完整对照见 [SEO 覆盖表](docs/seo-coverage.md)。
 - 修改接口时检查前端调用方和现有兼容接口；新增进度能力时保留 JSON 解析接口的可用性。配置仍通过 `PARSE_VIDEO_*` 环境变量提供。
 - 普通抖音账号助手独立管理于 [apps/douyin-inbox/](apps/douyin-inbox/README.md)，源码包为 `qiuyuantu_inbox`；账号工具、测试、部署与文档均放在该目录，具体约定见 [子项目 AGENTS.md](apps/douyin-inbox/AGENTS.md)。它单向复用核心解析器和转换层；核心安装包及 Web 镜像不包含账号助手，不从 Web 路由启动账号进程。
 - 修改共享下载或转换工具时保持现有默认行为，账号专属限制通过可选参数传入。账号源码不放回 `src/qiuyuantu/`；账号依赖与运行数据继续隔离。
@@ -48,7 +48,7 @@
 - 主题默认跟随系统，语言默认按浏览器偏好协商；导航右侧的手动选择优先，并用 `qyt_theme` / `qyt_language` Cookie 保存。主题颜色复用 CSS 语义变量，不给内容区祖先新增层叠上下文。页面文案经 `t()` / `|t` 翻译，英文集中在 `locales/en.json`（内容）和 `locales/ui.en.json`（交互），动态数字使用命名占位符。接口保留原有文案契约，由前端翻译展示；带偏好的 HTML 不共享缓存。
 - 保留主页面 CSP：不新增可执行内联脚本或 HTML 事件属性，不通过放宽主页面 `script-src` 让新功能运行。现有关键 CSS 内联和 JSON-LD 按原机制维护。
 - 工具页允许一个 Adsterra 普通横幅：按可用宽度只加载 320×50 或 728×90，不随缩放刷新广告。预留正常尺寸的可见广告位，广告矩形至少一半进入视口后才请求；不在隐藏容器中加载，不定时删除或收起广告，不伪造或补报联盟曝光。第三方脚本仅在 `/ads/banner/{placement}` 的 sandbox iframe 内执行，该文档单独放行 `https://bauval.org`，无同源、顶层导航、下载、表单及 Worker 权限；允许新窗口供用户点击广告后打开落地页。广告不得读取主页面输入或结果，广告文档不进访问统计或搜索索引；不接入 Popunder、Social Bar 或推送脚本，未获得卖方记录时不提供 `/ads.txt`。`/sw.js` 保留为自注销 Worker，用于清理访客浏览器中曾注册的推送 Worker；不要删除该路径或改回 404，否则已安装的旧 Worker 会继续运行。
-- 改标题、落地页或教程文案时检查字体覆盖。需要新字时运行 `python scripts/subset_fonts.py --src <NotoSerifCJK-OTF目录>`，同步提交生成的字体与 `fonts.css`；验证 `tests/test_fonts.py`，保留字体分片和体积限制。缺少字体源时明确报告，不用系统字体回退掩盖缺字。
+- 改标题、落地页或教程文案时检查字体覆盖。需要新字时运行 `python scripts/subset_fonts.py --src <NotoSerifCJK-OTF目录>`，同步提交生成的字体与 `fonts.css`；验证 `tests/web/test_fonts.py`，保留字体分片和体积限制。缺少字体源时明确报告，不用系统字体回退掩盖缺字。
 - 修改 `.sec` 背景或层级前阅读 CSS 中的层叠说明；其暖色背景与色团使用负 `z-index`，给祖先添加 `transform`、`filter` 或新的层叠上下文可能改变显示。
 
 ## 代码风格与复杂度
@@ -107,11 +107,14 @@ Python 由 Ruff 格式化、检查 import 顺序、常见错误和复杂度；�
 
 开发中先运行受影响的测试；代码交付前按下表补齐对应检查。纯文档改动检查事实、链接和 `git diff --check` 即可；界面检查不能由 lint 或模板测试替代。
 
+- 核心测试按行为放入 `tests/parser/`（链接解析）、`tests/media/`（下载、转换与任务）、`tests/web/`（接口和站点）或 `tests/infra/`（出站网络、代理、中继与包兼容）。开发时可按目录跑，完整入口仍是 `python -m pytest -q`。账号助手沿用独立测试入口。
+- 优先复用已有测试。预期值取自接口约定或固定样本，多种输入使用有代表性的参数表。多个维度会共同改变行为时再交叉组合。
+
 | 改动 | 本地验证 |
 | --- | --- |
 | Python 源码、测试或依赖 | `python -m ruff format --check .`、`python -m ruff check .`、`python -m pytest -q`；涉及账号助手或共享解析 / 转换代码时另跑 `python -m pytest -q apps/douyin-inbox/tests` |
 | 前端 JavaScript | `npx --yes eslint@10 src/qiuyuantu/static/js`，以及相关页面的浏览器交互检查 |
-| 模板、样式、静态资源或页面文案 | `python -m pytest -q tests/test_assets.py tests/test_fonts.py tests/test_csp.py tests/test_seo_routes.py`，以及受影响页面的桌面 / 手机检查 |
+| 模板、样式、静态资源或页面文案 | `python -m pytest -q tests/web/test_assets.py tests/web/test_fonts.py tests/web/test_csp.py tests/web/test_seo_routes.py`，以及受影响页面的桌面 / 手机检查 |
 | 部署脚本 | `shellcheck scripts/deploy.sh` |
 | `Dockerfile`、`pyproject.toml`、`requirements.txt` | 具备 Docker 环境时执行 `docker build -t shizhen-ci .`；CI 对这些文件的变化执行镜像构建 |
 

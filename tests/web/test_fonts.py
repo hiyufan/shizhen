@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fontTools.ttLib import TTFont
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("subset_fonts", ROOT / "scripts" / "subset_fonts.py")
 subset_fonts = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(subset_fonts)

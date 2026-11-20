@@ -89,12 +89,12 @@ async def test_carousel_keeps_largest_image_of_each_item(site):
 
 async def test_share_link_follows_redirect_to_the_post(site):
     routes, seen = site
-    routes["https://www.threads.com/share/_qnW5t1Du"] = httpx.Response(
-        302, headers={"location": f"https://www.threads.com/@huiunyz/post/{CODE}?xmt=1"}
-    )
+    short = "https://www.threads.com/share/_qnW5t1Du"
+    routes[short] = httpx.Response(302, headers={"location": f"https://www.threads.com/@huiunyz/post/{CODE}?xmt=1"})
     routes[f"https://www.threads.com/t/{CODE}"] = page(post())
-    info = await threads.Threads().parse_share_url("https://www.threads.com/share/_qnW5t1Du")
-    assert info.video_url == VIDEO and str(seen[0].url) == "https://www.threads.com/share/_qnW5t1Du"
+    assert detect_source(short) == VideoSource.Threads
+    info = await threads.Threads().parse_share_url(short)
+    assert info.video_url == VIDEO and str(seen[0].url) == short
 
 
 @pytest.mark.parametrize(

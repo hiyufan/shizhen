@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 SPEC = importlib.util.spec_from_file_location(
-    "probe_media_candidates", Path(__file__).resolve().parents[1] / "scripts/probe_media_candidates.py"
+    "probe_media_candidates", Path(__file__).resolve().parents[2] / "scripts/probe_media_candidates.py"
 )
 probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(probe)

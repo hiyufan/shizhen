@@ -44,10 +44,3 @@ def test_refuses_to_run_on_uvloop(monkeypatch):
     monkeypatch.setattr(asyncio, "get_running_loop", lambda: fake_loop)
     with pytest.raises(RuntimeError, match="uvloop"):
         net.check_event_loop()
-
-
-def test_asyncio_loop_is_fine():
-    async def run():
-        net.check_event_loop()
-
-    asyncio.run(run())

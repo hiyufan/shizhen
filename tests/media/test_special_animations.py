@@ -305,7 +305,7 @@ async def test_pag_browser_preparation_has_its_own_concurrency_limit(monkeypatch
 def test_bundled_pag_files_match_the_pinned_manifest():
     import hashlib
 
-    root = Path(__file__).resolve().parents[1] / "src/qiuyuantu/convert/vendor"
+    root = Path(__file__).resolve().parents[2] / "src/qiuyuantu/convert/vendor"
     manifest = json.loads((root / "LIBPAG-MANIFEST.json").read_text())
     assert manifest["version"] == "4.5.85"
     for name, digest in manifest["files_sha256"].items():

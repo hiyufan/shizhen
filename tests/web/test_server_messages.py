@@ -6,15 +6,17 @@
 import ast
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
 
 from qiuyuantu.convert import config, fetch, jobs
-from qiuyuantu.web import limits
+from qiuyuantu.web import limits, rendering
 
-ROOT = Path(__file__).parents[1] / "src/qiuyuantu"
+ROOT = Path(__file__).parents[2] / "src/qiuyuantu"
 UI = json.loads((ROOT / "locales/ui.en.json").read_text(encoding="utf-8"))
 # 用户可能看到原文的抛出点：任务错误（job.error）、接口的 detail，以及特殊动画子进程转回来的报错
 _RAISES = {"ValueError", "RuntimeError", "TooLarge", "HTTPException", "Refused", "DownloadCancelled", "QueueFull"}
@@ -45,14 +47,6 @@ def test_user_facing_errors_have_english_translations():
     assert not missing, "\n".join(missing)
 
 
-def _patterns():
-    source = (ROOT / "static/js/i18n.js").read_text(encoding="utf-8")
-    block = source.split("const SERVER_PATTERNS = [", 1)[1].split("\n];", 1)[0]
-    pairs = re.findall(r"\[/(.+?)/,\s*'([^']+)'\]", block, re.S)
-    assert pairs
-    return [(re.compile(pattern.replace("(?<", "(?P<").replace("\\/", "/")), key) for pattern, key in pairs]
-
-
 def _rate_limited(limit) -> str:
     with pytest.raises(HTTPException) as caught:
         for _ in range(limit.burst + 1):
@@ -60,7 +54,7 @@ def _rate_limited(limit) -> str:
     return caught.value.detail
 
 
-def _dynamic_messages(monkeypatch) -> list[str]:
+def _dynamic_messages(monkeypatch) -> list[tuple[str, str]]:
     monkeypatch.setattr(config, "JOB_TIMEOUT_SECONDS", 300)
     minutes = jobs._timeout_message()
     monkeypatch.setattr(config, "JOB_TIMEOUT_SECONDS", 45)
@@ -74,20 +68,49 @@ def _dynamic_messages(monkeypatch) -> list[str]:
     with pytest.raises(HTTPException) as quota:
         daily.check("203.0.113.9")
     return [
-        _rate_limited(limits.RateLimit("t", 1, 60)),
-        streams.value.detail,
-        limits.Concurrency("任务", 2)._busy,
-        quota.value.detail,
-        fetch.too_large_message(512e6, 300 << 20, True),
-        fetch.too_large_message(512e6, 300 << 20, False),
-        minutes,
-        seconds,
+        ("配好 2/7 张", "Paired 2/7 images"),
+        ("7 张一起拉，稍等", "Downloading 7 images together"),
+        ("2.5 MB 有点胖，瘦个身重来：宽 360 px、12 fps", "Retrying at 360 px and 12 fps"),
+        (_rate_limited(limits.RateLimit("t", 1, 60)), "Too many requests"),
+        ("现在解析的人太多了，8 秒后再试", "Too many people are parsing"),
+        (streams.value.detail, "downloads in progress"),
+        (limits.Concurrency("任务", 2)._busy, "tasks in progress"),
+        (quota.value.detail, "Come back tomorrow"),
+        (fetch.too_large_message(512e6, 300 << 20, True), "even the lowest quality"),
+        (fetch.too_large_message(512e6, 300 << 20, False), "Try a lower quality"),
+        ("原视频超过 300 MB，不支持转换", "cannot be converted"),
+        ("视频没下完整，多半是超过了服务器 300 MB 的上限", "did not download completely"),
+        (minutes, " min,"),
+        (seconds, " s,"),
     ]
 
 
-def test_messages_with_numbers_match_a_translated_pattern(monkeypatch):
-    patterns = _patterns()
-    assert all(key in UI for _, key in patterns)
-    for message in _dynamic_messages(monkeypatch):
-        match = next((m for pattern, _ in patterns if (m := pattern.fullmatch(message))), None)
-        assert match, message
+def test_server_messages_keep_numbers_in_english(monkeypatch, tmp_path):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("需要 Node.js")
+    shutil.copyfile(ROOT / "static/js/i18n.js", tmp_path / "i18n.js")
+    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    (tmp_path / rendering.UI_MESSAGES_MODULE).write_text(rendering.ui_messages_module(), encoding="utf-8")
+    script = """
+import { readFileSync } from 'node:fs';
+globalThis.document = { documentElement: { lang: 'en' } };
+const { serverMessage } = await import('./i18n.js');
+const messages = JSON.parse(readFileSync(0, 'utf8'));
+console.log(JSON.stringify(messages.map(message => serverMessage(message))));
+"""
+    cases = _dynamic_messages(monkeypatch)
+    result = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        cwd=tmp_path,
+        input=json.dumps([message for message, _ in cases]),
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=10,
+    )
+    numbers = re.compile(r"\d+(?:\.\d+)?")
+    for (message, expected), translated in zip(cases, json.loads(result.stdout), strict=True):
+        assert expected in translated, (message, translated)
+        assert numbers.findall(translated) == numbers.findall(message), (message, translated)
+        assert not re.search(r"[\u3400-\u9fff]", translated), (message, translated)

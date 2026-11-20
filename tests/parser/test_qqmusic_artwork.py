@@ -10,7 +10,7 @@ from qiuyuantu.parser.base import FormatInfo
 from qiuyuantu.parser.music import QQMusic
 
 URL = "https://v0.stream.tencentmusic.com/cover.mp4?fixture=1"
-SAMPLES = json.loads((Path(__file__).parent / "fixtures" / "qqmusic_artwork.json").read_text())["albums"]
+SAMPLES = json.loads((Path(__file__).parents[1] / "fixtures" / "qqmusic_artwork.json").read_text())["albums"]
 
 
 @pytest.mark.parametrize("sample", SAMPLES, ids=lambda sample: sample["name"])
