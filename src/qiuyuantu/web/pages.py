@@ -35,7 +35,6 @@ _ROBOTS = (
     "Disallow: /api/\n"
     "Disallow: /video/\n"
     "Disallow: /mcp\n"
-    "Disallow: /ads/\n"
     "Disallow: /stats\n"
     "Disallow: /*?url=\n"
     "Sitemap: {sitemap}\n"
